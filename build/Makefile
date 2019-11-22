@@ -6,7 +6,7 @@ CFLAGS= -mcpu=$(CPU) -fpic -ffreestanding $(DIRECTIVES)
 CSRCFLAGS= -O2 -Wall -Wextra
 LFLAGS= -ffreestanding -O2 -nostdlib
 
-IMG_NAME=pb3000.img
+IMG_NAME=pip-os.img
 
 KER_SRC = ../src/kernel
 KER_HEAD = ../include
