@@ -1,3 +1,4 @@
+
 # Pip OS ![arch](https://img.shields.io/badge/Architecture-ARMv7--A-blue) ![ver](https://img.shields.io/badge/Version-0.0.1.0-green)
 
 This is the repository for the Operating System used in Pip-Boy products.
@@ -15,3 +16,8 @@ export ARM_TOOLCHAIN=<path to your toolchain>
 make build
 make run
 ```
+
+## References
+
+Peripheral manual for BCM2835 ARM chip (useful to get Memory Mapped IO addresses):
+[BCM2835 ARM Peripherals](https://www.raspberrypi.org/app/uploads/2012/02/BCM2835-ARM-Peripherals.pdf)
