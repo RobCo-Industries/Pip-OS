@@ -1,4 +1,4 @@
-CC = ../../../toolchain/bin/arm-none-eabi-gcc
+CC = $(ARM_TOOLCHAIN)/bin/arm-none-eabi-gcc
 
 CPU = cortex-a7
 
