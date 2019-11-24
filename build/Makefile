@@ -96,8 +96,4 @@ $(OBJ_DIR)/$(ARCH)/%_S.o: $(SRC_DIR)/$(ARCH)/%.S
 # Build the kernel img file by linking object files
 $(KERNEL).img: $(OBJ_FILES)
 	@echo $(OBJ_FILES)
-ifeq ($(ARCH),aarch64)
 	$(LD) -T $(BUILD_DIR)/linker.ld $(LDFLAGS) -o $(KERNEL).img $(OBJ_FILES)
-else
-	$(LD) -T $(BUILD_DIR)/linker.ld $(LDFLAGS) -o $(KERNEL).img $(OBJ_FILES)
-endif
