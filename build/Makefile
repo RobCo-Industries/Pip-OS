@@ -5,6 +5,8 @@
 # - 2837 -> Raspberry Pi 3
 BCM ?= 2835
 
+USE_MINI_UART ?= 0
+
 ARMGNU = arm-none-eabi
 ARCH = aarch32
 CPU = arm1176jzf-s
@@ -25,7 +27,7 @@ AS = $(ARMGNU)-as
 LD = $(ARMGNU)-ld
 OC = $(ARMGNU)-objcopy
 
-CFLAGS = -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding -DBCM$(BCM) -D__$(ARCH)__ -MMD
+CFLAGS = -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding -DBCM$(BCM) -D__$(ARCH)__ -DUSE_MINI_UART=$(USE_MINI_UART) -MMD
 LDFLAGS += --defsym=__$(ARCH)__=1
 
 # The bootloader on Raspberry Pi will use kernel7.img for 

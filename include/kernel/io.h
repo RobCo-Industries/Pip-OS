@@ -10,7 +10,7 @@ enum
 #elif BCM2711
     PERIPHERAL_BASE = 0xFE000000,
 #else // BCM2835
-    PERIPHERAL_BASE = 0x20000000,
+    PERIPHERAL_BASE = 0x7E000000,
 #endif
 
     // The mailbox base address.
@@ -40,6 +40,10 @@ enum
     // The GPIO registers base address.
     GPIO_BASE       = PERIPHERAL_BASE + 0x200000,
 
+    GPFSEL1         = (GPIO_BASE + 0x04),
+    GPSET0          = (GPIO_BASE + 0x1C),
+    GPCLR0          = (GPIO_BASE + 0x28),
+
     // Controls actuation of pull up/down to ALL GPIO pins.
     GPPUD           = (GPIO_BASE + 0x94),
 
@@ -68,6 +72,34 @@ enum
     UART0_ITIP      = (UART0_BASE + 0x84),
     UART0_ITOP      = (UART0_BASE + 0x88),
     UART0_TDR       = (UART0_BASE + 0x8C),
+
+    // The offsets for each registers of Auxiliaries
+    // There are 3 AUX : Mini UART, and 2 SP1 masters
+    AUX_BASE        = (GPIO_BASE + 0x15000),
+    AUX_IRQ         = (AUX_BASE + 0x00),
+    AUX_ENABLES     = (AUX_BASE + 0x04),
+    AUX_MU_IO_REG   = (AUX_BASE + 0x40),
+    AUX_MU_IER_REG  = (AUX_BASE + 0x44),
+    AUX_MU_IIR_REG  = (AUX_BASE + 0x48),
+    AUX_MU_LCR_REG  = (AUX_BASE + 0x4C),
+    AUX_MU_MCR_REG  = (AUX_BASE + 0x50),
+    AUX_MU_LSR_REG  = (AUX_BASE + 0x54),
+    AUX_MU_MSR_REG  = (AUX_BASE + 0x58),
+    AUX_MU_SCRATCH  = (AUX_BASE + 0x5C),
+    AUX_MU_CNTL_REG     = (AUX_BASE + 0x60),
+    AUX_MU_STAT_REG     = (AUX_BASE + 0x64),
+    AUX_MU_BAUD_REG     = (AUX_BASE + 0x68),
+    AUX_SPI0_CNTL0_REG  = (AUX_BASE + 0x80),
+    AUX_SPI0_CNTL1_REG  = (AUX_BASE + 0x84),
+    AUX_SPI0_STAT_REG   = (AUX_BASE + 0x88),
+    AUX_SPI0_IO_REG     = (AUX_BASE + 0x90),
+    AUX_SPI0_PEEK_REG   = (AUX_BASE + 0x94),
+    AUX_SPI1_CNTL0_REG  = (AUX_BASE + 0xC0),
+    AUX_SPI1_CNTL1_REG  = (AUX_BASE + 0xC4),
+    AUX_SPI1_STAT_REG   = (AUX_BASE + 0xC8),
+    AUX_SPI1_IO_REG     = (AUX_BASE + 0xD0),
+    AUX_SPI1_PEEK_REG   = (AUX_BASE + 0xD4),
+
 
 };
 

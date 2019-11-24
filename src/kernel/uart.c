@@ -1,34 +1,15 @@
-#include <kernel/io.h>
+#if USE_MINI_UART == 0 || !defined USE_MINI_UART
+#include <kernel/uart.h>
 
 #include <stddef.h>
 #include <stdint.h>
 
 // More info on OSDev wiki : https://wiki.osdev.org/Raspberry_Pi_Bare_Bones
 
-// Memory-Mapped I/O output
-static inline void mmio_write(uint32_t reg, uint32_t data)
-{
-	*(volatile uint32_t*)reg = data;
-}
-
-// Memory-Mapped I/O input
-static inline uint32_t mmio_read(uint32_t reg)
-{
-	return *(volatile uint32_t*)reg;
-}
-
-// Loop <delay> times in a way that the compiler won't optimize away
-static inline void delay(int32_t count)
-{
-	asm volatile("__delay_%=: subs %[count], %[count], #1; bne __delay_%=\n"
-		 : "=r"(count): [count]"0"(count) : "cc");
-}
-
 void uart_init()
 {
 	// Disable UART0.
 	mmio_write(UART0_CR, 0x00000000);
-	// Setup the GPIO pin 14 && 15.
 
 	// Disable pull up/down for all GPIO pins & delay for 150 cycles.
 	mmio_write(GPPUD, 0x00000000);
@@ -90,3 +71,4 @@ void uart_puts(const char *str)
     while (*str != 0)
         uart_putc(*str++);
 }
+#endif // USE_MINI_UART == 0 || !defined USE_MINI_UART
