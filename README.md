@@ -22,9 +22,11 @@ The model BCM2711 should be supported in the future.
 
 ```sh
 cd build 
-export ARM_TOOLCHAIN=<path to your toolchain>
-make build
-make run
+export BCM=2837 # Build for BCM2837 board
+
+make clean
+make
+make run # Requires QEMU installed on your machine
 ```
 
 ## References
