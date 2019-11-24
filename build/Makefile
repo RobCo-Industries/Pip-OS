@@ -46,7 +46,13 @@ else
 	QEMU_MACHINE = raspi3
 endif
 
-QEMU_FLAGS = -m 256 -M $(QEMU_MACHINE) -serial stdio
+QEMU_FLAGS = -m 256 -M $(QEMU_MACHINE)
+
+ifeq ($(USE_MINI_UART),1)
+	QEMU_FLAGS += -serial null -serial stdio
+else 
+	QEMU_FLAGS += -serial stdio
+endif
 
 ##################
 # FILES AND DIRS #

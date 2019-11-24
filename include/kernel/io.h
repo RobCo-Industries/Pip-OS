@@ -10,7 +10,7 @@ enum
 #elif BCM2711
     PERIPHERAL_BASE = 0xFE000000,
 #else // BCM2835
-    PERIPHERAL_BASE = 0x7E000000,
+    PERIPHERAL_BASE = 0x7E000000, // try with 0x20000000
 #endif
 
     // The mailbox base address.
