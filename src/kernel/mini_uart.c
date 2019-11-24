@@ -68,7 +68,7 @@ char uart_getc()
 		if(mmio_read(AUX_MU_LSR_REG) & 0x01) 
 			break;
 	}
-    return (mmio_read(UART0_DR) & 0xFF);
+    return (mmio_read(AUX_MU_IO_REG) & 0xFF);
 }
 
 void uart_write(const char *buffer, size_t size)
