@@ -3,6 +3,16 @@
 
 This is the repository for the Operating System used in Pip-Boy products.
 
+## Supported hardware
+
+The kernel is compatible with the following Broadcom boards, as they share the same underlying architecture :
+
+- BCM2835
+- BCM2836
+- BCM2837
+
+The model BCM2711 should be supported in the future.
+
 ## Building from sources
 
 ### Requirements 
