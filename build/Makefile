@@ -27,7 +27,8 @@ AS = $(ARMGNU)-as
 LD = $(ARMGNU)-ld
 OC = $(ARMGNU)-objcopy
 
-CFLAGS = -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding -DBCM$(BCM) -D__$(ARCH)__ -DUSE_MINI_UART=$(USE_MINI_UART) -MMD
+CFLAGS += -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding -MMD
+CFLAGS += -DBCM$(BCM) -D__$(ARCH)__ -DUSE_MINI_UART=$(USE_MINI_UART)
 LDFLAGS += --defsym=__$(ARCH)__=1
 
 # The bootloader on Raspberry Pi will use kernel7.img for 
@@ -39,9 +40,9 @@ QEMU_MACHINE = raspi2
 
 ifeq ($(ARCH),aarch32)
 	KERNEL = kernel7
-	CFLAGS += -mcpu=$(CPU) -fpic $(DIRECTIVES)
+	CFLAGS += -mcpu=$(CPU) -fpic
 else
-	CFLAGS += -mgeneral-regs-only $(DIRECTIVES)
+	CFLAGS += -mgeneral-regs-only
 	QEMU = qemu-system-aarch64
 	QEMU_MACHINE = raspi3
 endif
