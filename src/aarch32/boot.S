@@ -1,7 +1,9 @@
-.section ".text.boot"
+#include <kernel/mm.h>
 
-// _start is the entrypoint used by the linker script
-.globl _start
+	.sect .init
+
+	// _start is the entrypoint used by the linker script
+	.globl _start
 
 	// On 32bits architecture, the C stack should begin at 0x8000
 	.org 0x8000
@@ -17,10 +19,42 @@ _start:
 	bne halt
 #endif
 
-	// set the C stack starting at address .org and downwards
+
+	// setup Fast Interrupts Requests (FIQ)
+	cps 	#0x11
+	ldr 	sp, =MEM_FIQ_STACK
+
+	// setup Interrupts Requests (IRQ)
+	cps 	#0x12
+	ldr		sp, =MEM_IRQ_STACK
+
+	// setup Interrupts Requests (IRQ)
+	cps 	#0x17
+	ldr		sp, =MEM_ABORT_STACK
+
+	// setup Abort mode
+	cps 	#0x1B
+	ldr		sp, =MEM_ABORT_STACK
+
+	// setup SYstem mode
+	cps 	#0x1F
+	ldr		sp, =MEM_KERNEL_STACK
+
+	// set the C stack starting at address LOADADDR and downwards
 	// the other side is used by the kernel itself
-	ldr r5, =_start
-    mov sp, r5
+	ldr 	r5, =_start
+    mov 	sp, r5
+
+
+
+	// Enable Fast Interrupts
+	cpsie 	f
+
+	// TODO : invalidate data cache in L1
+
+	// TODO : vfpinit
+
+
 
 	// put start and end of C BSS memory section into registers
 	// __bss_start & __bss_end are symbols defined by the linker

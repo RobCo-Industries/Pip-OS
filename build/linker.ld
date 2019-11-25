@@ -6,11 +6,13 @@ SECTIONS
     . = DEFINED(__aarch64__) ? 0x80000 : 0x8000;
     __start = .;
 
+    .init : {
+		*(.init)
+	}
 
     __text_start = .;
     .text :
     {
-        KEEP(*(.text.boot))
         *(.text)
     }
     . = ALIGN(4096); /* align to page size */

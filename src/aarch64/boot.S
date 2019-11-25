@@ -1,10 +1,10 @@
-.section ".text.boot"
+    .sect _init
 
-// _start is the entrypoint used by the linker script
-.globl _start
+    // _start is the entrypoint used by the linker script
+    .globl _start
 
-    // On 64bits architecture, the C stack should begin at 0x80000
-	.org 0x80000
+        // On 64bits architecture, the C stack should begin at 0x80000
+	    .org 0x80000
 
 _start:
 
