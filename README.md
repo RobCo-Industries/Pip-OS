@@ -1,5 +1,5 @@
 
-# Pip OS ![arch]https://img.shields.io/badge/Arch-armv6%20%7C%20armv7--A%20%7C%20armv8--A-blue) ![ver](https://img.shields.io/badge/Version-0.0.1.0-green)
+# Pip OS ![arch](https://img.shields.io/badge/Arch-armv6%20%7C%20armv7--A%20%7C%20armv8--A-blue) ![ver](https://img.shields.io/badge/Version-0.0.1.0-green)
 
 This is the repository for the Operating System used in Pip-Boy products. 
 
