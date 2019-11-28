@@ -1,3 +1,6 @@
+#include <common/stdio.h>
+
+/* For the moment standard IO uses UART methods ... */
 #include <kernel/uart.h>
 
 char getc(void) {
@@ -13,4 +16,3 @@ void puts(const char * str) {
     for (i = 0; str[i] != '\0'; i ++)
         putc(str[i]);
 }
-

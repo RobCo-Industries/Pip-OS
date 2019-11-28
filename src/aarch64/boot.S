@@ -30,6 +30,9 @@ _start:
     sub     w2, w2, #1
     cbnz    w2, 3b
 
-4:  // jump to C code, should not return
+4:  // put ATAGS in register
+    mov     x2, #0x100
+
+    // jump to C code, should not return
     bl      kernel_main
     b       1b

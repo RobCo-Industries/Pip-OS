@@ -1,12 +1,9 @@
 #include <kernel/mm.h>
 
-	.sect .init
+.section ".text.boot"
 
-	// _start is the entrypoint used by the linker script
-	.globl _start
-
-	// On 32bits architecture, the C stack should begin at 0x8000
-	.org 0x8000
+// _start is the entrypoint used by the linker script
+.globl _start
 
 _start:
 
@@ -78,6 +75,8 @@ _start:
 	blo 1b
 	// BSS is zeroed out
 
+	// put ATAGS in register
+	mov r2, #0x100
 	// load the C function kernel_main() into register
 	ldr r3, =kernel_main
 	// jump to the location of the function (call)
