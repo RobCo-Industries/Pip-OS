@@ -44,7 +44,7 @@ LDFLAGS += --defsym=__$(ARCH)__=1 -nostdlib -nostartfiles
 KERNEL = kernel7
 
 QEMU = qemu-system-arm
-qQEMU_MACHINE = raspi2
+QEMU_MACHINE = raspi2
 
 ifeq ($(ARCH),aarch64)
 	KERNEL = kernel8
