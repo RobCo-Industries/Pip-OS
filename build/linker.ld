@@ -1,8 +1,10 @@
 ENTRY(_start)
 
+__org = DEFINED(__aarch64__) ? 0x80000 : 0x8000;
+
 MEMORY
 {
-    RAM (xrw) : ORIGIN = 0x80000 , LENGTH = 0x8000000 /* 128MB */
+    RAM (xrw) : ORIGIN = __org , LENGTH = 0x8000000 /* 128MB */
 }
 
 SECTIONS
