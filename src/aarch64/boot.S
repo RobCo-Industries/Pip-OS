@@ -1,10 +1,7 @@
-    .sect _init
+.section ".text.boot"
 
-    // _start is the entrypoint used by the linker script
-    .globl _start
-
-        // On 64bits architecture, the C stack should begin at 0x80000
-	    .org 0x80000
+// _start is the entrypoint used by the linker script
+.globl _start
 
 _start:
 
@@ -15,7 +12,7 @@ _start:
 
 1:  // CPU ID > 0
     wfe 
-    b 1b
+    b       1b
 
 2:  // CPU ID == 0
     // set the C stack starting at address .org and downwards
@@ -35,4 +32,4 @@ _start:
 
 4:  // jump to C code, should not return
     bl      kernel_main
-    b 1b
+    b       1b

@@ -9,17 +9,19 @@ USE_MINI_UART ?= 0
 
 ARMGNU = arm-none-eabi
 ARCH = aarch32
-CPU = arm1176jzf-s
 
 ifeq ($(BCM),2836)
 	# If the target is BCM2836, use Cortex-A7 as CPU
-	CPU = cortex-a7
+	CFLAGS += -mcpu=cortex-a7 -march=armv7-a -mtune=cortex-a7
 else ifeq ($(BCM),2837)
 	# If the target is BCM2837, the used toolchain should be made 
 	# for 64bits architecture
 	ARMGNU = aarch64-unknown-linux-gnu
 	ARCH = aarch64
-	CPU = cortex-a53
+	CFLAGS += -mcpu=cortex-a53 -march=armv8-a -mtune=cortex-a53
+else
+	# BCM2835
+	CFLAGS += -mcpu=arm1176jzf-s -march=armv6 -mtune=arm1176jzf-s
 endif
 
 CC = $(ARMGNU)-gcc
@@ -27,17 +29,22 @@ AS = $(ARMGNU)-as
 LD = $(ARMGNU)-ld
 OC = $(ARMGNU)-objcopy
 
-CFLAGS += -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding 
-CFLAGS += -mcpu=$(CPU) -fpic -mgeneral-regs-only -MMD 
+# Bare metal compilation flags
+CFLAGS += -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding
+
+# Disable specific warnings
+CFLAGS += -Wno-int-to-pointer-cast
+
+# Add definitions for pre-processing
 CFLAGS += -DBCM$(BCM) -D__$(ARCH)__ -DUSE_MINI_UART=$(USE_MINI_UART)
-LDFLAGS += --defsym=__$(ARCH)__=1
+LDFLAGS += --defsym=__$(ARCH)__=1 -nostdlib -nostartfiles
 
 # The bootloader on Raspberry Pi will use kernel7.img for 
 # 32bits arch and kernel8.img for 64bits
 KERNEL = kernel7
 
 QEMU = qemu-system-arm
-QEMU_MACHINE = raspi2
+qQEMU_MACHINE = raspi2
 
 ifeq ($(ARCH),aarch64)
 	KERNEL = kernel8
@@ -85,6 +92,7 @@ run: $(KERNEL).img
 clean:
 	@rm -rf $(OBJ_DIR) 2> /dev/null || true
 	@rm -f $(BUILD_DIR)/kernel*.img 2> /dev/null || true
+	@rm -f $(BUILD_DIR)/kernel*.elf 2> /dev/null || true
 
 # Compile C files
 $(OBJ_DIR)/kernel/%_c.o: $(SRC_DIR)/kernel/%.c
@@ -103,4 +111,5 @@ $(OBJ_DIR)/$(ARCH)/%_S.o: $(SRC_DIR)/$(ARCH)/%.S
 # Build the kernel img file by linking object files
 $(KERNEL).img: $(OBJ_FILES)
 	@echo $(OBJ_FILES)
-	$(LD) -T $(BUILD_DIR)/linker.ld $(LDFLAGS) -o $(KERNEL).img $(OBJ_FILES)
+	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $(KERNEL).elf $(OBJ_FILES)
+	$(OC) -O binary $(KERNEL).elf $(KERNEL).img
