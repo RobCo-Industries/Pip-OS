@@ -2,6 +2,23 @@
 # Pip OS ![arch](https://img.shields.io/badge/Arch-armv6%20%7C%20armv7--A%20%7C%20armv8--A-blue) ![ver](https://img.shields.io/badge/Version-0.0.1.0-green)
 
 This is the repository for the Operating System used in Pip-Boy products. 
+It contains the kernel, an humble implementation of libc, and a tiny user-space environment.
+
+
+## ROM
+
+A ROM is a packaged version of the OS with pre-configured user applications.
+You will need a ROM for a fully functional OS (in order to get a terminal access at startup for example).
+ROM developers are responsible of including binaries of **this** project next to their package
+when they release their product to the public.
+
+
+#### Deitrix
+The official ROM developed by Robco Industries is Deitrix, and can be found in our repositories.
+It's a separated repository to permit people to develop custom environments by themselves.
+For more informations about Deitrix, please refer to its repository : 
+[https://github.com/RobCo-Industries/Deitrix](https://github.com/RobCo-Industries/Deitrix)
+
 
 ## Supported hardware
 
