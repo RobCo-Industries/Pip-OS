@@ -8,7 +8,6 @@ extern "C" {
 #endif
 
 uint32_t strlen(char * s);
-void strrev(char * s);
 
 #ifdef __cplusplus
 }

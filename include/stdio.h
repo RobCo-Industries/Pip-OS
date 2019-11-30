@@ -8,14 +8,9 @@
 extern "C" {
 #endif
 
-char getc(void);
-void putc(char c);
+char getchar(void);
+void putcchar(char c);
 void puts(const char * s);
-
-uint32_t strlen(char * s);
-void strrev(char * s);
-void itoa(int n, char * s);
-
 
 #ifdef __cplusplus
 }

@@ -64,13 +64,16 @@ endif
 # FILES AND DIRS #
 ##################
 
+rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
+
 BUILD_DIR = .
 OBJ_DIR = $(BUILD_DIR)/obj
 
 SRC_DIR = ../src
 INCLUDE_DIR = $(BUILD_DIR)/../include
+K_LIBC_DIR = $(SRC_DIR)/kernel/k_libc
 
-KERNEL_C_FILES = $(wildcard $(SRC_DIR)/kernel/*.c)
+KERNEL_C_FILES = $(call rwildcard, $(SRC_DIR)/kernel, *.c)
 LIBC_C_FILES   = $(wildcard $(SRC_DIR)/libc/*.c)
 KERNEL_S_FILES = $(wildcard $(SRC_DIR)/$(ARCH)/*.S)
 
@@ -97,11 +100,11 @@ clean:
 # Compile C files
 $(OBJ_DIR)/kernel/%_c.o: $(SRC_DIR)/kernel/%.c
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -I$(K_LIBC_DIR) -c $< -o $@
 
 $(OBJ_DIR)/libc/%_c.o: $(SRC_DIR)/libc/%.c
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -I$(K_LIBC_DIR) -c $< -o $@
 
 # Compile S files
 $(OBJ_DIR)/$(ARCH)/%_S.o: $(SRC_DIR)/$(ARCH)/%.S
