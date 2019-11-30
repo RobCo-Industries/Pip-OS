@@ -1,4 +1,4 @@
-#include <kernel/mailbox.h>
+#include "mailbox.h"
 
 #define MAIL0_READ (((mail_message_t *)(MAIL_READ)))
 #define MAIL0_STATUS (((mail_status_t *)(MAIL_RSTATUS)))

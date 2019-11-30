@@ -1,7 +1,7 @@
 #ifndef __UART_H__
 #define __UART_H__
 
-#include <kernel/io.h>
+#include "io.h"
 
 #include <stddef.h>
 #include <stdint.h>

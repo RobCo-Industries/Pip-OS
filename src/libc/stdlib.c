@@ -1,5 +1,5 @@
-#include <common/stdlib.h>
-#include <common/string.h>
+#include <stdlib.h>
+#include <string.h>
 
 void itoa(int n, char * s)
 {

@@ -71,11 +71,11 @@ SRC_DIR = ../src
 INCLUDE_DIR = $(BUILD_DIR)/../include
 
 KERNEL_C_FILES = $(wildcard $(SRC_DIR)/kernel/*.c)
-COMMON_C_FILES = $(wildcard $(SRC_DIR)/common/*.c)
+LIBC_C_FILES   = $(wildcard $(SRC_DIR)/libc/*.c)
 KERNEL_S_FILES = $(wildcard $(SRC_DIR)/$(ARCH)/*.S)
 
-OBJ_FILES = $(patsubst $(SRC_DIR)/kernel/%.c, $(OBJ_DIR)/kernel/%_c.o, $(KERNEL_C_FILES))
-OBJ_FILES += $(patsubst $(SRC_DIR)/common/%.c, $(OBJ_DIR)/common/%_c.o, $(COMMON_C_FILES))
+OBJ_FILES  = $(patsubst $(SRC_DIR)/kernel/%.c, $(OBJ_DIR)/kernel/%_c.o, $(KERNEL_C_FILES))
+OBJ_FILES += $(patsubst $(SRC_DIR)/libc/%.c, $(OBJ_DIR)/libc/%_c.o, $(LIBC_C_FILES))
 OBJ_FILES += $(patsubst $(SRC_DIR)/$(ARCH)/%.S, $(OBJ_DIR)/$(ARCH)/%_S.o, $(KERNEL_S_FILES))
 
 ############
@@ -99,7 +99,7 @@ $(OBJ_DIR)/kernel/%_c.o: $(SRC_DIR)/kernel/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
-$(OBJ_DIR)/common/%_c.o: $(SRC_DIR)/common/%.c
+$(OBJ_DIR)/libc/%_c.o: $(SRC_DIR)/libc/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 

@@ -1,7 +1,7 @@
-#include <common/stdio.h>
+#include <stdio.h>
 
 /* For the moment standard IO uses UART methods ... */
-#include <kernel/uart.h>
+#include "../kernel/uart.h"
 
 char getc(void) {
     return uart_getc();

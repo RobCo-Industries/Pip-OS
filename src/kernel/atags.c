@@ -1,4 +1,4 @@
-#include <kernel/atags.h>
+#include "atags.h"
 
 #define tag_next(t) ((atag_t *)((uint32_t *)(t) + (t)->header.size))
 

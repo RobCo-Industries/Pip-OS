@@ -1,4 +1,6 @@
-#include <common/string.h>
+#include <string.h>
+
+#include <stdint.h>
 
 uint32_t strlen(char * s)
 {
