@@ -7,7 +7,10 @@ BCM ?= 2835
 
 USE_MINI_UART ?= 0
 
-ARMGNU = arm-none-eabi
+ARMGNU ?= arm-none-eabi
+ARMGNU_VERSION ?= 10.3.1
+ARMGNU_PATH ?= /Applications/ARM
+
 ARCH = aarch32
 
 ifeq ($(BCM),2836)
@@ -21,7 +24,7 @@ else ifeq ($(BCM),2837)
 	CFLAGS += -mcpu=cortex-a53 -march=armv8-a -mtune=cortex-a53
 else
 	# BCM2835
-	CFLAGS += -mcpu=arm1176jzf-s -march=armv6 -mtune=arm1176jzf-s
+	CFLAGS += -mcpu=arm1176jzf-s -mtune=arm1176jzf-s
 endif
 
 CC = $(ARMGNU)-gcc
@@ -37,7 +40,7 @@ CFLAGS += -Wno-int-to-pointer-cast
 
 # Add definitions for pre-processing
 CFLAGS += -DBCM$(BCM) -D__$(ARCH)__ -DUSE_MINI_UART=$(USE_MINI_UART)
-LDFLAGS += --defsym=__$(ARCH)__=1 -nostdlib -nostartfiles
+LDFLAGS += --defsym=__$(ARCH)__=1 -nostdlib
 
 # The bootloader on Raspberry Pi will use kernel7.img for 
 # 32bits arch and kernel8.img for 64bits
@@ -81,6 +84,8 @@ OBJ_FILES  = $(patsubst $(SRC_DIR)/kernel/%.c, $(OBJ_DIR)/kernel/%_c.o, $(KERNEL
 OBJ_FILES += $(patsubst $(SRC_DIR)/libc/%.c, $(OBJ_DIR)/libc/%_c.o, $(LIBC_C_FILES))
 OBJ_FILES += $(patsubst $(SRC_DIR)/$(ARCH)/%.S, $(OBJ_DIR)/$(ARCH)/%_S.o, $(KERNEL_S_FILES))
 
+LIBPATH = -lgcc -L$(ARMGNU_PATH)/lib/gcc/$(ARMGNU)/$(ARMGNU_VERSION)
+
 ############
 # COMMANDS #
 ############
@@ -114,5 +119,5 @@ $(OBJ_DIR)/$(ARCH)/%_S.o: $(SRC_DIR)/$(ARCH)/%.S
 # Build the kernel img file by linking object files
 $(KERNEL).img: $(OBJ_FILES)
 	@echo $(OBJ_FILES)
-	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $(KERNEL).elf $(OBJ_FILES)
+	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $(KERNEL).elf $(OBJ_FILES) $(LIBPATH)
 	$(OC) -O binary $(KERNEL).elf $(KERNEL).img
