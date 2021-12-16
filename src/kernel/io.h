@@ -14,31 +14,20 @@ enum
 #endif
 
     // The mailbox base address.
-    MAIL_BASE       = PERIPHERAL_BASE + 0xB880,
+    MAIL_BASE       = (PERIPHERAL_BASE + 0xB880),
 
     // The offsets for each mailbox register.
-    MAIL_READ       = 0x00,
-    MAIL_WRITE      = 0x20,
-    MAIL_RSTATUS    = 0x18,
-    MAIL_WSTATUS    = 0x38,
+    MAIL_READ       = (MAIL_BASE + 0x00),
+    MAIL_WRITE      = (MAIL_BASE + 0x20),
+    MAIL_RSTATUS    = (MAIL_BASE + 0x18),
+    MAIL_WSTATUS    = (MAIL_BASE + 0x38),
 
     // Masks for the mailbox status register.
     MAIL_EMPTY      = 0x40000000,
     MAIL_FULL       = 0x80000000,
 
-    // Mailbox channels.
-    MAIL_POWER      = 0,
-    MAIL_FB         = 1,
-    MAIL_VUART      = 2,
-    MAIL_VCHIQ      = 3,
-    MAIL_LED        = 4,
-    MAIL_BUTTON     = 5,
-    MAIL_TOUCH      = 6,
-    MAIL_COUNT      = 7,
-    MAIL_TAGS       = 8,
-
     // The GPIO registers base address.
-    GPIO_BASE       = PERIPHERAL_BASE + 0x200000,
+    GPIO_BASE       = (PERIPHERAL_BASE + 0x200000),
 
     GPFSEL1         = (GPIO_BASE + 0x04),
     GPSET0          = (GPIO_BASE + 0x1C),
@@ -51,7 +40,7 @@ enum
     GPPUDCLK0       = (GPIO_BASE + 0x98),
 
     // The base address for UART.
-    UART0_BASE      = GPIO_BASE + 0x1000,
+    UART0_BASE      = (GPIO_BASE + 0x1000),
 
     // The offsets for each register for the UART.
     UART0_DR        = (UART0_BASE + 0x00),
@@ -99,8 +88,26 @@ enum
     AUX_SPI1_STAT_REG   = (AUX_BASE + 0xC8),
     AUX_SPI1_IO_REG     = (AUX_BASE + 0xD0),
     AUX_SPI1_PEEK_REG   = (AUX_BASE + 0xD4),
-
-
 };
+
+// Mailbox channels.
+typedef enum {
+    MB_CHANNEL_POWER = 0x0,								// Mailbox Channel 0: Power Management Interface 
+	MB_CHANNEL_FB = 0x1,								// Mailbox Channel 1: Frame Buffer
+	MB_CHANNEL_VUART = 0x2,								// Mailbox Channel 2: Virtual UART
+	MB_CHANNEL_VCHIQ = 0x3,								// Mailbox Channel 3: VCHIQ Interface
+	MB_CHANNEL_LEDS = 0x4,								// Mailbox Channel 4: LEDs Interface
+	MB_CHANNEL_BUTTONS = 0x5,							// Mailbox Channel 5: Buttons Interface
+	MB_CHANNEL_TOUCH = 0x6,								// Mailbox Channel 6: Touchscreen Interface
+	MB_CHANNEL_COUNT = 0x7,								// Mailbox Channel 7: Counter
+	MB_CHANNEL_TAGS = 0x8,								// Mailbox Channel 8: Tags (ARM to VC)
+	MB_CHANNEL_GPU = 0x9,								// Mailbox Channel 9: GPU (VC to ARM)
+} MAILBOX_CHANNEL;
+
+typedef enum {
+    RPI_FIRMWARE_STATUS_REQUEST = 0,
+    RPI_FIRMWARE_STATUS_SUCCESS = 0x80000000,
+    RPI_FIRMWARE_STATUS_ERROR   = 0x80000001,
+} RPI_FIRMWARE_PROPERTY_STATUS;
 
 #endif // __IO_H__

@@ -3,3 +3,4 @@
 !/build/linker.ld.in
 *.img
 .DS_Store
+.vscode/

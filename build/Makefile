@@ -15,16 +15,16 @@ ARCH = aarch32
 
 ifeq ($(BCM),2836)
 	# If the target is BCM2836, use Cortex-A7 as CPU
-	CFLAGS += -mcpu=cortex-a7 -march=armv7-a -mtune=cortex-a7
+	CFLAGS += -march=armv7-a -mtune=cortex-a7
 else ifeq ($(BCM),2837)
 	# If the target is BCM2837, the used toolchain should be made 
 	# for 64bits architecture
 	ARMGNU = aarch64-unknown-linux-gnu
 	ARCH = aarch64
-	CFLAGS += -mcpu=cortex-a53 -march=armv8-a -mtune=cortex-a53
+	CFLAGS += -march=armv8-a -mtune=cortex-a53
 else
 	# BCM2835
-	CFLAGS += -mcpu=arm1176jzf-s -mtune=arm1176jzf-s
+	CFLAGS += -march=armv6 -mtune=arm1176jzf-s
 endif
 
 CC = $(ARMGNU)-gcc
