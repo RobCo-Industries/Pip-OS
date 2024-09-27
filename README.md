@@ -1,3 +1,5 @@
+> [!IMPORTANT]  
+> Development of this project has moved to Gitlab at https://gitlab.com/robco-industries/pip-os
 
 # Pip OS ![arch](https://img.shields.io/badge/Arch-armv6%20%7C%20armv7--A%20%7C%20armv8--A-blue) ![ver](https://img.shields.io/badge/Version-0.0.1.0-green)
 
