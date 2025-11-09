@@ -1,6 +1,8 @@
 
 # PIP-OS V7.1.0.8 ![arch](https://img.shields.io/badge/Arch-armv6%20%7C%20armv7--A%20%7C%20armv8--A-blue) ![ver](https://img.shields.io/badge/Version-7.1.0.8-green)
 
+*Work In Progress*
+
 **Personal Information Processor Operating System**  
 *RobCo Industries - "Personal Information at Your Fingertips"*
 
