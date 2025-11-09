@@ -8,8 +8,8 @@ BCM ?= 2835
 USE_MINI_UART ?= 0
 
 ARMGNU ?= arm-none-eabi
-ARMGNU_VERSION ?= 10.3.1
-ARMGNU_PATH ?= /Applications/ARM
+ARMGNU_VERSION ?= 13.2.1
+ARMGNU_PATH ?= /usr
 
 ARCH = aarch32
 
@@ -84,7 +84,7 @@ OBJ_FILES  = $(patsubst $(SRC_DIR)/kernel/%.c, $(OBJ_DIR)/kernel/%_c.o, $(KERNEL
 OBJ_FILES += $(patsubst $(SRC_DIR)/libc/%.c, $(OBJ_DIR)/libc/%_c.o, $(LIBC_C_FILES))
 OBJ_FILES += $(patsubst $(SRC_DIR)/$(ARCH)/%.S, $(OBJ_DIR)/$(ARCH)/%_S.o, $(KERNEL_S_FILES))
 
-LIBPATH = -lgcc -L$(ARMGNU_PATH)/lib/gcc/$(ARMGNU)/$(ARMGNU_VERSION)
+LIBPATH = -lgcc -L$(ARMGNU_PATH)/gcc/$(ARMGNU)/$(ARMGNU_VERSION)
 
 ############
 # COMMANDS #
