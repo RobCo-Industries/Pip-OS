@@ -59,6 +59,14 @@ void power_enter_sleep(void) {
     power_set_mode(POWER_MODE_SLEEP);
     
     // Wait for interrupt (WFI)
-    // In real implementation, would use ARM WFI instruction
+    // ARMv6 (BCM2835) doesn't support WFI, use busy wait instead
+#ifdef BCM2835
+    // For ARMv6, just loop (WFI not supported)
+    while (power_get_mode() == POWER_MODE_SLEEP) {
+        // Busy wait until mode changes
+    }
+#else
+    // For ARMv7+ use WFI instruction
     __asm__ volatile("wfi");
+#endif
 }

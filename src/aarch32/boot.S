@@ -84,5 +84,9 @@ _start:
 
 // halt is an infinite loop used by others cores
 halt:
+#ifndef BCM2835
 	wfe
+#else
+	nop
+#endif
 	b halt
