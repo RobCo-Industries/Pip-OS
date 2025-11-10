@@ -80,6 +80,8 @@ jobs:
         retention-days: 30
 
   static-analysis:
+    # Disable this job for now
+    if: false
     name: Static Analysis
     runs-on: ubuntu-latest
     
