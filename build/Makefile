@@ -8,8 +8,8 @@ BCM ?= 2835
 USE_MINI_UART ?= 0
 
 ARMGNU ?= arm-none-eabi
-ARMGNU_VERSION ?= 10.3.1
-ARMGNU_PATH ?= /Applications/ARM
+ARMGNU_VERSION ?= 13.2.1
+ARMGNU_PATH ?= /usr
 
 ARCH = aarch32
 

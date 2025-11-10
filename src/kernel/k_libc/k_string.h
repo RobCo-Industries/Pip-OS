@@ -8,4 +8,6 @@ uint32_t k_strlen(char * s);
 
 void *k_memcpy(void *dest, const void * src, size_t n);
 
+int k_memcmp(const void *s1, const void *s2, size_t n);
+
 #endif // __K_STRING_H__

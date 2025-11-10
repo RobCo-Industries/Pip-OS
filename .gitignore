@@ -1,6 +1,45 @@
-/build
-!/build/Makefile
-!/build/linker.ld.in
+# Build artifacts
+/build/obj
+/build/*.elf
+/build/*.img
+*.o
+*.elf
+*.bin
 *.img
+
+# Build directory (except configuration)
+/build/*
+!/build/Makefile
+!/build/linker.ld
+
+# IDE and editor files
 .DS_Store
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+/tmp/
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Compilation database
+compile_commands.json
+
+# Tags files
+tags
+TAGS
+.tags
+.TAGS
+
+# Cache
+.cache/
+__pycache__/
+*.pyc
