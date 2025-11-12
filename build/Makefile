@@ -73,10 +73,12 @@ else ifeq ($(BCM),2837)
 	QEMU_MEM = 1024
 endif
 
-QEMU_FLAGS = -m $(QEMU_MEM) -M $(QEMU_MACHINE) -nographic
+# QEMU flags: use -display none with explicit -serial stdio for better UART emulation
+QEMU_FLAGS = -m $(QEMU_MEM) -M $(QEMU_MACHINE) -display none -serial stdio
 
 ifeq ($(USE_MINI_UART),1)
-	QEMU_FLAGS += -serial null -serial mon:stdio
+	# For mini UART (UART1), use two serial ports
+	QEMU_FLAGS = -m $(QEMU_MEM) -M $(QEMU_MACHINE) -display none -serial null -serial stdio
 endif
 
 ##################
