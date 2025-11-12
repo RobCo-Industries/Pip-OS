@@ -51,11 +51,11 @@ echo "Testing build for BCM2835 (Raspberry Pi Zero/1)..."
 cd ../build
 export BCM=2835
 if make clean > /dev/null 2>&1 && make > /dev/null 2>&1; then
-    if [ -f kernel7.img ]; then
-        SIZE=$(stat -c%s kernel7.img 2>/dev/null || stat -f%z kernel7.img 2>/dev/null)
+    if [ -f kernel.img ]; then
+        SIZE=$(stat -c%s kernel.img 2>/dev/null || stat -f%z kernel.img 2>/dev/null)
         print_result 0 "BCM2835 build successful (size: $SIZE bytes)"
     else
-        print_result 1 "BCM2835 build failed - kernel7.img not found"
+        print_result 1 "BCM2835 build failed - kernel.img not found"
     fi
 else
     print_result 1 "BCM2835 build failed"
