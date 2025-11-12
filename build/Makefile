@@ -8,8 +8,6 @@ BCM ?= 2835
 USE_MINI_UART ?= 0
 
 ARMGNU ?= arm-none-eabi
-ARMGNU_VERSION ?= 13.2.1
-ARMGNU_PATH ?= /usr
 
 ARCH = aarch32
 
@@ -19,7 +17,11 @@ ifeq ($(BCM),2836)
 else ifeq ($(BCM),2837)
 	# If the target is BCM2837, the used toolchain should be made 
 	# for 64bits architecture
-	ARMGNU = aarch64-unknown-linux-gnu
+	# Try to find an aarch64 cross-compiler dynamically
+	ARMGNU := $(shell if command -v aarch64-linux-gnu-gcc > /dev/null 2>&1; then echo aarch64-linux-gnu; \
+		elif command -v aarch64-unknown-linux-gnu-gcc > /dev/null 2>&1; then echo aarch64-unknown-linux-gnu; \
+		elif command -v aarch64-none-elf-gcc > /dev/null 2>&1; then echo aarch64-none-elf; \
+		else echo "aarch64-linux-gnu"; fi)
 	ARCH = aarch64
 	CFLAGS += -march=armv8-a -mtune=cortex-a53
 else
@@ -32,6 +34,10 @@ AS = $(ARMGNU)-as
 LD = $(ARMGNU)-ld
 OC = $(ARMGNU)-objcopy
 
+# Dynamically find the GCC version and library path
+ARMGNU_VERSION := $(shell $(CC) -dumpversion 2>/dev/null || echo "13.2.1")
+ARMGNU_PATH := $(shell dirname $(shell dirname $(shell which $(CC) 2>/dev/null || echo "/usr/bin/$(CC)")) 2>/dev/null || echo "/usr")
+
 # Bare metal compilation flags
 CFLAGS += -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding
 
@@ -42,25 +48,35 @@ CFLAGS += -Wno-int-to-pointer-cast
 CFLAGS += -DBCM$(BCM) -D__$(ARCH)__ -DUSE_MINI_UART=$(USE_MINI_UART)
 LDFLAGS += --defsym=__$(ARCH)__=1 -nostdlib
 
-# The bootloader on Raspberry Pi will use kernel7.img for 
-# 32bits arch and kernel8.img for 64bits
+# The bootloader on Raspberry Pi uses different kernel names:
+# kernel.img: 32-bit ARMv6 kernel for Pi 1 and Zero (BCM2835)
+# kernel7.img: 32-bit ARMv7 kernel for Pi 2 and 3 (BCM2836, BCM2837 in 32-bit)
+# kernel8.img: 64-bit kernel for any 64-bit capable Pi (BCM2837 in 64-bit)
 KERNEL = kernel7
 
 QEMU = qemu-system-arm
-QEMU_MACHINE = raspi2
+QEMU_MACHINE = raspi2b
+QEMU_MEM = 1024
 
-ifeq ($(ARCH),aarch64)
+ifeq ($(BCM),2835)
+	KERNEL = kernel
+	QEMU_MACHINE = raspi0
+	QEMU_MEM = 512
+else ifeq ($(BCM),2836)
+	KERNEL = kernel7
+	QEMU_MACHINE = raspi2b
+	QEMU_MEM = 1024
+else ifeq ($(BCM),2837)
 	KERNEL = kernel8
 	QEMU = qemu-system-aarch64
-	QEMU_MACHINE = raspi3
+	QEMU_MACHINE = raspi3b
+	QEMU_MEM = 1024
 endif
 
-QEMU_FLAGS = -m 256 -M $(QEMU_MACHINE)
+QEMU_FLAGS = -m $(QEMU_MEM) -M $(QEMU_MACHINE) -nographic
 
 ifeq ($(USE_MINI_UART),1)
-	QEMU_FLAGS += -serial null -serial stdio
-else 
-	QEMU_FLAGS += -serial stdio
+	QEMU_FLAGS += -serial null -serial mon:stdio
 endif
 
 ##################
@@ -84,7 +100,14 @@ OBJ_FILES  = $(patsubst $(SRC_DIR)/kernel/%.c, $(OBJ_DIR)/kernel/%_c.o, $(KERNEL
 OBJ_FILES += $(patsubst $(SRC_DIR)/libc/%.c, $(OBJ_DIR)/libc/%_c.o, $(LIBC_C_FILES))
 OBJ_FILES += $(patsubst $(SRC_DIR)/$(ARCH)/%.S, $(OBJ_DIR)/$(ARCH)/%_S.o, $(KERNEL_S_FILES))
 
-LIBPATH = -lgcc -L$(ARMGNU_PATH)/lib/gcc/$(ARMGNU)/$(ARMGNU_VERSION)
+# Dynamically find libgcc path
+LIBGCC_PATH := $(shell $(CC) -print-libgcc-file-name 2>/dev/null)
+ifneq ($(LIBGCC_PATH),)
+	LIBPATH = -lgcc -L$(dir $(LIBGCC_PATH))
+else
+	# Fallback to default paths
+	LIBPATH = -lgcc -L$(ARMGNU_PATH)/lib/gcc/$(ARMGNU)/$(ARMGNU_VERSION)
+endif
 
 ############
 # COMMANDS #
