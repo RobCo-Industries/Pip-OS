@@ -21,6 +21,7 @@ RobCo-Core's `mk/host.mk` builds them. The `Makefile` sets `HOST_TEST_DIR`, `HOS
 |---|---|
 | `build_dir_test.sh` | `BUILD` reaches the target tests |
 | `sdk_example_test.sh` | `sdk/examples/hello` builds from its folder and from a copy outside the tree, with an absolute and a relative `PIPOS_SDK`, and as a holotape. Each result passes `rimg.py verify` with the right magic, subtype and load address. |
+| `sdk_rebuild_test.sh` | A ROM project rebuilds after each change: a source removed from `SRCS` leaves the ELF, a header edit rebuilds its object, a new `TITLE` reseals, new flags rebuild `libpip.a`. `start.c` and `start.S` both link, objects stay in `BUILD`, and a failed seal leaves no image. |
 | `sdimage_rom_test.sh` | `make sdimage` puts the hello example on the card as `PIPBOY/ROM1.ROM`, `ROM=<file>` puts that file, `ROM=none` puts none. It reads the card with mtools. |
 
 `tests/host/libpip_test.c` tests `libpip.a` on the host: printf conversions and truncation, the split of long `pip_printf` output into `log` calls, the string functions, and the heap. It is not a `test_*.c` file because it builds apart: the library sources get `tests/host/libpip_names.h` forced in, which renames `memcpy`, `strlen` and the others to `pipt_*` so they do not replace the host libc. `log` and `mem_info` are fakes in the test. `make libpip-host-test` runs it alone.
@@ -34,7 +35,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_boot.py` | Boot without a card: markers, boot text on the screen and the UART, input backends, power-on beep, the golden screen, the script commands, the RTC |
 | `tests/test_card.py` | Boot with a card: a valid ROM, bad ROMs, a missing ROM, configuration values and errors, colour schemes, the holotape line, the default card from `make sdimage` running the hello example |
 | `tests/test_input.py` | Events from the script channel and the serial console, control characters included |
-| `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
+| `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
 
 Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` in `tests/pipos_helpers.py` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
@@ -48,7 +49,7 @@ Each card test builds its own SD card image with mtools in a temporary directory
 | `ret5` | Returns 5 from `pip_main` |
 | `tramp` | Returns through the `lr` it got at entry |
 | `entry` | Reports the registers at entry and the startup block |
-| `calls` | Calls each system call, with good and bad arguments, and `sleep_ms` with `0x80000000` and `0xFFFFFFFF`. `regs.S` checks r4 to r11, sp and lr across a call. |
+| `calls` | Calls each system call, with good and bad arguments, `sleep_ms` with `0x80000000` and `0xFFFFFFFF`, and sleeps from 1 ms to 50 ms timed with `ticks_ms`. `regs.S` checks r4 to r11, sp and lr across a call. |
 | `fault_<case>` | One fault each, from `fault.c`: `wrkern`, `rdperiph`, `jmpkern`, `undef`, `priv`, `null`. It logs the faulting address first. |
 | `sleep`, `spin` | Never end, with and without `sleep_ms` |
 | `sdkcheck` | A ROM project of its own in `tests/roms/sdkcheck/`, built only with `pipos-app.mk` and `libpip.a`. It checks printf through `log`, the string functions, and heap exhaustion and recovery, and prints one `ev=check name=<name> ok=<0\|1>` line per check. |
