@@ -92,7 +92,8 @@ sdimage-stage::
 
 RUN_BOARD := $(if $(filter all,$(BOARD)),raspi2b,$(BOARD))
 run: sdimage
-	$(PYTHON) tools/run_qemu.py $(RUN_BOARD) $(BUILD)/$(IMAGE).img $(BUILD)/sd.img
+	PYTHONPATH=$(ROBCO_CORE)/tests $(PYTHON) -m harness.run $(BUILD)/$(IMAGE).img \
+	    --board $(RUN_BOARD) --sd $(BUILD)/sd.img
 
 bootdir: all
 	$(if $(strip $(DIR)),,$(error DIR is not set: make bootdir DIR=<path>))
