@@ -145,11 +145,11 @@ sdk-rebuild-test:
 sdimage-rom-test:
 	tests/host/sdimage_rom_test.sh
 
-# libpip.a on the host: sdk/lib/ without the svc wrappers, and RobCo-Core's
+# libpip.a on the host: sdk/lib/ without svc.c and the wrappers, and RobCo-Core's
 # string, printf and heap code. libpip_names.h renames the C library
 # functions to pipt_* in these objects so they do not replace the host's.
 # -UROBCO_HOST keeps k_string.c's memcpy, memmove, memset and memcmp.
-LIBPIP_HOST_SRCS := $(filter-out sdk/lib/syscall.c,$(sort $(wildcard sdk/lib/*.c))) \
+LIBPIP_HOST_SRCS := $(filter-out sdk/lib/svc.c sdk/lib/syscall.c,$(sort $(wildcard sdk/lib/*.c))) \
                     $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c alloc.c)
 LIBPIP_HOST_OBJS := $(addprefix $(HOST_BUILD)/libpip/,$(notdir $(LIBPIP_HOST_SRCS:.c=.o)))
 LIBPIP_HOST_HDRS := tests/host/libpip_names.h $(wildcard sdk/include/pipos/*.h) \
@@ -165,6 +165,9 @@ $(HOST_BUILD)/libpip/$(notdir $(1:.c=.o)): $(1) $(LIBPIP_HOST_HDRS)
 	$$(HOST_CC) $$(HOST_CFLAGS) -UROBCO_HOST -fno-builtin -Isdk/include -include tests/host/libpip_names.h -c -o $$@ $$<
 endef
 $(foreach s,$(LIBPIP_HOST_SRCS),$(eval $(call libpip_host_rule,$(s))))
+
+# test_sdk_calls.c includes the wrappers.
+$(HOST_BUILD)/test_sdk_calls: sdk/lib/syscall.c
 
 $(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP_HOST_HDRS)
 	@mkdir -p $(dir $@)
