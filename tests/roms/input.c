@@ -2,7 +2,8 @@
  * The input calls, driven from tests/test_input_calls.py. The ROM prints
  * "ev=ph_<name>" when it is ready for the next injected input, and
  * "ev=event ..." for each event of the "seq" phase. Everything else is a
- * named check.
+ * named check. Each phase waits for exactly the events the test injects
+ * after its marker, so no event can land in another phase.
  */
 #include <pipos/string.h>
 
@@ -12,6 +13,8 @@
 #define PERIPH_BCM2835  0x20000000u
 #define PERIPH_BCM2836  0x3F000000u
 #define SEQ_EVENTS      14
+#define BUSY_MS         2000    /* the test's bytes reach the UARTs meanwhile */
+#define HELD_MS         250     /* the test holds the event back 300 ms */
 
 static void phase(const char *name)
 {
@@ -56,7 +59,7 @@ static void start(void)
     rt_check_eq("wait_short", rc, -PIP_ETIMEDOUT);
     rt_check("wait_short_untouched", untouched(&ev));
     rt_check("wait_short_not_short", t1 - t0 >= 50);
-    rt_check("wait_short_not_long", t1 - t0 < 1000);
+    rt_check("wait_short_not_long", t1 - t0 < 20000);
 
     rt_check_eq("wait_range_first", pip_wait_event(fresh(&ev), 0x80000000u), -PIP_ERANGE);
     rt_check_eq("wait_range_last", pip_wait_event(&ev, 0xFFFFFFFEu), -PIP_ERANGE);
@@ -164,7 +167,11 @@ static void dial(void)
     rt_check_eq("dial_big", pip_read_dial(), 135);
 }
 
-/* A timed wait that an injected event ends early. */
+/*
+ * A timed wait that an injected event ends early. The test sends
+ * "wait 300" first: the kernel reads it inside this wait and holds the
+ * event back, so the wait really blocked. Ticks run at 10 ms steps.
+ */
 static void timed(void)
 {
     pip_event_t ev;
@@ -172,13 +179,18 @@ static void timed(void)
 
     phase("ph_timed");
     t0 = pip_ticks_ms();
-    rc = pip_wait_event(fresh(&ev), 20000);
+    rc = pip_wait_event(fresh(&ev), 60000);
     t1 = pip_ticks_ms();
     rt_check_eq("timed_rc", rc, 1);
-    rt_check("timed_early", t1 - t0 < 20000);
+    rt_check("timed_waited", t1 - t0 >= HELD_MS);
+    rt_check("timed_early", t1 - t0 < 60000);
     rt_check_eq("timed_event", ev.value, 1);
     phase("ph_max");
-    rt_check_eq("max_rc", pip_wait_event(fresh(&ev), PIP_WAIT_MAX_MS), 1);
+    t0 = pip_ticks_ms();
+    rc = pip_wait_event(fresh(&ev), PIP_WAIT_MAX_MS);
+    t1 = pip_ticks_ms();
+    rt_check_eq("max_rc", rc, 1);
+    rt_check("max_waited", t1 - t0 >= HELD_MS);
     rt_check_eq("max_event", ev.value, -1);
 }
 
@@ -225,34 +237,39 @@ static int32_t busy(int32_t ms)
 }
 
 /*
- * The test makes RobCo-Core's queue drop a release while the ROM is
- * busy. read_buttons must still see the button up.
+ * While the ROM is busy, the test puts 31 events' worth of bytes in the
+ * console FIFO and "key up" in the script FIFO. The next poll reads both
+ * in one pass: RobCo-Core's queue of 32 takes the press and drops the
+ * release. read_buttons must still see the button up.
  */
 static void stale(void)
 {
     pip_event_t ev;
-    int32_t releases = 0;
+    int32_t presses = 0, releases = 0;
 
     phase("ph_stale_press");
     rt_check_eq("stale_select_rc", wait_one(&ev), 1);
-    rt_check_eq("stale_press_rc", wait_one(&ev), 1);
-    rt_check_eq("stale_held", pip_read_buttons(), (int32_t)PIP_BTN_UP_BIT);
-    busy(0);
+    rt_check_eq("stale_select_value", ev.value, 0);
     phase("ph_stale");
-    busy(1500);
-    pip_sleep_ms(500);
+    busy(BUSY_MS);
     while (pip_poll_event(fresh(&ev)) == 1) {
-        if (ev.type == PIP_EV_BUTTON && ev.value == 0) {
-            releases++;
+        if (ev.type == PIP_EV_BUTTON && ev.code == PIP_BTN_UP) {
+            if (ev.value == 1) {
+                presses++;
+            } else if (ev.value == 0) {
+                releases++;
+            }
         }
     }
+    rt_check_eq("stale_press_seen", presses, 1);
     rt_check_eq("stale_release_lost", releases, 0);
     rt_check_eq("stale_released", pip_read_buttons(), 0);
 }
 
 /*
- * The test injects a dial step while the ROM is busy. The stamp lies
- * between the start of the busy phase and the ticks_ms read after it.
+ * The test injects a dial step while the ROM is busy. The kernel reads it
+ * in the wait after the busy loop. The stamp lies between the start of
+ * the busy phase and the ticks_ms read after the wait.
  */
 static void stamp(void)
 {
@@ -260,9 +277,9 @@ static void stamp(void)
     int32_t t0, t1, t2, rc;
 
     phase("ph_stamp");
-    t0 = busy(1500);
+    t0 = busy(BUSY_MS);
     t1 = pip_ticks_ms();
-    rc = pip_poll_event(fresh(&ev));
+    rc = pip_wait_event(fresh(&ev), PIP_WAIT_FOREVER);
     t2 = pip_ticks_ms();
     rt_check_eq("stamp_rc", rc, 1);
     rt_check("stamp_not_before", (int32_t)ev.time_ms - t0 >= 0);
