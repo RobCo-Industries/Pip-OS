@@ -25,6 +25,7 @@
 
 #include "bootlines.h"
 #include "pipos.h"
+#include "storage.h"
 #include "sys.h"
 
 /* State the script command "state" reports. */
@@ -117,8 +118,8 @@ static int script_command(int argc, char *argv[], input_script_reply_t *reply, v
     }
     if (k_strcmp(argv[0], "state") == 0 && argc == 1) {
         k_heap_stats(&heap);
-        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u\n", ready_flag,
-                   rom_loaded, (unsigned)heap.free);
+        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u files=%u\n", ready_flag,
+                   rom_loaded, (unsigned)heap.free, pipos_storage_open_count());
         reply->write(line);
         return 0;
     }

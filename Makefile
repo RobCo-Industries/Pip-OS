@@ -31,6 +31,7 @@ PURE_SRCS  := \
               kernel/gfx_draw.c \
               kernel/input_events.c \
               kernel/settings.c \
+              kernel/storage_rules.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \
 
