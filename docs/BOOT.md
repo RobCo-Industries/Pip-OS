@@ -1,6 +1,6 @@
 # Boot
 
-This page describes what the kernel does from power-on to its main loop, the serial markers it prints and the memory it uses.
+This page describes what the kernel does from power-on to its main loop, how it runs the ROM, the serial markers it prints and the memory it uses.
 
 ## Boot flow
 
@@ -20,7 +20,8 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
-| 13 | Main loop | `ev=ready` |
+| 13 | The ROM, if it passed the check, see [Running the ROM](#running-the-rom) | `ev=jump`, then `ev=rom_exit` or `ev=rom_kill` |
+| 14 | Main loop | `ev=ready` |
 
 A failed card, file or configuration step never stops the boot. A failure in steps 2 to 5 calls `pipos_panic()`.
 
@@ -76,7 +77,43 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC. The kernel does not jump to the ROM.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+
+## Running the ROM
+
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/guide/api/umode.md) with the MMU on.
+
+1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
+2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
+3. The ROM runs until it calls `exit`, returns from its entry function or faults. System calls are listed in [API.md](API.md).
+4. The kernel prints how the ROM ended, then enters the main loop and prints `ev=ready rom=1`.
+
+| Register or field | Value at entry |
+|---|---|
+| pc | `0x00400000` |
+| sp | `0x01800000` |
+| r0 | `0x017F0000`, the startup block |
+| r1 to r3 | 0 |
+| lr | `0x017F0080`, the return stub. Returning acts like `exit(r0)`. |
+| `abi_version`, `size` | `0x00010000`, 128 |
+| `heap_base`, `heap_size` | `0x01000000`, `0x007F0000` |
+| `stack_top`, `kind`, `flags`, `args` | `0x01800000`, 0, 0, empty |
+
+The ROM can touch two regions, both read-write: its slot, `0x00400000` to `0x007FFFFF`, and its heap and stack, `0x01000000` to `0x017FFFFF`. Any other access faults.
+
+| End | Marker | Screen |
+|---|---|---|
+| `exit(n)` or return `n` | `ev=rom_exit status=<n>` | nothing |
+| Fault | `ev=rom_kill reason=<undef\|prefetch_abort\|data_abort> pc=0x<pc>`, plus `dfar dfsr` or `ifar ifsr` for aborts | `ROM(1) <fault> AT 0x<pc>` |
+| `umode_run()` refused the task | `ev=error code=umode rc=<n>` | nothing |
+
+`pc` is the address of the faulting instruction. A privileged instruction in USR mode is an undefined instruction.
+
+Limits:
+
+- While the ROM runs, the kernel does its main-loop work, such as script commands and input, only inside `sleep_ms`. A ROM that never calls `sleep_ms` blocks the maintenance commands.
+- A ROM that never ends never reaches the main loop, so `ev=ready` does not appear.
+- On the ARM1176 boards in QEMU, `raspi0` and `raspi1ap`, a jump into kernel memory does not fault. The ROM runs the kernel code in USR mode until its first privileged instruction, which faults as `undef`. Data accesses to kernel memory do fault.
 
 ## Main loop
 
@@ -89,7 +126,7 @@ The kernel answers its own commands on the mini UART script channel, next to the
 | Command | Reply |
 |---|---|
 | `dump` | The screen as text: an `ev=screen` line, one `\|`-prefixed line per row, an `ev=screen_end` line, then `ok` |
-| `state` | One line, `ready=<0\|1> rom=<0\|1> heap_free=<bytes>`, then `ok` |
+| `state` | One line, `ready=<0\|1> rom=<0\|1> heap_free=<bytes>`, then `ok`. `ready=1` once the main loop runs. |
 | `panic <reason>` | Takes the panic path with `<reason>` as the message. No status line follows. |
 
 Any other line that is not a RobCo-Core command gets `err unknown command`.
@@ -119,7 +156,11 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `error` | `code path` | The ROM failed. `code` is a `rimg` error name. |
 | `rom` | `rc name version size crc` | ROM result. `rc` is `ok` or a `rimg` error name. `name` and `version` are `-` on failure. |
 | `audio` | `op hz vol t_ms` | One tone change, trace backend only |
-| `ready` | `rom` | Main loop reached. `rom=1` when the ROM passed. |
+| `jump` | `entry` | The kernel enters the ROM |
+| `rom_exit` | `status` | The ROM called `exit` or returned |
+| `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr` | The ROM faulted and was stopped |
+| `error` | `code=umode rc` | `umode_run()` refused the ROM task |
+| `ready` | `rom` | The kernel is in its main loop. `rom=1` when the ROM passed the check. |
 | `key` | `type src code value` | One input event. `type` is `key`, `dial` or `char`. `src` is `gpio`, `serial` or `script`. |
 | `screen`, `screen_end` | `cols rows cx cy scheme` | Screen dump |
 | `panic` | `msg` | Fatal kernel error |
@@ -143,10 +184,10 @@ The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https:/
 |---|---|---|
 | `0x00000000`-`0x00007FFF` | Firmware | ATAGS and firmware data |
 | `0x00008000`-`0x003FFFFF` | Pip-OS | Kernel image, stacks, MMU table and heap. The link fails if the image and stacks pass `0x00400000`. |
-| `0x00400000`-`0x007FFFFF` | ROM slot | `ROM1.ROM` after a successful check |
+| `0x00400000`-`0x007FFFFF` | ROM slot | `ROM1.ROM` after a successful check. The ROM can write it. |
 | `0x00800000`-`0x00BFFFFF` | Holotape slot | Unused yet |
 | `0x00C00000`-`0x00FFFFFF` | Pip-OS | Back buffers, unused yet |
-| `0x01000000`-`0x017FFFFF` | ROM | ROM heap and stack, unused yet |
+| `0x01000000`-`0x017FFFFF` | ROM | ROM heap and stack. The startup block and the return stub sit at `0x017F0000`. |
 | `0x01800000`-`0x01FFFFFF` | Holotape | Holotape heap and stack, unused yet |
 
 The framebuffer lives in GPU memory, mapped non-cacheable.

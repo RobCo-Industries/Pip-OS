@@ -1,6 +1,6 @@
 # Pip-OS
 
-Pip-OS is a bare-metal kernel for a wearable Pip-Boy built from a Raspberry Pi, themed on the Fallout games. It boots, shows the boot sequence and checks the ROM on the SD card. The ROM is the user environment, [Deitrix](https://github.com/RobCo-Industries/Deitrix). Holotapes are small programs a ROM can start.
+Pip-OS is a bare-metal kernel for a wearable Pip-Boy built from a Raspberry Pi, themed on the Fallout games. It boots, shows the boot sequence, then checks and runs the ROM on the SD card. The ROM is the user environment, [Deitrix](https://github.com/RobCo-Industries/Deitrix). Holotapes are small programs a ROM can start.
 
 Pip-OS is built on [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core), the shared foundation of the RobCo projects. RobCo-Core provides the start-up code, the drivers, the screen console, the FAT file system, the stage loader, input, audio and the QEMU test harness.
 
@@ -16,14 +16,17 @@ What works now:
 - Configuration from `/PIPBOY/PIPOS.CFG`: colour scheme, boot line delay, volume and power-on beep.
 - The holotape check: the boot screen says whether `/PIPBOY/HOLO/` holds `.HTP` files.
 - The ROM check: the kernel loads `/PIPBOY/ROM1.ROM` into the ROM slot and validates it. The boot screen shows its name and version, or the reason it failed.
+- Running the ROM in user mode, with the MMU keeping it inside its own memory. A fault stops the ROM and shows on screen.
+- The first system calls: `ticks_ms`, `sleep_ms`, `exit`, `sys_info`, `mem_info`, `log` and `rand`. See [docs/API.md](docs/API.md).
+- An SDK in `sdk/`: the ABI header, syscall wrappers, `crt0.S` and `rom.ld`.
 - Input from GPIO buttons and a dial, the serial console and a test channel on the mini UART.
 - Audio: a power-on beep through PWM, or a trace on the serial console in QEMU.
 - The RTC and software clock when an RTC chip answers.
 
 What does not work yet:
 
-- Running a ROM. The kernel validates the ROM and stays in its main loop.
-- System calls. The interface is specified in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/PIPOS_ABI.md).
+- The other system calls of RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/PIPOS_ABI.md): graphics, input, audio, time, sensors, saves, files and holotapes.
+- `libpip.a`, `pipos-app.mk` and the ROM developer guide.
 - Loading or running holotapes.
 - Save files.
 - The SPI display, battery monitoring and sensors.
@@ -54,7 +57,7 @@ make test BOARD=raspi0
 make run BOARD=raspi2b
 ```
 
-This builds `build/sd.img` with the kernel and a sample configuration and boots it with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit.
+This builds `build/sd.img` with the kernel and a sample configuration and boots it with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit. `make run WINDOW=1` also opens the QEMU display window.
 
 ## Prepare a card
 
@@ -73,7 +76,7 @@ Copy the files in `DIR` to the FAT32 boot partition of the card, then add `PIPBO
 | [docs/CONFIG.md](docs/CONFIG.md) | `PIPOS.CFG` keys and defaults |
 | [docs/TESTING.md](docs/TESTING.md) | Host tests, QEMU tests, CI |
 | [docs/HARDWARE.md](docs/HARDWARE.md) | Target hardware and what the kernel supports |
-| [docs/API.md](docs/API.md) | System call interface, not implemented yet |
+| [docs/API.md](docs/API.md) | System calls that work today |
 | [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md) | ROM files |
 
 RobCo-Core documents the library and the shared specifications:
