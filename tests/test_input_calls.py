@@ -33,7 +33,14 @@ CHECKS = [
     # overflow
     "overflow_count", "overflow_first", "overflow_last_dial", "overflow_in_order",
     "overflow_last_type", "overflow_last_code", "overflow_empty",
+    # stale
+    "stale_select_rc", "stale_press_rc", "stale_held", "stale_release_lost", "stale_released",
+    # stamp
+    "stamp_rc", "stamp_not_before", "stamp_not_after",
 ]
+
+# Characters on the console: each one is an event, so RobCo-Core's queue of 32 stays full.
+FLOOD = "x" * 4000
 
 # Kept and dropped keys mixed: back, f1 and characters never reach the ROM.
 SEQ_LINES = ["key up", "key back", "key down", "key left", "key f1", "key right", "char x",
@@ -95,6 +102,25 @@ def test_input_calls(board, kernel_image, test_rom, tmp_path, need_mtools):
         for i in range(1, 41):
             script_ok(vm, f"dial {i}")
         script_ok(vm, "key select 1")
+
+        at_phase(vm, "stale_press")
+        script_ok(vm, "key select 0")
+        script_ok(vm, "key up 1")
+        at_phase(vm, "stale")
+        # While the ROM spins: a flood on the console, then the release on the
+        # script channel. The kernel reads the console first at each poll, so the
+        # flood fills the slot each pop frees and RobCo-Core drops the release.
+        start = len(vm.lines(1))
+        vm.send(FLOOD)
+        vm.send("wait 20\nkey up 0\n", port=1)
+        deadline = time.monotonic() + TIMEOUT
+        while len(vm.lines(1)) < start + 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert vm.lines(1)[start:start + 2] == ["ok", "err full"], vm.serial2
+
+        at_phase(vm, "stamp")
+        time.sleep(0.2)
+        script_ok(vm, "dial 1")
 
         vm.wait_for("ev=rom_exit", timeout=TIMEOUT, line=True)
         assert_rom_checks(vm, CHECKS)

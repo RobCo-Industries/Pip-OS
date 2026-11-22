@@ -214,6 +214,67 @@ static void overflow(void)
     rt_check_eq("overflow_empty", pip_poll_event(fresh(&ev)), 0);
 }
 
+/* Spins without a system call that polls input, so RobCo-Core keeps what comes. */
+static int32_t busy(int32_t ms)
+{
+    int32_t t0 = pip_ticks_ms();
+
+    while (pip_ticks_ms() - t0 < ms) {
+    }
+    return t0;
+}
+
+/*
+ * The test makes RobCo-Core's queue drop a release while the ROM is
+ * busy. read_buttons must still see the button up.
+ */
+static void stale(void)
+{
+    pip_event_t ev;
+    int32_t releases = 0;
+
+    phase("ph_stale_press");
+    rt_check_eq("stale_select_rc", wait_one(&ev), 1);
+    rt_check_eq("stale_press_rc", wait_one(&ev), 1);
+    rt_check_eq("stale_held", pip_read_buttons(), (int32_t)PIP_BTN_UP_BIT);
+    busy(0);
+    phase("ph_stale");
+    busy(1500);
+    pip_sleep_ms(500);
+    while (pip_poll_event(fresh(&ev)) == 1) {
+        if (ev.type == PIP_EV_BUTTON && ev.value == 0) {
+            releases++;
+        }
+    }
+    rt_check_eq("stale_release_lost", releases, 0);
+    rt_check_eq("stale_released", pip_read_buttons(), 0);
+}
+
+/*
+ * The test injects a dial step while the ROM is busy. The stamp lies
+ * between the start of the busy phase and the ticks_ms read after it.
+ */
+static void stamp(void)
+{
+    pip_event_t ev;
+    int32_t t0, t1, t2, rc;
+
+    phase("ph_stamp");
+    t0 = busy(1500);
+    t1 = pip_ticks_ms();
+    rc = pip_poll_event(fresh(&ev));
+    t2 = pip_ticks_ms();
+    rt_check_eq("stamp_rc", rc, 1);
+    rt_check("stamp_not_before", (int32_t)ev.time_ms - t0 >= 0);
+    rt_check("stamp_not_after", t2 - (int32_t)ev.time_ms >= 0);
+    rt_begin("stamp");
+    rt_dec("t0", t0);
+    rt_dec("t1", t1);
+    rt_dec("time", (int32_t)ev.time_ms);
+    rt_dec("t2", t2);
+    rt_end();
+}
+
 int pip_main(const pipos_startup_t *startup)
 {
     (void)startup;
@@ -224,6 +285,8 @@ int pip_main(const pipos_startup_t *startup)
     dial();
     timed();
     overflow();
+    stale();
+    stamp();
     rt_checks_done();
     return 0;
 }
