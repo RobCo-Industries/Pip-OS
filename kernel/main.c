@@ -246,6 +246,7 @@ static void report_event(const input_event_t *ev)
 {
     const char *name;
 
+    pipos_input_event(ev);
     if (ev->type == INPUT_EV_KEY) {
         name = input_key_name(ev->code);
         k_printf("@RC stage=" PIPOS_STAGE " ev=key type=key src=%s code=%s value=%d\n",
