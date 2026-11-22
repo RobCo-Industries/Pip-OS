@@ -1,7 +1,21 @@
 
 # PIP-OS V7.1.0.8 ![arch](https://img.shields.io/badge/Arch-armv6%20%7C%20armv7--A%20%7C%20armv8--A-blue) ![ver](https://img.shields.io/badge/Version-7.1.0.8-green)
 
-*Work In Progress*
+## Status
+
+What works:
+- Builds for BCM2835 (Pi Zero/1) and BCM2836 (Pi 2) as 32-bit ARM.
+- Prints boot text over UART, queries the mailbox for clocks and board info, then echoes serial input.
+- CI boots both builds in QEMU and checks the boot text.
+
+What does not work yet:
+- ROM and holotape loading are stubs.
+- All system call handlers are stubs. There are no exception vectors and no SVC dispatcher.
+- Power and audio are stubs.
+- No display, input or storage drivers.
+- BCM2837 (Pi 3) currently builds as AArch64 and is not tested. It will return as a 32-bit target.
+
+The project is being rebuilt on the shared [RobCo-Core](https://github.com/RobCo-Industries/RobCo-Core) repo.
 
 **Personal Information Processor Operating System**  
 *RobCo Industries - "Personal Information at Your Fingertips"*
@@ -11,11 +25,12 @@ This is the foundational operating system for all Pip-Boy devices, responsible f
 ## Features
 
 ### Core System
-- **Matrix-style boot display** - Authentic boot sequence with cascading characters
-- **ROM loading system** - Automatic detection and chainloading of Deitrix ROM
-- **Holotape support** - Hot-swappable game/application cartridges
-- **System call interface** - Clean API for ROM/holotape programs
-- **Power management** - Battery monitoring and power-saving modes
+Planned features. See [Status](#status) for what exists today.
+- **Matrix-style boot display** - Boot text with cascading characters over UART (works)
+- **ROM loading system** - Detection and chainloading of the Deitrix ROM (stub)
+- **Holotape support** - Swappable game and application cartridges (stub)
+- **System call interface** - API for ROM and holotape programs (stub)
+- **Power management** - Battery monitoring and power-saving modes (stub)
 
 ### Version Information
 - **Version**: PIP-OS V7.1.0.8
@@ -44,6 +59,7 @@ ROM/Holotape Detection → Load Deitrix/Holotape → Transfer Control
 ```
 
 ### Subsystems
+Only Boot Display runs today. The others are stubs.
 - **Boot Display** - Matrix-style boot animation and messages
 - **ROM Loader** - ROM detection, verification, and chainloading
 - **System Calls** - Display, input, audio, sensor, and storage APIs
@@ -87,7 +103,7 @@ Holotape Header Structure:
 
 ## System Call API
 
-PIP-OS provides a comprehensive API for ROM and holotape applications:
+Planned API for ROM and holotape applications. All handlers are stubs today, and there is no SVC dispatcher yet.
 
 ### Display Operations
 - `draw_line()` - Bresenham line drawing
@@ -169,7 +185,7 @@ make run
 The Makefile supports different build targets:
 - `BCM=2835` - Raspberry Pi Zero/1 (ARMv6)
 - `BCM=2836` - Raspberry Pi 2 (ARMv7-A)
-- `BCM=2837` - Raspberry Pi 3 (ARMv8-A in 32-bit mode)
+- `BCM=2837` - Raspberry Pi 3 (currently builds AArch64, untested; will return as 32-bit)
 
 ### Output Files
 - `kernel7.img` - Bootable kernel image (32-bit ARM)
@@ -178,7 +194,7 @@ The Makefile supports different build targets:
 
 ## Boot Messages
 
-Authentic PIP-OS boot sequence:
+Boot text printed over UART. The `[OK]` lines and battery value are printed by stubs.
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************
 COPYRIGHT 2075 ROBCO IND.
@@ -224,27 +240,12 @@ Repository: [https://github.com/RobCo-Industries/Deitrix](https://github.com/Rob
 
 ## Performance
 
-### Boot Performance
-- **Cold Boot**: < 5 seconds to Deitrix
-- **Matrix Display**: 3-5 seconds duration
-- **ROM Loading**: < 1 second
-- **Holotape Detection**: < 500ms
-
-### Runtime Performance
-- **Display Update**: 30 FPS minimum
-- **Input Latency**: < 50ms
-- **Audio Latency**: < 20ms
-- **Sensor Reading**: 10Hz minimum
-
-### Memory Usage
-- **Kernel**: < 28KB
-- **Services**: < 32KB
-- **Free for ROM**: > 38KB
+No performance numbers have been measured yet.
 
 ## Development
 
 ### System Architecture
-PIP-OS follows a layered architecture:
+Planned layered architecture:
 
 1. **Boot Loader Layer** - Hardware initialization and boot display
 2. **Kernel Layer** - Memory management, scheduling, device management
@@ -276,12 +277,15 @@ Holotapes are self-contained applications that run in a sandboxed environment. T
 
 ## License
 
-Copyright 2075 RobCo Industries  
+MIT. See [LICENSE](LICENSE).
+
 *"Personal Information at Your Fingertips"*
 
 ---
 
 ## Easter Eggs
+
+Planned, not implemented:
 
 - **Konami Code**: Special boot animation (↑↑↓↓←→←→BA)
 - **October 23**: Special message on the Great War anniversary

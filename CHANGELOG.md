@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [7.1.0.8] - 2025-11-09
 
+Note: this entry overstated the state of the code. Most listed items are stubs. See the Status section in [README.md](README.md#status).
+
 ### Added
 - Complete PIP-OS V7.1.0.8 implementation from scratch
 - Matrix-style boot display with cascading characters
