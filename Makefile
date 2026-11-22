@@ -7,10 +7,13 @@
 #   make test-target          QEMU target tests
 #   make check-pins           CI workflow pins match the submodule
 #   make check-pins-test      the pin check works without git
-#   make sdimage              build/sd.img with the kernel and a sample config
+#   make sdimage              build/sd.img with the kernel, a sample config and
+#                             the hello example as ROM1.ROM (ROM=<file> picks
+#                             another image, ROM=none leaves it out)
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #                             (WINDOW=1 also opens the display window)
 #   make test-roms            build/roms/<name>/<name>.rom from tests/roms/
+#   make sdk-example          build/examples/hello/ROM1.ROM from sdk/examples/hello
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
 
 ROBCO_CORE := external/robco-core
@@ -38,6 +41,14 @@ HOST_INCLUDES := kernel sdk/include
 SDIMAGE_MIB   ?= 64
 SDIMAGE_DEPS  := $(BUILD)/$(IMAGE).img
 SDIMAGE_FILES := boot/PIPOS.CFG:PIPBOY/PIPOS.CFG
+# The card's /PIPBOY/ROM1.ROM: the hello example unless ROM names another
+# image. ROM=none leaves the card without one.
+EXAMPLE_BUILD  = $(abspath $(BUILD))/examples/hello
+EXAMPLE_ROM    = $(EXAMPLE_BUILD)/ROM1.ROM
+ROM           ?= $(EXAMPLE_ROM)
+ifneq ($(ROM),none)
+SDIMAGE_FILES += $(ROM):PIPBOY/ROM1.ROM
+endif
 
 ifeq ($(wildcard $(ROBCO_CORE)/mk/robco.mk),)
 $(error $(ROBCO_CORE) is empty: run git submodule update --init)
@@ -65,8 +76,8 @@ PIP_APP     := $(MAKE) --no-print-directory -f sdk/pipos-app.mk PIPOS_SDK=sdk \
                ROBCO_CORE=$(ROBCO_CORE) KIND=rom VERSION=1.0.0 LIBPIP_DIR=$(ROM_BUILD)/libpip
 ROM_CFLAGS  := -fno-builtin -Itests/roms
 
-.PHONY: test-roms rom-sdkcheck $(ROM_TARGETS)
-all: test-roms
+.PHONY: test-roms sdk-example rom-sdkcheck $(ROM_TARGETS)
+all: test-roms sdk-example
 test-roms: $(ROM_TARGETS) rom-sdkcheck
 
 $(addprefix rom-fault_,$(FAULT_CASES)): rom-fault_%:
@@ -81,6 +92,12 @@ $(addprefix rom-,$(TEST_ROMS)): rom-%:
 
 rom-sdkcheck:
 	$(MAKE) --no-print-directory -C tests/roms/sdkcheck BUILD=$(abspath $(ROM_BUILD))/sdkcheck
+
+# The hello example, the default ROM of the card.
+sdk-example:
+	$(MAKE) --no-print-directory -C sdk/examples/hello BUILD=$(EXAMPLE_BUILD)
+
+$(EXAMPLE_ROM): sdk-example
 
 # ---- Python environment for the target tests --------------------------
 
@@ -115,7 +132,15 @@ build-dir-test:
 	tests/host/build_dir_test.sh
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
-test-host: check-pins check-pins-test build-dir-test libpip-host-test
+test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test \
+           sdimage-rom-test
+
+.PHONY: sdk-example-test sdimage-rom-test
+sdk-example-test:
+	tests/host/sdk_example_test.sh
+
+sdimage-rom-test:
+	tests/host/sdimage_rom_test.sh
 
 # libpip.a on the host: sdk/lib/ without the svc wrappers, and RobCo-Core's
 # string, printf and heap code. libpip_names.h renames the C library

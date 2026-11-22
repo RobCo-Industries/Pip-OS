@@ -16,3 +16,6 @@ __pycache__/
 .idea/
 *.swp
 *~
+
+# SDK example builds
+/sdk/examples/*/build/

@@ -1,6 +1,8 @@
 """Boots with an SD card: ROM file checks, configuration, holotapes."""
 
 import pathlib
+import shutil
+import subprocess
 
 import pytest
 
@@ -189,3 +191,23 @@ def test_holotape_line(board, kernel_image, tmp_path, need_mtools):
         assert one(vm, "holo")["count"] == "1", vm.serial
         rows = dump(vm)
         assert "1 HOLOTAPE FOUND" in rows and "NO HOLOTAPE FOUND" not in rows, rows
+
+
+def test_default_card_runs_hello_example(board, kernel_image, tmp_path, need_mtools):
+    """`make sdimage` puts sdk/examples/hello on the card as ROM1.ROM, and it runs."""
+    build = pathlib.Path(kernel_image).parent
+    root = pathlib.Path(__file__).resolve().parent.parent
+    subprocess.run(["make", "-s", "sdimage", f"BUILD={build}"], cwd=root, check=True,
+                   stdout=subprocess.DEVNULL)
+    sd = tmp_path / "sd.img"
+    shutil.copyfile(build / "sd.img", sd)
+    with booted(kernel_image, board, sd=sd) as vm:
+        m = one(vm, "rom")
+        assert (m["rc"], m["name"], m["version"]) == ("ok", "HELLO", "1.0.0"), vm.serial
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        assert "hello: Pip-OS ROM running, ABI 0x00010000\n" in vm.serial
+        assert "hello: heap 0x01000000, 8128 KiB, stack top 0x01800000\n" in vm.serial
+        assert "hello: War. War never changes.\n" in vm.serial
+        assert "hello: slept " in vm.serial and ", bye\n" in vm.serial
+        assert one(vm, "ready")["rom"] == "1"
+        no_exception(vm)
