@@ -48,6 +48,10 @@ static void printf_checks(void)
     line[600] = '\0';
     n = pip_printf("%s\n", line);
     check("printf_long", n == 601);
+
+    /* A NUL from %c prints as '?' and the rest of the line still prints. */
+    n = pip_printf("sdkcheck: nul a%cb\n", 0);
+    check("printf_nul", n == 18);
 }
 
 static void string_checks(void)

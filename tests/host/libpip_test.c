@@ -201,6 +201,14 @@ TEST(printf_splits_long_output)
     CHECK_EQ(log_calls, 1);
 }
 
+TEST(printf_embedded_nul)
+{
+    log_reset();
+    CHECK_EQ(pip_printf("a%cb\n", 0), 4);
+    CHECK_STR(logged, "a?b\n");
+    CHECK_EQ(log_calls, 1);
+}
+
 TEST(printf_cuts_at_max)
 {
     static char text[2000];

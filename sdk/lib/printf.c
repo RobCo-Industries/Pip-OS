@@ -26,7 +26,7 @@ int pip_printf(const char *fmt, ...)
     char piece[PIP_LOG_MAX];
     va_list ap;
     int32_t err;
-    int len, done, rc;
+    int len, done, rc, i;
 
     va_start(ap, fmt);
     len = k_vsnprintf(out, sizeof(out), fmt, ap);
@@ -41,6 +41,12 @@ int pip_printf(const char *fmt, ...)
         }
         k_memcpy(piece, out + done, (size_t)rc);
         piece[rc] = '\0';
+        /* The log call stops at a NUL; print an embedded one as '?'. */
+        for (i = 0; i < rc; i++) {
+            if (piece[i] == '\0') {
+                piece[i] = '?';
+            }
+        }
         err = pip_log(piece);
         if (err < 0) {
             return err;
