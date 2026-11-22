@@ -4,6 +4,9 @@
 # PIPOS_SDK. Also builds it as a holotape. Every result must pass
 # rimg.py verify with the right magic, subtype and load address.
 set -eu
+# Build settings from the caller's environment or an outer make
+# (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
 root=$(cd "$(dirname "$0")/../.." && pwd)
 rimg="$root/external/robco-core/tools/rimg.py"
 tmp=$(cd "$(mktemp -d)" && pwd -P)

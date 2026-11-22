@@ -4,6 +4,9 @@
 # a new TITLE, new library flags. Also checks that src/start.c and src/start.S both link, and
 # that objects of sources outside the project stay inside BUILD.
 set -eu
+# Build settings from the caller's environment or an outer make
+# (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
 root=$(cd "$(dirname "$0")/../.." && pwd)
 rimg="$root/external/robco-core/tools/rimg.py"
 nm=${CROSS:-arm-none-eabi-}nm
@@ -88,7 +91,8 @@ build
 build TITLE="Second title"
 python3 "$rimg" info "$b/APP.ROM" | grep -qx "title=Second title" || fail "TITLE change did not reseal APP.ROM"
 
-# 5. New library flags (CI=1 adds -Werror) rebuild libpip.a.
+# 5. New library flags (CI=1 adds -Werror) rebuild libpip.a. The builds
+#    above ran without CI, since the script unsets it.
 touch "$tmp/mark2"
 sleep 1
 build CI=1

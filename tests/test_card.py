@@ -1,5 +1,6 @@
 """Boots with an SD card: ROM file checks, configuration, holotapes."""
 
+import os
 import pathlib
 import shutil
 import subprocess
@@ -198,8 +199,11 @@ def default_card(tmp_path_factory):
     """The card of a plain `make sdimage`, built once in a folder of its own."""
     build = tmp_path_factory.mktemp("default_card") / "build"
     root = pathlib.Path(__file__).resolve().parent.parent
+    # A plain build: ROM, CI or flags from the caller or an outer make do not apply.
+    drop = {"MAKEFLAGS", "MFLAGS", "MAKELEVEL", "CI", "ROM", "CFLAGS_EXTRA", "WINDOW"}
+    env = {k: v for k, v in os.environ.items() if k not in drop}
     subprocess.run(["make", "-s", "sdimage", f"BUILD={build}"], cwd=root, check=True,
-                   stdout=subprocess.DEVNULL)
+                   stdout=subprocess.DEVNULL, env=env)
     return build / "sd.img"
 
 

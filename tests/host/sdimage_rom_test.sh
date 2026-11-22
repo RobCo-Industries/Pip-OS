@@ -3,6 +3,9 @@
 # default, the file ROM names, and none with ROM=none. Reads the card
 # with mtools.
 set -eu
+# Build settings from the caller's environment or an outer make
+# (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
