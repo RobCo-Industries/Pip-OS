@@ -86,34 +86,58 @@ PIP_LIB_CORE    := $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c allo
 PIP_LIB_OBJS    := $(patsubst %.c,$(LIBPIP_DIR)/pip_%.o,$(notdir $(PIP_LIB_SRCS))) \
                    $(patsubst %.c,$(LIBPIP_DIR)/robco_%.o,$(notdir $(PIP_LIB_CORE)))
 
-# One object per source under $(BUILD)/obj, ".." becomes "__".
-pip_obj = $(BUILD)/obj/$(subst ..,__,$(patsubst /%,%,$(basename $(1)))).o
+# One object per source under $(BUILD)/obj. The name keeps the source
+# extension, so src/start.c and src/start.S give two objects. A "." path
+# part is dropped, ".." becomes "_up" and an absolute path starts with
+# "_abs", so every object stays inside $(BUILD). Paths with spaces are
+# not supported.
+pip_empty :=
+pip_sp    := $(pip_empty) $(pip_empty)
+pip_obj = $(BUILD)/obj/$(if $(filter /%,$(1)),_abs/)$(subst $(pip_sp),/,$(strip $(patsubst ..,_up,$(filter-out .,$(subst /, ,$(1)))))).o
 PIP_OBJS  := $(foreach s,$(SRCS),$(call pip_obj,$(s)))
 PIP_CRT0  := $(BUILD)/crt0_$(KIND).o
 PIP_ELF   := $(BUILD)/$(basename $(IMAGE)).elf
 PIP_OUT   := $(BUILD)/$(IMAGE)
 
-# Rebuilds everything when a setting changes.
-PIP_CFG   := $(BUILD)/app.cfg
-PIP_CFG_TEXT := $(KIND) $(NAME) $(VERSION) $(TITLE) $(ICON) $(CFLAGS_EXTRA) $(CI)
+ifneq ($(words $(PIP_OBJS)),$(words $(sort $(PIP_OBJS))))
+$(error SRCS names the same source twice: $(SRCS))
+endif
+
+# Each .cfg file holds the settings its targets depend on. It is rewritten
+# only when they change, so a new setting rebuilds what it affects.
+# app.cfg: compiling and sealing. link.cfg: also the source list and the
+# link inputs, so a source removed from SRCS leaves the ELF.
+# libpip.cfg: the library's sources and flags.
+PIP_CFG         := $(BUILD)/app.cfg
+PIP_CFG_TEXT    := $(KIND) | $(NAME) | $(VERSION) | $(TITLE) | $(ICON) | $(PIP_CC) | \
+                   $(PIP_CFLAGS) | $(PIP_MAGIC) | $(PIP_SUBTYPE) | $(PIP_OBJCOPY) | $(PYTHON) | $(PIP_RIMG)
+PIP_LCFG        := $(BUILD)/link.cfg
+PIP_LCFG_TEXT   := $(PIP_CFG_TEXT) | $(SRCS) | $(PIP_LDS) | $(LIBPIP) | $(PIP_LD_RWX)
+PIP_LIBCFG      := $(LIBPIP_DIR)/libpip.cfg
+PIP_LIBCFG_TEXT := $(PIP_CC) | $(PIP_AR) | $(PIP_LIBFLAGS) | $(PIP_LIB_SRCS) | $(PIP_LIB_CORE)
+
+# A failed recipe removes its half-written target.
+.DELETE_ON_ERROR:
 
 ifeq ($(.DEFAULT_GOAL),)
 .DEFAULT_GOAL := all
 endif
 
-.PHONY: all clean pip-force
+.PHONY: all clean
 all: $(PIP_OUT)
 
+# Sealed and verified under a temporary name, so a failure leaves no image.
 $(PIP_OUT): $(PIP_ELF) $(PIP_RIMG) $(PIP_CFG) $(ICON)
+	rm -f $@ $@.tmp
 	$(PIP_OBJCOPY) -O binary $< $@.tmp
 	$(PYTHON) $(PIP_RIMG) seal $@.tmp --name $(NAME) \
 	    $(if $(strip $(VERSION)),--image-version $(VERSION)) \
 	    $(if $(strip $(TITLE)),--title "$(TITLE)") \
-	    $(if $(strip $(ICON)),--icon $(ICON))
+	    $(if $(strip $(ICON)),--icon $(ICON)) || { rm -f $@.tmp; exit 1; }
+	$(PYTHON) $(PIP_RIMG) verify $@.tmp --magic $(PIP_MAGIC) || { rm -f $@.tmp; exit 1; }
 	mv $@.tmp $@
-	$(PYTHON) $(PIP_RIMG) verify $@ --magic $(PIP_MAGIC)
 
-$(PIP_ELF): $(PIP_CRT0) $(PIP_OBJS) $(LIBPIP) $(PIP_LDS)
+$(PIP_ELF): $(PIP_CRT0) $(PIP_OBJS) $(LIBPIP) $(PIP_LDS) $(PIP_LCFG)
 	$(PIP_CC) $(PIP_ARCHFLAGS) -nostdlib -T $(PIP_LDS) -Wl,--gc-sections $(PIP_LD_RWX) \
 	    -Wl,-Map,$(@:.elf=.map) -o $@ $(PIP_CRT0) $(PIP_OBJS) $(LIBPIP) -lgcc
 
@@ -121,9 +145,9 @@ $(PIP_CRT0): $(PIP_SDK)/crt0.S $(PIP_CFG)
 	@mkdir -p $(dir $@)
 	$(PIP_CC) $(PIP_CFLAGS) '-DPIP_IMG_MAGIC="$(PIP_MAGIC)"' -DPIP_IMG_SUBTYPE=$(PIP_SUBTYPE) -c -o $@ $<
 
-$(LIBPIP): $(PIP_LIB_OBJS)
+$(LIBPIP): $(PIP_LIB_OBJS) $(PIP_LIBCFG)
 	rm -f $@
-	$(PIP_AR) rcs $@ $^
+	$(PIP_AR) rcs $@ $(PIP_LIB_OBJS)
 
 define pip_src_rule
 $(call pip_obj,$(1)): $(1) $(PIP_CFG)
@@ -133,17 +157,25 @@ endef
 $(foreach s,$(SRCS),$(eval $(call pip_src_rule,$(s))))
 
 define pip_lib_rule
-$(LIBPIP_DIR)/$(2)$(basename $(notdir $(1))).o: $(1)
+$(LIBPIP_DIR)/$(2)$(basename $(notdir $(1))).o: $(1) $(PIP_LIBCFG)
 	@mkdir -p $$(dir $$@)
 	$$(PIP_CC) $$(PIP_LIBFLAGS) -c -o $$@ $$<
 endef
 $(foreach s,$(PIP_LIB_SRCS),$(eval $(call pip_lib_rule,$(s),pip_)))
 $(foreach s,$(PIP_LIB_CORE),$(eval $(call pip_lib_rule,$(s),robco_)))
 
-$(PIP_CFG): pip-force
-	@mkdir -p $(dir $@)
-	@printf '%s\n' '$(subst ','"'"',$(PIP_CFG_TEXT))' > $@.new
-	@if cmp -s $@.new $@; then rm -f $@.new; else mv $@.new $@; fi
+# pip_cfg FILE TEXT TARGETS: runs while make reads this file, before it
+# builds anything. When TEXT differs from FILE, it deletes TARGETS and
+# rewrites FILE. Deleting matters: make compares whole seconds on some
+# hosts, so a newer FILE alone can miss a change made in the same second.
+pip_cfg = $(shell mkdir -p '$(dir $(1))' && \
+    printf '%s\n' '$(subst ','"'"',$(2))' > '$(1).new' && \
+    if cmp -s '$(1).new' '$(1)'; then rm -f '$(1).new'; else rm -f $(3); mv '$(1).new' '$(1)'; fi)
+ifeq ($(filter clean,$(MAKECMDGOALS)),)
+$(call pip_cfg,$(PIP_CFG),$(PIP_CFG_TEXT),$(PIP_CRT0) $(PIP_OBJS) $(PIP_OUT))
+$(call pip_cfg,$(PIP_LCFG),$(PIP_LCFG_TEXT),$(PIP_ELF))
+$(call pip_cfg,$(PIP_LIBCFG),$(PIP_LIBCFG_TEXT),$(PIP_LIB_OBJS) $(LIBPIP))
+endif
 
 clean:
 	rm -rf $(BUILD) $(LIBPIP_DIR)

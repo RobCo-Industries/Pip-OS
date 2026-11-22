@@ -52,6 +52,8 @@ include $(PIPOS_SDK)/pipos-app.mk
 
 Targets are `all` and `clean`. The fragment compiles with the kernel's CPU flags: ARMv6, ARM state, soft float, `-ffreestanding -nostdlib`. It builds `libpip.a` in `$(BUILD)/libpip`, links with `-lgcc` for division and other compiler helpers, seals with `rimg.py seal` and checks the result with `rimg.py verify`.
 
+`make` rebuilds what a change affects: an edited source or header, a new setting, a source added to or removed from `SRCS`. Every object lands under `$(BUILD)/obj` with its source extension, so `start.c` and `start.S` can sit side by side. If sealing or verifying fails, no image is left behind. Paths with spaces are not supported.
+
 A holotape builds the same way with `KIND=holotape`. It links at `0x00800000`. Pip-OS cannot launch holotapes yet.
 
 ## Start-up and entry state

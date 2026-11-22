@@ -132,12 +132,15 @@ build-dir-test:
 	tests/host/build_dir_test.sh
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
-test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test \
+test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
            sdimage-rom-test
 
-.PHONY: sdk-example-test sdimage-rom-test
+.PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test
 sdk-example-test:
 	tests/host/sdk_example_test.sh
+
+sdk-rebuild-test:
+	tests/host/sdk_rebuild_test.sh
 
 sdimage-rom-test:
 	tests/host/sdimage_rom_test.sh
