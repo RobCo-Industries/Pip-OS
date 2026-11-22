@@ -93,8 +93,7 @@ static int32_t sys_play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t
 {
     int32_t rc = pipos_audio_check_count(count);
     uint32_t s;
-    uint32_t i;
-    int played;
+    int played = 0;
 
     (void)a2, (void)a3;
     if (rc != 0) {
@@ -104,15 +103,15 @@ static int32_t sys_play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t
     if (rc != 0) {
         return rc;
     }
-    for (i = 0; i < count; i++) {
-        if (pipos_audio_check_note(&user_notes[i]) != 0) {
-            return -PIP_EINVAL;
-        }
-    }
     s = irq_save();
-    pipos_audio_convert(user_notes, count, seq_buf);
-    played = audio_play(seq_buf, count, AUDIO_PRIORITY);
+    rc = pipos_audio_convert(user_notes, count, seq_buf);
+    if (rc == 0) {
+        played = audio_play(seq_buf, count, AUDIO_PRIORITY);
+    }
     irq_restore(s);
+    if (rc != 0) {
+        return rc;
+    }
     if (played != 0) {
         return -PIP_EIO;
     }
