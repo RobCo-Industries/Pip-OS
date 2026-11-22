@@ -28,6 +28,7 @@ PYTHON     ?= python3
 # sorted, are the ones with no hardware access: the host tests link them.
 PURE_SRCS  := \
               kernel/bootlines.c \
+              kernel/gfx_draw.c \
               kernel/settings.c \
               kernel/storage_rules.c \
               kernel/sysabi.c \
