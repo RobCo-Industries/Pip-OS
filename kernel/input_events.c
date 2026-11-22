@@ -3,16 +3,22 @@
 
 void pipos_input_state_init(pipos_input_state_t *s)
 {
-    uint32_t i;
-
     s->head = 0;
     s->count = 0;
     s->dropped = 0;
-    for (i = 0; i < PIPOS_INPUT_SOURCES; i++) {
-        s->held[i] = 0;
-    }
+    s->last_ms = 0;
+    s->stamped = 0;
     s->dial_deg = 0;
 }
+
+static const uint16_t key_of_button[] = {
+    [PIP_BTN_UP] = INPUT_KEY_UP,
+    [PIP_BTN_DOWN] = INPUT_KEY_DOWN,
+    [PIP_BTN_LEFT] = INPUT_KEY_LEFT,
+    [PIP_BTN_RIGHT] = INPUT_KEY_RIGHT,
+    [PIP_BTN_SELECT] = INPUT_KEY_SELECT,
+    [PIP_BTN_DIAL] = INPUT_KEY_DIAL_PUSH,
+};
 
 static int button_of(unsigned code)
 {
@@ -60,32 +66,39 @@ uint32_t pipos_input_dial_step(uint32_t deg, int32_t steps)
     return (uint32_t)((d + 360) % 360);
 }
 
-static void track(pipos_input_state_t *s, const input_event_t *ev, const pip_event_t *pe)
+uint32_t pipos_input_stamp(pipos_input_state_t *s, uint32_t ev_ms, uint32_t timer_now,
+                           uint32_t tick_now)
 {
-    unsigned src = ev->source < PIPOS_INPUT_SOURCES ? ev->source : PIPOS_INPUT_SOURCES - 1;
+    uint32_t age = timer_now - ev_ms;
+    uint32_t t;
 
-    if (pe->type == PIP_EV_DIAL) {
-        s->dial_deg = pipos_input_dial_step(s->dial_deg, pe->value);
-    } else if (pe->value == INPUT_PRESS) {
-        s->held[src] |= PIP_BTN_BIT(pe->code);
-    } else if (pe->value == INPUT_RELEASE) {
-        s->held[src] &= ~PIP_BTN_BIT(pe->code);
+    if ((int32_t)age < 0) {
+        age = 0; /* stamped after timer_now was read */
     }
+    t = tick_now - age;
+    if (s->stamped && (int32_t)(t - s->last_ms) < 0) {
+        t = s->last_ms;
+    }
+    s->last_ms = t;
+    s->stamped = 1;
+    return t;
 }
 
 int pipos_input_feed(pipos_input_state_t *s, const input_event_t *ev, int deliver,
-                     uint32_t now_ms)
+                     uint32_t timer_now, uint32_t tick_now)
 {
     pip_event_t pe;
 
     if (!pipos_input_map(ev, &pe)) {
         return 0;
     }
-    track(s, ev, &pe);
+    if (pe.type == PIP_EV_DIAL) {
+        s->dial_deg = pipos_input_dial_step(s->dial_deg, pe.value);
+    }
     if (!deliver) {
         return 0;
     }
-    pe.time_ms = now_ms & 0x7fffffffu;
+    pe.time_ms = pipos_input_stamp(s, ev->t_ms, timer_now, tick_now) & 0x7fffffffu;
     if (s->count == PIP_EVENT_QUEUE) {
         s->head = (s->head + 1) % PIP_EVENT_QUEUE;
         s->count--;
@@ -113,13 +126,15 @@ void pipos_input_queue_flush(pipos_input_state_t *s)
     s->count = 0;
 }
 
-uint32_t pipos_input_buttons(const pipos_input_state_t *s)
+uint32_t pipos_input_buttons(int (*key_down)(unsigned code))
 {
     uint32_t m = 0;
-    uint32_t i;
+    uint32_t b;
 
-    for (i = 0; i < PIPOS_INPUT_SOURCES; i++) {
-        m |= s->held[i];
+    for (b = 0; b < sizeof(key_of_button) / sizeof(key_of_button[0]); b++) {
+        if (key_down(key_of_button[b])) {
+            m |= PIP_BTN_BIT(b);
+        }
     }
     return m;
 }

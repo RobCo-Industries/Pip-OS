@@ -1,8 +1,9 @@
 /*
  * The input group: read_buttons, read_dial, poll_event and wait_event
  * (0x10-0x13). main.c hands every RobCo-Core event it takes to
- * pipos_input_event(); input_events.c maps it and keeps the queue, the
- * button mask and the dial. See docs/API.md.
+ * pipos_input_event(); input_events.c maps it and keeps the queue and the
+ * dial. read_buttons asks RobCo-Core's held-key state, which stays right
+ * when RobCo-Core's own queue drops events. See docs/API.md.
  */
 #include <robco/input.h>
 #include <robco/tick.h>
@@ -18,7 +19,9 @@ static int image_running;
 
 void pipos_input_event(const input_event_t *ev)
 {
-    pipos_input_feed(&state, ev, image_running, tick_ms());
+    uint32_t timer_now = timer_now_ms();
+
+    pipos_input_feed(&state, ev, image_running, timer_now, tick_ms());
 }
 
 void pipos_input_flush(void)
@@ -31,7 +34,7 @@ static int32_t sys_read_buttons(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_
 {
     (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
     pipos_poll();
-    return (int32_t)pipos_input_buttons(&state);
+    return (int32_t)pipos_input_buttons(input_key_down);
 }
 
 static int32_t sys_read_dial(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1, uint32_t a2,
