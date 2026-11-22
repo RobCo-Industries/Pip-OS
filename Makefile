@@ -23,6 +23,11 @@ PYTHON     ?= python3
 PURE_SRCS  := kernel/settings.c kernel/bootlines.c
 SRCS       := kernel/main.c kernel/card.c kernel/screen.c kernel/panic.c $(PURE_SRCS)
 
+# Host unit tests: tests/host/test_<name>.c with the pure kernel files.
+HOST_TEST_DIR := tests/host
+HOST_SRCS     := $(PURE_SRCS)
+HOST_INCLUDES := kernel
+
 SDIMAGE_DIR := $(BUILD)/sdroot
 SDIMAGE_MIB ?= 64
 
@@ -32,6 +37,7 @@ endif
 
 .DEFAULT_GOAL := all
 include $(ROBCO_CORE)/mk/robco.mk
+include $(ROBCO_CORE)/mk/host.mk
 
 # Target tests boot the image built here; keep top-level targets serial.
 .NOTPARALLEL:
@@ -68,41 +74,8 @@ check-pins-test:
 build-dir-test:
 	tests/host/build_dir_test.sh
 
-# Host unit tests: tests/host/test_<name>.c, the pure kernel files and
-# the pure library files they use, built with the host compiler.
-HOST_CC       ?= cc
-HOST_SANITIZE ?= 1
-HOST_BUILD    := $(BUILD)/host
-HOST_CFLAGS   := -std=gnu11 -Wall -Wextra -Werror -g -O1 -DROBCO_HOST=1 \
-                 -I $(ROBCO_CORE)/include -I $(ROBCO_CORE)/tests/host -I kernel
-
-ifeq ($(HOST_SANITIZE),1)
-HOST_SAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
-HOST_SAN_OK := $(shell mkdir -p $(HOST_BUILD) && \
-                 printf 'int main(void){return 0;}\n' > $(HOST_BUILD)/probe.c && \
-                 $(HOST_CC) $(HOST_SAN_FLAGS) -o $(HOST_BUILD)/probe $(HOST_BUILD)/probe.c >/dev/null 2>&1 && \
-                 $(HOST_BUILD)/probe && echo 1; rm -rf $(HOST_BUILD)/probe $(HOST_BUILD)/probe.c $(HOST_BUILD)/probe.dSYM)
-ifeq ($(HOST_SAN_OK),1)
-HOST_CFLAGS += $(HOST_SAN_FLAGS)
-endif
-endif
-
-HOST_LIB_SRCS  := $(addprefix $(ROBCO_CORE)/src/lib/,ini.c k_printf.c k_string.c)
-HOST_TEST_SRCS := $(sort $(wildcard tests/host/test_*.c))
-HOST_TESTS     := $(patsubst tests/host/%.c,$(HOST_BUILD)/%,$(HOST_TEST_SRCS))
-HOST_HDRS      := $(wildcard kernel/*.h) $(ROBCO_CORE)/tests/host/rc_test.h
-
-$(HOST_BUILD)/test_%: tests/host/test_%.c $(PURE_SRCS) $(HOST_LIB_SRCS) $(HOST_HDRS)
-	@mkdir -p $(HOST_BUILD)
-	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< $(PURE_SRCS) $(HOST_LIB_SRCS)
-
-test-host: check-pins check-pins-test build-dir-test $(HOST_TESTS)
-	@set -u; failed=""; \
-	for t in $(HOST_TESTS); do \
-	  ./$$t || failed="$$failed $${t##*/}"; \
-	done; \
-	if [ -n "$$failed" ]; then echo "test-host: FAILED:$$failed" >&2; exit 1; fi; \
-	echo "test-host: all passed"
+# Host unit tests come from mk/host.mk. The shell tests run first.
+test-host: check-pins check-pins-test build-dir-test
 
 # ---- Cards and QEMU -----------------------------------------------------
 
