@@ -69,7 +69,7 @@ test-target: all venv
 	$(VENV)/bin/pytest tests -v --board $(BOARD) --build-dir $(BUILD)
 
 check-pins:
-	tools/check_pins.sh
+	$(ROBCO_CORE)/tools/check_pins.sh .github/workflows/ci.yml
 
 check-pins-test:
 	tests/host/check_pins_test.sh
