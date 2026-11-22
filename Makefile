@@ -24,10 +24,15 @@ CONFIG_H   := kernel/robco_config.h
 BUILD      ?= build
 PYTHON     ?= python3
 
-# Pure code: no hardware access, also built for the host tests.
-PURE_SRCS  := kernel/settings.c kernel/bootlines.c kernel/sysabi.c
-SRCS       := kernel/main.c kernel/card.c kernel/screen.c kernel/panic.c \
-              kernel/rom.c kernel/syscall.c $(PURE_SRCS)
+# Every kernel/*.c builds into the kernel. PURE_SRCS, one per line and
+# sorted, are the ones with no hardware access: the host tests link them.
+PURE_SRCS  := \
+              kernel/bootlines.c \
+              kernel/settings.c \
+              kernel/sysabi.c \
+              kernel/sysdispatch.c \
+
+SRCS       := $(sort $(wildcard kernel/*.c))
 # The ABI header in sdk/include is shared with ROM code.
 EXTRA_CFLAGS += -Isdk/include
 
@@ -65,20 +70,23 @@ include $(ROBCO_CORE)/mk/host.mk
 
 # Every ROM builds through sdk/pipos-app.mk and libpip.a.
 #
-# Test ROMs: tests/roms/<name>.c with rt.c, into $(BUILD)/roms/<name>/<name>.rom.
-# fault.c builds once per fault case. They share one libpip.a.
-# sdkcheck is a ROM project of its own in tests/roms/sdkcheck/.
-ROM_BUILD   := $(BUILD)/roms
-TEST_ROMS   := hello ret5 tramp entry calls sleep spin
-FAULT_CASES := wrkern rdperiph jmpkern undef priv null
-ROM_TARGETS := $(addprefix rom-,$(TEST_ROMS) $(addprefix fault_,$(FAULT_CASES)))
-PIP_APP     := $(MAKE) --no-print-directory -f sdk/pipos-app.mk PIPOS_SDK=sdk \
-               ROBCO_CORE=$(ROBCO_CORE) KIND=rom VERSION=1.0.0 LIBPIP_DIR=$(ROM_BUILD)/libpip
-ROM_CFLAGS  := -fno-builtin -Itests/roms
+# Test ROMs, all found by wildcard:
+#   tests/roms/<name>.c       one ROM with rt.c, into $(ROM_BUILD)/<name>/<name>.rom
+#   tests/roms/<name>/Makefile a ROM project of its own, such as sdkcheck
+# fault.c builds once per fault case; rt.c is the shared runtime.
+# calls also links regs.S. They share one libpip.a.
+ROM_BUILD    := $(BUILD)/roms
+TEST_ROMS    := $(filter-out rt fault,$(basename $(notdir $(wildcard tests/roms/*.c))))
+ROM_PROJECTS := $(patsubst tests/roms/%/Makefile,%,$(wildcard tests/roms/*/Makefile))
+FAULT_CASES  := wrkern rdperiph jmpkern undef priv null
+ROM_TARGETS  := $(addprefix rom-,$(TEST_ROMS) $(addprefix fault_,$(FAULT_CASES)))
+PIP_APP      := $(MAKE) --no-print-directory -f sdk/pipos-app.mk PIPOS_SDK=sdk \
+                ROBCO_CORE=$(ROBCO_CORE) KIND=rom VERSION=1.0.0 LIBPIP_DIR=$(ROM_BUILD)/libpip
+ROM_CFLAGS   := -fno-builtin -Itests/roms
 
-.PHONY: test-roms sdk-example rom-sdkcheck $(ROM_TARGETS)
+.PHONY: test-roms sdk-example $(ROM_TARGETS) $(addprefix rom-,$(ROM_PROJECTS))
 all: test-roms sdk-example
-test-roms: $(ROM_TARGETS) rom-sdkcheck
+test-roms: $(ROM_TARGETS) $(addprefix rom-,$(ROM_PROJECTS))
 
 $(addprefix rom-fault_,$(FAULT_CASES)): rom-fault_%:
 	$(PIP_APP) BUILD=$(ROM_BUILD)/fault_$* IMAGE=fault_$*.rom NAME=fault_$* \
@@ -90,8 +98,8 @@ $(addprefix rom-,$(TEST_ROMS)): rom-%:
 	    SRCS="tests/roms/$*.c tests/roms/rt.c $(if $(filter calls,$*),tests/roms/regs.S)" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
-rom-sdkcheck:
-	$(MAKE) --no-print-directory -C tests/roms/sdkcheck BUILD=$(abspath $(ROM_BUILD))/sdkcheck
+$(addprefix rom-,$(ROM_PROJECTS)): rom-%:
+	$(MAKE) --no-print-directory -C tests/roms/$* BUILD=$(abspath $(ROM_BUILD))/$*
 
 # The hello example, the default ROM of the card.
 sdk-example:
@@ -145,11 +153,11 @@ sdk-rebuild-test:
 sdimage-rom-test:
 	tests/host/sdimage_rom_test.sh
 
-# libpip.a on the host: sdk/lib/ without the svc wrappers, and RobCo-Core's
+# libpip.a on the host: sdk/lib/ without svc.c and the wrappers, and RobCo-Core's
 # string, printf and heap code. libpip_names.h renames the C library
 # functions to pipt_* in these objects so they do not replace the host's.
 # -UROBCO_HOST keeps k_string.c's memcpy, memmove, memset and memcmp.
-LIBPIP_HOST_SRCS := $(filter-out sdk/lib/syscall.c,$(sort $(wildcard sdk/lib/*.c))) \
+LIBPIP_HOST_SRCS := $(filter-out sdk/lib/svc.c sdk/lib/syscall.c,$(sort $(wildcard sdk/lib/*.c))) \
                     $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c alloc.c)
 LIBPIP_HOST_OBJS := $(addprefix $(HOST_BUILD)/libpip/,$(notdir $(LIBPIP_HOST_SRCS:.c=.o)))
 LIBPIP_HOST_HDRS := tests/host/libpip_names.h $(wildcard sdk/include/pipos/*.h) \
@@ -165,6 +173,11 @@ $(HOST_BUILD)/libpip/$(notdir $(1:.c=.o)): $(1) $(LIBPIP_HOST_HDRS)
 	$$(HOST_CC) $$(HOST_CFLAGS) -UROBCO_HOST -fno-builtin -Isdk/include -include tests/host/libpip_names.h -c -o $$@ $$<
 endef
 $(foreach s,$(LIBPIP_HOST_SRCS),$(eval $(call libpip_host_rule,$(s))))
+
+# host.mk only sees headers at the top of HOST_INCLUDES, not sdk/include/pipos/.
+$(HOST_TESTS): $(wildcard sdk/include/pipos/*.h)
+# test_sdk_calls.c includes the wrappers.
+$(HOST_BUILD)/test_sdk_calls: sdk/lib/syscall.c
 
 $(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP_HOST_HDRS)
 	@mkdir -p $(dir $@)

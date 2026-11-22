@@ -1,135 +1,110 @@
 /*
- * System calls of a running ROM: number in r7, arguments in r0 to r3,
- * result in r0. Every pointer is checked against the task's regions
- * before use. See docs/API.md.
+ * The system-call dispatcher: number in r7, arguments in r0 to r3, result
+ * in r0. The calls live in the group files kernel/sys_<group>.c; this file
+ * builds their index at boot and runs their hooks. See sys.h.
  */
-#include <robco/board.h>
 #include <robco/klibc.h>
-#include <robco/rng.h>
-#include <robco/tick.h>
-#include <robco/timer.h>
-#include <robco/uart.h>
 #include <robco/umode.h>
 
 #include "pipos.h"
-#include "sysabi.h"
+#include "sys.h"
 
-typedef int32_t (*sys_fn)(exc_frame_t *f);
+typedef struct group {
+    const pipos_sys_table_t *table;
+    void (*init)(void);
+    void (*image_start)(int kind);
+    void (*image_end)(int kind);
+    void (*poll)(void);
+} group_t;
 
-static int32_t sys_ticks_ms(exc_frame_t *f)
-{
-    (void)f;
-    return (int32_t)(tick_ms() & 0x7fffffffu);
-}
+#define GROUP(g)                                                                   \
+    { &pipos_##g##_table, pipos_##g##_init, pipos_##g##_image_start,               \
+      pipos_##g##_image_end, pipos_##g##_poll }
 
-/*
- * Runs the kernel's main-loop work while it waits, so script commands still
- * work. ms above 0x7FFFFFFF returns -PIP_ERANGE at once. The deadline is on
- * the 1 MHz system timer, so the wait is never short; the tick interrupt
- * wakes the wfi, so it can run up to one tick long.
- */
-static int32_t sys_sleep_ms(exc_frame_t *f)
-{
-    uint32_t ms = f->r[0];
-    uint64_t deadline = pipos_sleep_deadline_us(timer_now_us(), ms);
-    int32_t rc = pipos_sleep_check(ms);
-
-    if (rc != 0) {
-        return rc;
-    }
-    while (!timer_expired(deadline)) {
-        pipos_poll();
-        __asm__ volatile("wfi");
-    }
-    return 0;
-}
-
-static int32_t sys_exit(exc_frame_t *f)
-{
-    umode_exit(f, (int)f->r[0]);
-    return (int32_t)f->r[0];
-}
-
-static int32_t sys_sys_info(exc_frame_t *f)
-{
-    const robco_board_t *b = board_get();
-    pip_sys_info_t info;
-
-    if (!umode_range_ok(f->r[0], sizeof(info), 1)) {
-        return -PIP_EFAULT;
-    }
-    pipos_sys_info_fill(&info,
-                        pipos_version_pack(PIPOS_VERSION_MAJOR, PIPOS_VERSION_MINOR,
-                                           PIPOS_VERSION_PATCH),
-                        b->board_rev, (uint32_t)b->soc, b->mem_size);
-    k_memcpy((void *)(uintptr_t)f->r[0], &info, sizeof(info));
-    return 0;
-}
-
-static int32_t sys_mem_info(exc_frame_t *f)
-{
-    pip_mem_info_t info;
-
-    if (!umode_range_ok(f->r[0], sizeof(info), 1)) {
-        return -PIP_EFAULT;
-    }
-    pipos_mem_info_rom(&info);
-    k_memcpy((void *)(uintptr_t)f->r[0], &info, sizeof(info));
-    return 0;
-}
-
-static int32_t sys_log(exc_frame_t *f)
-{
-    const char *text = (const char *)(uintptr_t)f->r[0];
-    long len = pipos_log_check(umode_strnlen_ok(f->r[0], PIP_LOG_MAX),
-                               umode_range_ok(f->r[0], PIP_LOG_MAX, 0));
-    long i;
-
-    if (len < 0) {
-        return (int32_t)len;
-    }
-    for (i = 0; i < len; i++) {
-        uart_putc(pipos_log_char(text[i]));
-    }
-    return 0;
-}
-
-static int32_t sys_rand(exc_frame_t *f)
-{
-    uint32_t v;
-
-    (void)f;
-    if (rng_u32(&v) != 0) {
-        return -PIP_EIO;
-    }
-    return (int32_t)(v & 0x7fffffffu);
-}
-
-/* Indexed by pipos_sys_slot(). */
-static const sys_fn handlers[PIPOS_SYS_SLOTS] = {
-    [PIP_SYS_TICKS_MS - PIPOS_SYS_FIRST] = sys_ticks_ms,
-    [PIP_SYS_SLEEP_MS - PIPOS_SYS_FIRST] = sys_sleep_ms,
-    [PIP_SYS_EXIT - PIPOS_SYS_FIRST] = sys_exit,
-    [PIP_SYS_SYS_INFO - PIPOS_SYS_FIRST] = sys_sys_info,
-    [PIP_SYS_MEM_INFO - PIPOS_SYS_FIRST] = sys_mem_info,
-    [PIP_SYS_LOG - PIPOS_SYS_FIRST] = sys_log,
-    [PIP_SYS_RAND - PIPOS_SYS_FIRST] = sys_rand,
+/* In PIPOS_GROUP_* order. */
+static const group_t groups[PIPOS_GROUP_COUNT] = {
+    GROUP(system), GROUP(gfx), GROUP(input), GROUP(audio),
+    GROUP(time), GROUP(storage), GROUP(holo),
 };
+
+static const pipos_user_mem_t umode_mem = { umode_range_ok, umode_strnlen_ok };
+
+static pipos_sys_index_t sys_index;
+/* The kind of the running image; a holotape ends back in the ROM. */
+static int current_kind = PIP_KIND_ROM;
 
 static void on_svc(exc_frame_t *f, void *ctx)
 {
-    int slot = pipos_sys_slot(f->r[7]);
-    int32_t rc = -PIP_ENOSYS;
+    pipos_sys_ctx_t c = { current_kind, f, &umode_mem };
 
     (void)ctx;
-    if (slot >= 0 && handlers[slot] != NULL) {
-        rc = handlers[slot](f);
-    }
-    f->r[0] = (uint32_t)rc;
+    f->r[0] = (uint32_t)pipos_sys_dispatch(&sys_index, &c, f->r[7], f->r[0], f->r[1], f->r[2],
+                                           f->r[3]);
 }
 
-void pipos_syscall_install(void)
+static const char *index_error(int rc)
 {
-    rng_init(); /* on failure rand returns -PIP_EIO */
+    switch (rc) {
+    case PIPOS_SYS_EDUP:   return "syscall listed twice";
+    case PIPOS_SYS_EABI:   return "syscall outside the ABI";
+    case PIPOS_SYS_EOWNER: return "syscall in the wrong group";
+    default:               return "syscall table error";
+    }
+}
+
+void pipos_sys_init(void)
+{
+    static char why[64];
+    const pipos_sys_table_t *tables[PIPOS_GROUP_COUNT];
+    uint32_t served[PIP_SYS_NR_LIMIT / 32];
+    uint32_t bad;
+    unsigned i;
+    int rc;
+
+    for (i = 0; i < PIPOS_GROUP_COUNT; i++) {
+        tables[i] = groups[i].table;
+    }
+    rc = pipos_sys_index_build(&sys_index, tables, PIPOS_GROUP_COUNT, &bad);
+    if (rc != PIPOS_SYS_OK) {
+        k_snprintf(why, sizeof(why), "%s: 0x%02x", index_error(rc), (unsigned)bad);
+        pipos_panic(why);
+    }
+    for (i = 0; i < PIPOS_GROUP_COUNT; i++) {
+        groups[i].init();
+    }
     umode_set_svc_handler(on_svc, NULL);
+    /* Bit n of the 128-bit hex number: call n has a handler. */
+    pipos_sys_served(&sys_index, served);
+    k_printf("@RC stage=" PIPOS_STAGE " ev=syscalls served=%08x%08x%08x%08x\n",
+             (unsigned)served[3], (unsigned)served[2], (unsigned)served[1],
+             (unsigned)served[0]);
+}
+
+void pipos_sys_image_start(int kind)
+{
+    unsigned i;
+
+    current_kind = kind;
+    for (i = 0; i < PIPOS_GROUP_COUNT; i++) {
+        groups[i].image_start(kind);
+    }
+}
+
+void pipos_sys_image_end(int kind)
+{
+    unsigned i;
+
+    for (i = PIPOS_GROUP_COUNT; i-- > 0;) {
+        groups[i].image_end(kind);
+    }
+    current_kind = PIP_KIND_ROM;
+}
+
+void pipos_sys_poll(void)
+{
+    unsigned i;
+
+    for (i = 0; i < PIPOS_GROUP_COUNT; i++) {
+        groups[i].poll();
+    }
 }

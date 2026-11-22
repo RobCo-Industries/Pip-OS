@@ -25,6 +25,7 @@
 
 #include "bootlines.h"
 #include "pipos.h"
+#include "sys.h"
 
 /* State the script command "state" reports. */
 static int ready_flag;
@@ -266,6 +267,7 @@ void pipos_poll(void)
     while (input_poll(&ev)) {
         report_event(&ev);
     }
+    pipos_sys_poll();
 }
 
 static void main_loop(void)
@@ -274,6 +276,7 @@ static void main_loop(void)
 
     for (;;) {
         audio_poll();
+        pipos_sys_poll();
         if (!input_wait(&ev, 20)) {
             continue;
         }
@@ -306,6 +309,7 @@ void robco_main(void)
     card = pipos_card_mount();
     pipos_config_load(card, &settings);
     apply_settings(&settings);
+    pipos_sys_init();
 
     rom = boot_screen(card, &res);
     rom_loaded = rom;

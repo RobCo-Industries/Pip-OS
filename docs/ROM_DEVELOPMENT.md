@@ -2,7 +2,7 @@
 
 A ROM is the program Pip-OS runs after boot. It is one file, `/PIPBOY/ROM1.ROM` on the SD card. Pip-OS loads it at `0x00400000`, checks it and runs it in user mode. The ROM talks to the kernel only through system calls.
 
-The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
+The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/1e0fb655ea09497d133c6e3c3b086a2bb8cbca0e/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
 
 ## A first ROM
 
@@ -60,23 +60,68 @@ A holotape builds the same way with `KIND=holotape`. It links at `0x00800000`. P
 
 `crt0.S` puts the branch, the `rimg` header and an empty META block at the start of the image. On entry it saves r0 to r3, sp and lr in `pip_entry_regs`, clears BSS and calls `int pip_main(const pipos_startup_t *startup)`. The return value of `pip_main` goes to `exit`.
 
-The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/PIPOS_ABI.md#entry-state).
+The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/1e0fb655ea09497d133c6e3c3b086a2bb8cbca0e/docs/spec/PIPOS_ABI.md#entry-state).
 
-## System calls that work today
+## System calls
 
-Include `<pipos/pip.h>` for everything, or the single headers in `sdk/include/pipos/`. Each call has a `pip_<name>()` wrapper in `libpip.a`. [API.md](API.md) has the exact results.
+Include `<pipos/pip.h>` for everything, or the single headers in `sdk/include/pipos/`. `libpip.a` has a `pip_<name>()` wrapper for every call of the ABI, declared in `pipos/syscall.h` with the types of the spec. A call the kernel does not serve yet returns `-PIP_ENOSYS`. [API.md](API.md) has the exact results of the served calls.
 
-| Call | Wrapper | Does |
-|---|---|---|
-| `ticks_ms` | `pip_ticks_ms()` | Milliseconds since boot, 31 bits |
-| `sleep_ms` | `pip_sleep_ms(ms)` | Waits. Above `0x7FFFFFFF` it returns `-PIP_ERANGE` at once. |
-| `exit` | `pip_exit(status)` | Ends the ROM |
-| `sys_info` | `pip_sys_info(&si)` | ABI and Pip-OS versions, board, SoC, RAM size |
-| `mem_info` | `pip_mem_info(&mi)` | Heap and stack addresses |
-| `log` | `pip_log(text)` | Prints at most 255 bytes on the serial console |
-| `rand` | `pip_rand()` | A random number from the hardware generator |
+| Number | Call | Wrapper | Kernel serves it |
+|---|---|---|---|
+| `0x01` | `draw_line` | `pip_draw_line()` | no |
+| `0x02` | `draw_point` | `pip_draw_point()` | no |
+| `0x03` | `draw_text` | `pip_draw_text()` | no |
+| `0x04` | `clear` | `pip_clear()` | no |
+| `0x05` | `gfx_info` | `pip_gfx_info()` | no |
+| `0x06` | `rect` | `pip_rect()` | no |
+| `0x07` | `polyline` | `pip_polyline()` | no |
+| `0x08` | `arc` | `pip_arc()` | no |
+| `0x09` | `blit_1bpp` | `pip_blit_1bpp()` | no |
+| `0x0A` | `blit_rgb` | `pip_blit_rgb()` | no |
+| `0x0B` | `set_clip` | `pip_set_clip()` | no |
+| `0x0C` | `set_color` | `pip_set_color()` | no |
+| `0x0D` | `text_metrics` | `pip_text_metrics()` | no |
+| `0x0E` | `present` | `pip_present()` | no |
+| `0x0F` | `set_font` | `pip_set_font()` | no |
+| `0x10` | `read_buttons` | `pip_read_buttons()` | no |
+| `0x11` | `read_dial` | `pip_read_dial()` | no |
+| `0x12` | `poll_event` | `pip_poll_event()` | no |
+| `0x13` | `wait_event` | `pip_wait_event()` | no |
+| `0x20` | `tone` | `pip_tone()` | no |
+| `0x21` | `sample` | `pip_sample()` | no |
+| `0x22` | `audio_stop` | `pip_audio_stop()` | no |
+| `0x23` | `volume` | `pip_volume()` | no |
+| `0x24` | `audio_status` | `pip_audio_status()` | no |
+| `0x25` | `play_seq` | `pip_play_seq()` | no |
+| `0x30` | `read_sensor` | `pip_read_sensor()` | no |
+| `0x31` | `sensor_available` | `pip_sensor_available()` | no |
+| `0x40` | `get_time` | `pip_get_time()` | no |
+| `0x41` | `get_battery` | `pip_get_battery()` | no |
+| `0x42` | `ticks_ms` | `pip_ticks_ms()` | yes |
+| `0x43` | `sleep_ms` | `pip_sleep_ms()` | yes |
+| `0x44` | `exit` | `pip_exit()` | yes |
+| `0x45` | `sys_info` | `pip_sys_info()` | yes |
+| `0x46` | `mem_info` | `pip_mem_info()` | yes |
+| `0x47` | `power` | `pip_power()` | no |
+| `0x48` | `log` | `pip_log()` | yes |
+| `0x49` | `rand` | `pip_rand()` | yes |
+| `0x4A` | `set_time` | `pip_set_time()` | no |
+| `0x50` | `read_save` | `pip_read_save()` | no |
+| `0x51` | `write_save` | `pip_write_save()` | no |
+| `0x52` | `save_info` | `pip_save_info()` | no |
+| `0x53` | `save_delete` | `pip_save_delete()` | no |
+| `0x54` | `file_open` | `pip_file_open()` | no |
+| `0x55` | `file_read` | `pip_file_read()` | no |
+| `0x56` | `file_close` | `pip_file_close()` | no |
+| `0x57` | `dir_list` | `pip_dir_list()` | no |
+| `0x60` | `holo_enumerate` | `pip_holo_enumerate()` | no |
+| `0x61` | `holo_launch` | `pip_holo_launch()` | no |
+| `0x62` | `holo_last_status` | `pip_holo_last_status()` | no |
+| `0x63` | `holo_eject_event` | `pip_holo_eject_event()` | no |
 
-`pip_syscall(nr, a0, a1, a2, a3)` makes any call by number. Every other number returns `-PIP_ENOSYS`.
+`pip_syscall(nr, a0, a1, a2, a3)` makes any call by number. A number outside the table returns `-PIP_ENOSYS`.
+
+`rect` and `set_clip` take the width and height packed as `PIP_WH(w, h)`. `pip_rect_xywh()` and `pip_set_clip_xywh()` take them apart. `PIP_TM_WIDTH()` and `PIP_TM_HEIGHT()` unpack the result of `text_metrics`. `abi.h` names every limit of the spec, such as `PIP_TEXT_MAX` and `PIP_SAVE_MAX`.
 
 ## Library functions
 
@@ -108,7 +153,7 @@ If the ROM touches memory it does not own or runs an undefined or privileged ins
 
 ## Limits today
 
-- No graphics, input, audio, time, sensors, saves or files. These calls return `-PIP_ENOSYS`.
+- No graphics, input, audio, time, sensors, saves, files or holotapes yet. These calls return `-PIP_ENOSYS`.
 - Holotapes build but Pip-OS cannot launch them.
 - A ROM that never calls `sleep_ms` keeps the kernel from its main-loop work, so script commands stop.
 - `sleep_ms` never ends early, but it can run up to 10 ms long: the 100 Hz tick wakes it.

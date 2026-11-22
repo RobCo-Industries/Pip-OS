@@ -14,7 +14,8 @@ from harness.boot import boot
 from harness.qemu import QemuError
 
 from pipos_helpers import (TIMEOUT, booted, dump, make_card, no_exception, one,
-                           pipos_markers)
+                           pipos_markers, assert_rom_checks, rom_markers,
+                           rom_one)
 
 ROM = "PIPBOY/ROM1.ROM"
 
@@ -24,16 +25,6 @@ STACK_TOP = 0x01800000
 HEAP_BASE = 0x01000000
 HEAP_SIZE = 0x007F0000
 PIPOS_VERSION = (7 << 16) | (1 << 8) | 0
-
-
-def rom_markers(vm, ev):
-    return [m for m in vm.markers() if m.get("stage") == "testrom" and m.get("ev") == ev]
-
-
-def rom_one(vm, ev):
-    found = rom_markers(vm, ev)
-    assert len(found) == 1, f"expected one testrom ev={ev}, got {found}\n{vm.serial}"
-    return found[0]
 
 
 def card(tmp_path, data):
@@ -168,8 +159,7 @@ def test_log_checks(calls):
 def test_unknown_numbers(calls):
     m = rom_one(calls, "enosys")
     assert {k: v for k, v in m.items() if k.startswith("n")} == \
-        {"n00": "-38", "n7f": "-38", "nffffffff": "-38", "n01": "-38", "n47": "-38",
-         "n4a": "-38"}, m
+        {"n00": "-38", "n7f": "-38", "nffffffff": "-38", "n80": "-38", "n14": "-38"}, m
 
 
 def test_bad_out_pointers(calls):
@@ -281,10 +271,7 @@ SDK_CHECKS = ["printf_conv", "printf_trunc", "printf_long", "printf_nul", "str_m
 def test_sdk_self_check(board, kernel_image, test_rom, tmp_path, need_mtools):
     """tests/roms/sdkcheck, built only through sdk/pipos-app.mk and libpip.a."""
     with booted(kernel_image, board, sd=card(tmp_path, test_rom("sdkcheck"))) as vm:
-        checks = [(m["name"], m["ok"]) for m in rom_markers(vm, "check")]
-        assert checks == [(name, "1") for name in SDK_CHECKS], vm.serial
-        assert rom_one(vm, "checks") == {"stage": "testrom", "ev": "checks",
-                                         "total": str(len(SDK_CHECKS)), "failed": "0"}
+        assert_rom_checks(vm, SDK_CHECKS)
         long_line = "".join(chr(ord("a") + i % 26) for i in range(600)) + "\n"
         assert long_line in vm.serial
         assert "sdkcheck: nul a?b\n" in vm.serial

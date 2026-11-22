@@ -7,34 +7,6 @@
 #include "rc_test.h"
 #include "sysabi.h"
 
-TEST(abi_sizes_and_offsets)
-{
-    CHECK_EQ(sizeof(pipos_startup_t), 128);
-    CHECK_EQ(offsetof(pipos_startup_t, abi_version), 0x00);
-    CHECK_EQ(offsetof(pipos_startup_t, size), 0x04);
-    CHECK_EQ(offsetof(pipos_startup_t, heap_base), 0x08);
-    CHECK_EQ(offsetof(pipos_startup_t, heap_size), 0x0C);
-    CHECK_EQ(offsetof(pipos_startup_t, stack_top), 0x10);
-    CHECK_EQ(offsetof(pipos_startup_t, kind), 0x14);
-    CHECK_EQ(offsetof(pipos_startup_t, flags), 0x18);
-    CHECK_EQ(offsetof(pipos_startup_t, args), 0x1C);
-
-    CHECK_EQ(sizeof(pip_sys_info_t), 32);
-    CHECK_EQ(offsetof(pip_sys_info_t, size), 0);
-    CHECK_EQ(offsetof(pip_sys_info_t, abi_version), 4);
-    CHECK_EQ(offsetof(pip_sys_info_t, pipos_version), 8);
-    CHECK_EQ(offsetof(pip_sys_info_t, board_rev), 12);
-    CHECK_EQ(offsetof(pip_sys_info_t, soc), 16);
-    CHECK_EQ(offsetof(pip_sys_info_t, mem_size), 20);
-    CHECK_EQ(offsetof(pip_sys_info_t, reserved), 24);
-
-    CHECK_EQ(sizeof(pip_mem_info_t), 16);
-    CHECK_EQ(offsetof(pip_mem_info_t, heap_base), 0);
-    CHECK_EQ(offsetof(pip_mem_info_t, heap_size), 4);
-    CHECK_EQ(offsetof(pip_mem_info_t, stack_top), 8);
-    CHECK_EQ(offsetof(pip_mem_info_t, stack_size), 12);
-}
-
 TEST(abi_values)
 {
     CHECK_EQ(PIP_ABI_VERSION, 0x00010000);
@@ -54,23 +26,6 @@ TEST(version_pack)
     CHECK_EQ(pipos_version_pack(7, 1, 0), 0x00070100u);
     CHECK_EQ(pipos_version_pack(1, 2, 10), 0x0001020Au);
     CHECK_EQ(pipos_version_pack(0x1ffff, 0x1ff, 0x1ff), 0xFFFFFFFFu);
-}
-
-TEST(sys_slot)
-{
-    CHECK_EQ(pipos_sys_slot(0x42), 0);
-    CHECK_EQ(pipos_sys_slot(0x43), 1);
-    CHECK_EQ(pipos_sys_slot(0x46), 4);
-    CHECK_EQ(pipos_sys_slot(0x48), 6);
-    CHECK_EQ(pipos_sys_slot(0x49), 7);
-    CHECK_EQ(pipos_sys_slot(0x47), -1);     /* power: not in this step */
-    CHECK_EQ(pipos_sys_slot(0x4A), -1);
-    CHECK_EQ(pipos_sys_slot(0x41), -1);
-    CHECK_EQ(pipos_sys_slot(0x00), -1);
-    CHECK_EQ(pipos_sys_slot(0x01), -1);
-    CHECK_EQ(pipos_sys_slot(0x7F), -1);
-    CHECK_EQ(pipos_sys_slot(0xFFFFFFFFu), -1);
-    CHECK_EQ(pipos_sys_slot(0x80000042u), -1);
 }
 
 TEST(startup_block)
@@ -130,12 +85,12 @@ TEST(log_char)
     CHECK_EQ(pipos_log_char((char)0xff), '?');
 }
 
-TEST(log_check)
+TEST(str_check)
 {
-    CHECK_EQ(pipos_log_check(0, 1), 0);
-    CHECK_EQ(pipos_log_check(255, 0), 255);
-    CHECK_EQ(pipos_log_check(-1, 1), -PIP_EINVAL);
-    CHECK_EQ(pipos_log_check(-1, 0), -PIP_EFAULT);
+    CHECK_EQ(pipos_str_check(0, 1), 0);
+    CHECK_EQ(pipos_str_check(255, 0), 255);
+    CHECK_EQ(pipos_str_check(-1, 1), -PIP_EINVAL);
+    CHECK_EQ(pipos_str_check(-1, 0), -PIP_EFAULT);
 }
 
 TEST(fault_names)
