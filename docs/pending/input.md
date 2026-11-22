@@ -32,6 +32,7 @@ Events come from the GPIO buttons and dial, the serial console and the script ch
 - Every input call takes new input first, so a ROM that only polls still sees events.
 - `wait_event` with timeout 0 does not block. Any other timeout is measured on the 1 MHz system timer, so it is never short. `PIP_WAIT_FOREVER` waits until an event comes.
 - `wait_event` checks `timeout_ms`, then `out`, before it waits. On a timeout it writes nothing.
+- `wait_event` returns `-PIP_ETIMEDOUT` only when no event is queued once the timeout has passed. An event that arrives just after the deadline, before the kernel checks, is returned. An event is never left in the queue behind a timeout result.
 - The kernel runs its main-loop work while `wait_event` blocks, so script commands still answer.
 - The kernel still prints an `ev=key` marker for every input event, also while an image runs.
 - Pip-OS does not turn on key repeat yet, so a ROM gets no repeat events today.
