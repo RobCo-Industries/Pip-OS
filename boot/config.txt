@@ -1,0 +1,11 @@
+kernel=PIPOS.IMG
+arm_64bit=0
+enable_uart=1
+disable_splash=1
+boot_delay=0
+gpu_mem=64
+hdmi_force_hotplug=1
+disable_overscan=1
+framebuffer_width=640
+framebuffer_height=480
+framebuffer_depth=32
