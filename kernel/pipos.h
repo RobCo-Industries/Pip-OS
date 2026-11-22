@@ -38,4 +38,10 @@ void pipos_poll(void);
 void pipos_screen_delay(uint32_t ms);
 void pipos_screen_line(const char *text);
 
+/*
+ * sys_gfx.c: on, the display shows black and present only updates the
+ * back buffer; off, the last presented frame (or the console) comes back.
+ */
+void pipos_gfx_blank(int on);
+
 #endif
