@@ -1,8 +1,8 @@
 """Helpers for the Pip-OS target tests: ROM files, cards and boots.
 
-ROM files follow IMAGE_FORMAT.md in RobCo-Core: a branch stub, a ROM1
-header with the META flag, a META block and a payload. tools/rimg.py from
-the submodule seals them. The payload never runs in these tests.
+Valid ROM files come from rimg.pack in RobCo-Core's tools/rimg.py. The
+broken ones start from a valid ROM and change one field. The payload
+never runs in these tests.
 """
 
 import contextlib
@@ -20,14 +20,9 @@ from harness.sdimage import make_sd_image
 
 TIMEOUT = 60
 READY = re.compile(r"@RC stage=pipos ev=ready rom=\d\n")
-SCREEN = re.compile(r"@RC stage=pipos ev=screen [^\n]*\n(.*?)@RC stage=pipos ev=screen_end\n",
-                    re.S)
 
 ROM_BASE = 0x00400000
 ROM_SIZE = 0x00400000
-BRANCH_SELF = 0xEAFFFFFE  # b .
-CMD_DUMP = "\x04"
-CMD_PANIC = "\x10"
 
 SCHEME_BG = {
     "green": (0x0A, 0x1A, 0x0E),
@@ -37,31 +32,38 @@ SCHEME_BG = {
 }
 
 
-def rom_header(file_size, mem_size, name=b"", version=0, flags=rimg.FLAG_META):
-    return struct.pack("<8sHHIIIIIIII16sI", b"ROM1\0\0\0\0", 1, 64, flags, ROM_BASE,
-                       file_size, mem_size, 0, 1 << 16, version, 0, name, 0)
+ICON = bytes((i * 37) & 0xFF for i in range(rimg.ICON_SIZE))
 
 
 def make_rom(name="DEITRIX", version="3.0.3", title="Deitrix test ROM", payload_size=4096):
-    """A sealed, valid ROM1 image."""
-    size = 0x120 + payload_size
-    data = bytearray(size)
-    struct.pack_into("<I", data, 0, BRANCH_SELF)
-    data[0x20:0x60] = rom_header(0, size + 0x10000)
-    data[0x60:0x60 + len(title)] = title.encode("ascii")
-    for i in range(payload_size):
-        data[0x120 + i] = (i * 7 + 3) & 0xFF
-    return rimg.seal(bytes(data), name=name, image_version=rimg.parse_version(version))
+    """A sealed, valid ROM1 image from rimg.pack, with a title and an icon."""
+    payload = bytes((i * 7 + 3) & 0xFF for i in range(payload_size))
+    return rimg.pack(payload, "ROM1", 0, ROM_BASE, name=name,
+                     image_version=rimg.parse_version(version),
+                     mem_size=0x120 + payload_size + 0x10000, title=title, icon=ICON)
+
+
+def reseal(data):
+    """Rewrites the CRC of a broken image, so only the intended fault remains."""
+    out = bytearray(data)
+    size = struct.unpack_from("<I", out, 0x34)[0]
+    struct.pack_into("<I", out, 0x3C, rimg.image_crc(out, size))
+    return bytes(out)
 
 
 def make_big_rom():
     """A ROM with a correct CRC that does not fit the 4 MiB slot."""
     size = ROM_SIZE + 0x1000
-    data = bytearray(size)
-    struct.pack_into("<I", data, 0, BRANCH_SELF)
-    data[0x20:0x60] = rom_header(size, size, b"BIGROM", rimg.parse_version("1.0.0"))
-    struct.pack_into("<I", data, 0x3C, rimg.image_crc(data, size))
-    return bytes(data)
+    data = bytearray(make_rom(name="BIGROM", version="1.0.0")).ljust(size, b"\0")
+    struct.pack_into("<II", data, 0x34, size, size)
+    return reseal(data)
+
+
+def make_rom_without_meta():
+    """A ROM1 image with a correct CRC whose header lacks the META flag."""
+    data = bytearray(make_rom())
+    struct.pack_into("<I", data, 0x2C, 0)
+    return reseal(data)
 
 
 def corrupt(data, offset=-1):
@@ -184,17 +186,16 @@ def wait_markers(vm, ev, count=1, timeout=TIMEOUT, **match):
         time.sleep(0.05)
 
 
+def dump_reply(vm):
+    """Runs the dump command on the script channel and returns its lines."""
+    reply = vm.script("dump", timeout=TIMEOUT)
+    assert reply.status == "ok", reply
+    return reply.lines
+
+
 def dump(vm):
-    """Asks the kernel for a screen dump and returns the rows."""
-    before = len(SCREEN.findall(vm.serial))
-    vm.send(CMD_DUMP)
-    deadline = time.monotonic() + TIMEOUT
-    while True:
-        found = SCREEN.findall(vm.serial)
-        if len(found) > before:
-            return [row[1:] for row in found[-1].splitlines()]
-        assert time.monotonic() < deadline, f"no screen dump\n{vm.serial}"
-        time.sleep(0.05)
+    """The screen rows from the dump command."""
+    return [line[1:] for line in dump_reply(vm) if line.startswith("|")]
 
 
 def screenshot(vm, tmp_path):
@@ -211,8 +212,8 @@ def no_exception(vm):
 
 
 @contextlib.contextmanager
-def booted(image, board, sd=None, **kwargs):
-    """Boots Pip-OS and waits for ev=ready."""
-    with boot(image, board, sd=sd, timeout=TIMEOUT, **kwargs) as vm:
+def booted(image, board, sd=None, serial2=True, **kwargs):
+    """Boots Pip-OS with the script channel and waits for ev=ready."""
+    with boot(image, board, sd=sd, serial2=serial2, timeout=TIMEOUT, **kwargs) as vm:
         vm.wait_for(READY, timeout=TIMEOUT)
         yield vm

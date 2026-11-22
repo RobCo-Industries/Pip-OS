@@ -23,7 +23,7 @@ What works now:
 What does not work yet:
 
 - Running a ROM. The kernel validates the ROM and stays in its main loop.
-- System calls. The interface is specified in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/spec/PIPOS_ABI.md).
+- System calls. The interface is specified in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/PIPOS_ABI.md).
 - Loading or running holotapes.
 - Save files.
 - The SPI display, battery monitoring and sensors.
@@ -54,7 +54,7 @@ make test BOARD=raspi0
 make run BOARD=raspi2b
 ```
 
-This builds `build/sd.img` with the kernel and a sample configuration and boots it with the serial console on the terminal. Press Ctrl-A, then X, to quit.
+This builds `build/sd.img` with the kernel and a sample configuration and boots it with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit.
 
 ## Prepare a card
 
@@ -78,9 +78,9 @@ Copy the files in `DIR` to the FAT32 boot partition of the card, then add `PIPBO
 
 RobCo-Core documents the library and the shared specifications:
 
-- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/guide/API.md)
-- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/spec/MEMORY_MAP.md)
-- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/2f5c7dcff7ab012170ae8c42bfeeedf8067256f7/docs/spec/PIPOS_ABI.md)
+- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/guide/API.md)
+- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/MEMORY_MAP.md)
+- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/PIPOS_ABI.md)
 
 ## Related projects
 

@@ -5,7 +5,8 @@ import pathlib
 import pytest
 
 from pipos_helpers import (SCHEME_BG, booted, config, config_issues, config_summary,
-                           corrupt, dump, make_big_rom, make_card, make_multi_card, make_rom,
+                           corrupt, dump, make_big_rom, make_card,
+                           make_rom_without_meta, make_multi_card, make_rom,
                            make_superfloppy_card, no_exception,
                            one, pipos_markers, rom_crc, screenshot)
 
@@ -97,10 +98,11 @@ def bad_roms(kernel_image):
         "crc": (corrupt(good), "ROM(1) NOT LOADED: CHECKSUM MISMATCH"),
         "magic": (pathlib.Path(kernel_image).read_bytes(), "ROM(1) NOT LOADED: NOT A ROM IMAGE"),
         "bounds": (make_big_rom(), "ROM(1) NOT LOADED: DOES NOT FIT THE ROM SLOT"),
+        "version": (make_rom_without_meta(), "ROM(1) NOT LOADED: UNKNOWN HEADER VERSION"),
     }
 
 
-@pytest.mark.parametrize("error", ["crc", "magic", "bounds"])
+@pytest.mark.parametrize("error", ["crc", "magic", "bounds", "version"])
 def test_bad_rom(board, kernel_image, tmp_path, need_mtools, error):
     data, line = bad_roms(kernel_image)[error]
     sd = make_card(tmp_path / "sd.img", {ROM: data})

@@ -1,4 +1,4 @@
-"""Boots without a card: boot text, markers, beep, golden screen, panic, RTC.
+"""Boots without a card: boot text, markers, beep, golden screen, commands, RTC.
 
 Set PIPOS_UPDATE_GOLDEN=1 to rewrite tests/golden/boot_nocard.png from the
 current run instead of comparing against it.
@@ -8,8 +8,10 @@ import os
 
 from PIL import Image
 
-from pipos_helpers import (CMD_PANIC, SCHEME_BG, TIMEOUT, booted, config_summary, dump,
-                           no_exception, one, pipos_markers, screenshot, wait_markers)
+from harness.boot import parse_markers
+
+from pipos_helpers import (SCHEME_BG, TIMEOUT, booted, config_summary, dump, dump_reply,
+                           no_exception, one, screenshot, wait_markers)
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden",
                       "boot_nocard.png")
@@ -49,11 +51,13 @@ def test_no_card(board, kernel_image):
         assert one(vm, "holo")["count"] == "0"
         assert one(vm, "ready")["rom"] == "0"
 
-        rows = dump(vm)
+        lines = dump_reply(vm)
+        rows = [line[1:] for line in lines if line.startswith("|")]
         assert rows[:len(BOOT_TEXT)] == BOOT_TEXT, rows
         assert not any(rows[len(BOOT_TEXT):]), rows
-        screen = [m for m in pipos_markers(vm, "screen")][-1]
-        assert screen["scheme"] == "green"
+        screen, end = parse_markers("\n".join([lines[0], lines[-1], ""]))
+        assert (screen["ev"], screen["scheme"]) == ("screen", "green"), lines
+        assert end["ev"] == "screen_end", lines
         # The same lines reach the UART.
         for line in BOOT_TEXT:
             assert line + "\n" in vm.serial
@@ -91,10 +95,27 @@ def test_golden_screen_no_card(board, kernel_image, tmp_path):
 
 def test_panic_path(board, kernel_image):
     with booted(kernel_image, board) as vm:
-        vm.send(CMD_PANIC)
+        # A panic never answers, so send the line instead of vm.script().
+        vm.send("panic requested by the test\n", port=1)
         vm.wait_for("ev=panic", timeout=TIMEOUT, line=True)
         panic = one(vm, "panic")
-        assert panic["msg"] == "panic_requested_on_the_console", vm.serial
+        assert panic["msg"] == "requested_by_the_test", vm.serial
+
+
+def test_state_command(board, kernel_image):
+    with booted(kernel_image, board) as vm:
+        reply = vm.script("state", timeout=TIMEOUT)
+        assert reply.status == "ok" and len(reply.lines) == 1, reply
+        state = dict(field.split("=") for field in reply.lines[0].split())
+        assert (state["ready"], state["rom"]) == ("1", "0"), reply
+        assert int(state["heap_free"]) > 0, reply
+
+
+def test_unknown_command(board, kernel_image):
+    with booted(kernel_image, board) as vm:
+        assert vm.script("panic", timeout=TIMEOUT) == ("err unknown command", [])
+        assert vm.script("dump now", timeout=TIMEOUT) == ("err unknown command", [])
+        no_exception(vm)
 
 
 def test_rtc_seeds_clock(board, kernel_image):

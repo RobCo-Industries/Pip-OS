@@ -12,12 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New layout: a top-level `Makefile`, `kernel/` for the sources, `tests/` for the tests.
 - The boot text now appears on the HDMI framebuffer and the serial console. The holotape and ROM lines report real checks.
 - CI calls the RobCo-Core reusable workflow and tests all four QEMU boards.
+- RobCo-Core moved to `061f224`. The host tests, the SD image, the target test setup, `make run` and the pin check now use the library's facilities instead of Pip-OS copies.
+- The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
 - MMU and caches, interrupts, a 100 Hz tick and a kernel heap.
 - Configuration from `/PIPBOY/PIPOS.CFG`. See [docs/CONFIG.md](docs/CONFIG.md).
 - ROM check: the kernel loads and validates `/PIPBOY/ROM1.ROM`. It does not run it.
 - Input from GPIO buttons, a dial, the serial console and the mini UART script channel.
+- The `state` command on the script channel: ready flag, ROM state and free heap.
+- A test for a ROM without the META flag.
 - Power-on beep, the RTC and the software clock.
 - A panic path, `pipos_panic()`.
 - Host unit tests and QEMU target tests with the RobCo-Core harness.
