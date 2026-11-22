@@ -43,3 +43,4 @@ TAGS
 .cache/
 __pycache__/
 *.pyc
+/build/*.log
