@@ -61,6 +61,41 @@ int gfx_image_end(gfx_surface_t *s, const gfx_state_t *saved, int kind)
     return 1;
 }
 
+void gfx_screen_start(gfx_screen_t *sc, int kind)
+{
+    sc->depth++;
+    if (kind == PIP_KIND_ROM) {
+        sc->shown = 0;
+    }
+}
+
+int gfx_screen_end(gfx_screen_t *sc, int kind)
+{
+    if (sc->depth > 0) {
+        sc->depth--;
+    }
+    if (kind != PIP_KIND_ROM) {
+        return GFX_SHOW_NONE;
+    }
+    sc->shown = 0;
+    return sc->blanked ? GFX_SHOW_NONE : GFX_SHOW_CONSOLE;
+}
+
+int gfx_screen_present(gfx_screen_t *sc)
+{
+    sc->shown = 1;
+    return sc->blanked ? GFX_SHOW_NONE : GFX_SHOW_BACK;
+}
+
+int gfx_screen_blank(gfx_screen_t *sc, int on)
+{
+    sc->blanked = on != 0;
+    if (sc->blanked) {
+        return GFX_SHOW_BLACK;
+    }
+    return sc->depth > 0 && sc->shown ? GFX_SHOW_BACK : GFX_SHOW_CONSOLE;
+}
+
 void gfx_set_color(gfx_surface_t *s, uint32_t fg, uint32_t bg)
 {
     s->st.fg = rgb(fg);

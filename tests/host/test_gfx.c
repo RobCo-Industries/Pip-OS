@@ -1003,3 +1003,35 @@ TEST(image_state)
     CHECK_EQ(gfx_image_end(&c.s, &saved, PIP_KIND_ROM), 1);
     done(&c);
 }
+
+TEST(screen_ownership_and_blank)
+{
+    gfx_screen_t sc;
+
+    memset(&sc, 0, sizeof(sc));
+    /* No image: blank off brings the console back. */
+    CHECK_EQ(gfx_screen_blank(&sc, 1), GFX_SHOW_BLACK);
+    CHECK_EQ(gfx_screen_blank(&sc, 0), GFX_SHOW_CONSOLE);
+    gfx_screen_start(&sc, PIP_KIND_ROM);
+    /* Before the first present the console stays: blank off redraws it. */
+    CHECK_EQ(gfx_screen_blank(&sc, 1), GFX_SHOW_BLACK);
+    CHECK_EQ(gfx_screen_blank(&sc, 0), GFX_SHOW_CONSOLE);
+    CHECK_EQ(gfx_screen_present(&sc), GFX_SHOW_BACK);
+    /* Blanked: present only updates the back buffer, blank off shows it. */
+    CHECK_EQ(gfx_screen_blank(&sc, 1), GFX_SHOW_BLACK);
+    CHECK_EQ(gfx_screen_present(&sc), GFX_SHOW_NONE);
+    CHECK_EQ(gfx_screen_blank(&sc, 0), GFX_SHOW_BACK);
+    /* A holotape ending leaves the screen to the ROM. */
+    gfx_screen_start(&sc, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(gfx_screen_end(&sc, PIP_KIND_HOLOTAPE), GFX_SHOW_NONE);
+    CHECK_EQ(gfx_screen_blank(&sc, 0), GFX_SHOW_BACK);
+    /* The ROM ending gives the screen back to the console. */
+    CHECK_EQ(gfx_screen_end(&sc, PIP_KIND_ROM), GFX_SHOW_CONSOLE);
+    CHECK_EQ(sc.depth, 0);
+    /* While blanked the console waits for blank off. */
+    gfx_screen_start(&sc, PIP_KIND_ROM);
+    CHECK_EQ(gfx_screen_present(&sc), GFX_SHOW_BACK);
+    CHECK_EQ(gfx_screen_blank(&sc, 1), GFX_SHOW_BLACK);
+    CHECK_EQ(gfx_screen_end(&sc, PIP_KIND_ROM), GFX_SHOW_NONE);
+    CHECK_EQ(gfx_screen_blank(&sc, 0), GFX_SHOW_CONSOLE);
+}

@@ -21,9 +21,7 @@
 
 static gfx_surface_t surf;
 static gfx_state_t rom_state;   /* the ROM's state while a holotape runs */
-static int image_depth;         /* images running */
-static int shown;               /* the running image called present */
-static int blanked;
+static gfx_screen_t screen;
 
 static uint32_t fg_default(void)
 {
@@ -53,18 +51,28 @@ static void show_console(void)
     console_set_scheme(console_scheme());
 }
 
-void pipos_gfx_blank(int on)
+static void show(int what)
 {
-    blanked = on != 0;
-    if (blanked) {
+    switch (what) {
+    case GFX_SHOW_BLACK:
         if (fb_get() != NULL) {
             fb_clear(fb_rgb(0, 0, 0));
         }
-    } else if (image_depth > 0 && shown) {
+        break;
+    case GFX_SHOW_BACK:
         (void)show_back_buffer();
-    } else {
+        break;
+    case GFX_SHOW_CONSOLE:
         show_console();
+        break;
+    default:
+        break;
     }
+}
+
+void pipos_gfx_blank(int on)
+{
+    show(gfx_screen_blank(&screen, on));
 }
 
 static int32_t sys_draw_line(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1, uint32_t a2,
@@ -231,19 +239,13 @@ static int32_t sys_text_metrics(const pipos_sys_ctx_t *ctx, uint32_t text, uint3
 static int32_t sys_present(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1, uint32_t a2,
                            uint32_t a3)
 {
-    int32_t rc;
+    const fb_info_t *fb = fb_get();
 
     (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
-    if (fb_get() == NULL ||
-        gfx_scale_factor(GFX_W, GFX_H, fb_get()->width, fb_get()->height) == 0) {
+    if (fb == NULL || gfx_scale_factor(GFX_W, GFX_H, fb->width, fb->height) == 0) {
         return -PIP_ENODEV;
     }
-    shown = 1;
-    if (blanked) {
-        return 0;
-    }
-    rc = show_back_buffer();
-    return rc;
+    return gfx_screen_present(&screen) == GFX_SHOW_BACK ? show_back_buffer() : 0;
 }
 
 static int32_t sys_set_font(const pipos_sys_ctx_t *ctx, uint32_t font, uint32_t a1, uint32_t a2,
@@ -303,21 +305,13 @@ void pipos_gfx_init(void)
 void pipos_gfx_image_start(int kind)
 {
     gfx_image_begin(&surf, &rom_state, kind, fg_default());
-    image_depth++;
-    if (kind == PIP_KIND_ROM) {
-        shown = 0;
-    }
+    gfx_screen_start(&screen, kind);
 }
 
 void pipos_gfx_image_end(int kind)
 {
-    image_depth--;
-    if (gfx_image_end(&surf, &rom_state, kind)) {
-        shown = 0;
-        if (!blanked) {
-            show_console();
-        }
-    }
+    (void)gfx_image_end(&surf, &rom_state, kind);
+    show(gfx_screen_end(&screen, kind));
 }
 
 void pipos_gfx_poll(void)

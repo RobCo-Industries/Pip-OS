@@ -43,6 +43,26 @@ void gfx_state_reset(gfx_surface_t *s, uint32_t fg);
 void gfx_image_begin(gfx_surface_t *s, gfx_state_t *saved, int kind, uint32_t fg);
 int gfx_image_end(gfx_surface_t *s, const gfx_state_t *saved, int kind);
 
+/*
+ * Who owns the display. Each function returns what to show now:
+ * GFX_SHOW_NONE leaves the display alone.
+ */
+enum { GFX_SHOW_NONE, GFX_SHOW_BLACK, GFX_SHOW_BACK, GFX_SHOW_CONSOLE };
+
+typedef struct gfx_screen {
+    int depth;      /* images running */
+    int shown;      /* the ROM called present since it started */
+    int blanked;
+} gfx_screen_t;
+
+void gfx_screen_start(gfx_screen_t *sc, int kind);
+/* GFX_SHOW_CONSOLE when a ROM ended on a lit display. */
+int gfx_screen_end(gfx_screen_t *sc, int kind);
+/* GFX_SHOW_BACK, or GFX_SHOW_NONE while blanked. */
+int gfx_screen_present(gfx_screen_t *sc);
+/* On: black. Off: the presented frame of a running image, else the console. */
+int gfx_screen_blank(gfx_screen_t *sc, int on);
+
 /* The calls. Each returns what the system call returns. */
 void gfx_set_color(gfx_surface_t *s, uint32_t fg, uint32_t bg);
 int32_t gfx_set_clip(gfx_surface_t *s, int32_t x, int32_t y, uint32_t wh);
