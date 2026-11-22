@@ -9,15 +9,6 @@ uint32_t pipos_version_pack(unsigned major, unsigned minor, unsigned patch)
            (uint32_t)(patch & 0xffu);
 }
 
-int pipos_sys_slot(uint32_t nr)
-{
-    if (nr < PIPOS_SYS_FIRST || nr - PIPOS_SYS_FIRST >= PIPOS_SYS_SLOTS ||
-        nr == PIP_SYS_POWER) {
-        return -1;
-    }
-    return (int)(nr - PIPOS_SYS_FIRST);
-}
-
 void pipos_startup_rom(pipos_startup_t *s)
 {
     k_memset(s, 0, sizeof(*s));
@@ -59,12 +50,12 @@ char pipos_log_char(char c)
     return '?';
 }
 
-long pipos_log_check(long strnlen_result, int whole_range_ok)
+long pipos_str_check(long strnlen_result, int whole_range_ok)
 {
     if (strnlen_result >= 0) {
         return strnlen_result;
     }
-    /* All 256 bytes were readable, so no NUL; otherwise a byte was outside. */
+    /* All the bytes were readable, so no NUL; otherwise a byte was outside. */
     return whole_range_ok ? -PIP_EINVAL : -PIP_EFAULT;
 }
 

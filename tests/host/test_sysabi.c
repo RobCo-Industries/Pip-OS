@@ -28,23 +28,6 @@ TEST(version_pack)
     CHECK_EQ(pipos_version_pack(0x1ffff, 0x1ff, 0x1ff), 0xFFFFFFFFu);
 }
 
-TEST(sys_slot)
-{
-    CHECK_EQ(pipos_sys_slot(0x42), 0);
-    CHECK_EQ(pipos_sys_slot(0x43), 1);
-    CHECK_EQ(pipos_sys_slot(0x46), 4);
-    CHECK_EQ(pipos_sys_slot(0x48), 6);
-    CHECK_EQ(pipos_sys_slot(0x49), 7);
-    CHECK_EQ(pipos_sys_slot(0x47), -1);     /* power: not in this step */
-    CHECK_EQ(pipos_sys_slot(0x4A), -1);
-    CHECK_EQ(pipos_sys_slot(0x41), -1);
-    CHECK_EQ(pipos_sys_slot(0x00), -1);
-    CHECK_EQ(pipos_sys_slot(0x01), -1);
-    CHECK_EQ(pipos_sys_slot(0x7F), -1);
-    CHECK_EQ(pipos_sys_slot(0xFFFFFFFFu), -1);
-    CHECK_EQ(pipos_sys_slot(0x80000042u), -1);
-}
-
 TEST(startup_block)
 {
     pipos_startup_t s;
@@ -102,12 +85,12 @@ TEST(log_char)
     CHECK_EQ(pipos_log_char((char)0xff), '?');
 }
 
-TEST(log_check)
+TEST(str_check)
 {
-    CHECK_EQ(pipos_log_check(0, 1), 0);
-    CHECK_EQ(pipos_log_check(255, 0), 255);
-    CHECK_EQ(pipos_log_check(-1, 1), -PIP_EINVAL);
-    CHECK_EQ(pipos_log_check(-1, 0), -PIP_EFAULT);
+    CHECK_EQ(pipos_str_check(0, 1), 0);
+    CHECK_EQ(pipos_str_check(255, 0), 255);
+    CHECK_EQ(pipos_str_check(-1, 1), -PIP_EINVAL);
+    CHECK_EQ(pipos_str_check(-1, 0), -PIP_EFAULT);
 }
 
 TEST(fault_names)

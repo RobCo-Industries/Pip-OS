@@ -1,6 +1,6 @@
 /*
  * Runs the loaded ROM in user mode with RobCo-Core's umode.h, then
- * reports how it ended. The system calls are in syscall.c.
+ * reports how it ended. The system calls are in syscall.c and sys_*.c.
  */
 #include <robco/cache.h>
 #include <robco/console.h>
@@ -9,6 +9,7 @@
 
 #include "bootlines.h"
 #include "pipos.h"
+#include "sys.h"
 #include "sysabi.h"
 
 /* The only memory the ROM can touch, both read-write. */
@@ -52,9 +53,10 @@ void pipos_rom_run(const loader_result_t *res)
     task.regions = rom_regions;
     task.region_count = sizeof(rom_regions) / sizeof(rom_regions[0]);
 
-    pipos_syscall_install();
+    pipos_sys_image_start(PIP_KIND_ROM);
     k_printf("@RC stage=" PIPOS_STAGE " ev=jump entry=0x%08x\n", (unsigned)task.entry);
     rc = umode_run(&task, &ex);
+    pipos_sys_image_end(PIP_KIND_ROM);
     if (rc != 0) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=error code=umode rc=%d\n", rc);
         return;
