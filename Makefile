@@ -28,8 +28,11 @@ HOST_TEST_DIR := tests/host
 HOST_SRCS     := $(PURE_SRCS)
 HOST_INCLUDES := kernel
 
-SDIMAGE_DIR := $(BUILD)/sdroot
-SDIMAGE_MIB ?= 64
+# `make sdimage`: the kernel, config.txt, a sample config and the
+# holotape directory. Set before the include: robco.mk reads them.
+SDIMAGE_MIB   ?= 64
+SDIMAGE_DEPS  := $(BUILD)/$(IMAGE).img
+SDIMAGE_FILES := boot/PIPOS.CFG:PIPBOY/PIPOS.CFG
 
 ifeq ($(wildcard $(ROBCO_CORE)/mk/robco.mk),)
 $(error $(ROBCO_CORE) is empty: run git submodule update --init)
@@ -79,16 +82,13 @@ test-host: check-pins check-pins-test build-dir-test
 
 # ---- Cards and QEMU -----------------------------------------------------
 
-# Extends the library's sdimage target, which packs $(SDIMAGE_DIR).
-.PHONY: sdroot run bootdir
-sdimage: sdroot
-
-sdroot: all
-	rm -rf $(SDIMAGE_DIR)
-	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(SDIMAGE_DIR) \
+# Runs after SDIMAGE_FILES are copied, before the card is packed.
+sdimage-stage::
+	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(SDIMAGE_STAGE) \
 	    --kernel-name PIPOS.IMG --no-firmware
-	mkdir -p $(SDIMAGE_DIR)/PIPBOY/HOLO
-	cp boot/PIPOS.CFG $(SDIMAGE_DIR)/PIPBOY/PIPOS.CFG
+	mkdir -p $(SDIMAGE_STAGE)/PIPBOY/HOLO
+
+.PHONY: run bootdir
 
 RUN_BOARD := $(if $(filter all,$(BOARD)),raspi2b,$(BOARD))
 run: sdimage
