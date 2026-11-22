@@ -115,7 +115,32 @@ build-dir-test:
 	tests/host/build_dir_test.sh
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
-test-host: check-pins check-pins-test build-dir-test
+test-host: check-pins check-pins-test build-dir-test libpip-host-test
+
+# libpip.a on the host: sdk/lib/ without the svc wrappers, and RobCo-Core's
+# string, printf and heap code. libpip_names.h renames the C library
+# functions to pipt_* in these objects so they do not replace the host's.
+# -UROBCO_HOST keeps k_string.c's memcpy, memmove, memset and memcmp.
+LIBPIP_HOST_SRCS := $(filter-out sdk/lib/syscall.c,$(sort $(wildcard sdk/lib/*.c))) \
+                    $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c alloc.c)
+LIBPIP_HOST_OBJS := $(addprefix $(HOST_BUILD)/libpip/,$(notdir $(LIBPIP_HOST_SRCS:.c=.o)))
+LIBPIP_HOST_HDRS := tests/host/libpip_names.h $(wildcard sdk/include/pipos/*.h) \
+                    $(ROBCO_CORE)/include/robco/klibc.h $(ROBCO_CORE)/include/robco/alloc.h
+
+.PHONY: libpip-host-test
+libpip-host-test: $(HOST_BUILD)/libpip_test
+	$(HOST_BUILD)/libpip_test
+
+define libpip_host_rule
+$(HOST_BUILD)/libpip/$(notdir $(1:.c=.o)): $(1) $(LIBPIP_HOST_HDRS)
+	@mkdir -p $$(dir $$@)
+	$$(HOST_CC) $$(HOST_CFLAGS) -UROBCO_HOST -fno-builtin -Isdk/include -include tests/host/libpip_names.h -c -o $$@ $$<
+endef
+$(foreach s,$(LIBPIP_HOST_SRCS),$(eval $(call libpip_host_rule,$(s))))
+
+$(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP_HOST_HDRS)
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(HOST_CFLAGS) -fno-builtin -Isdk/include -o $@ $< $(LIBPIP_HOST_OBJS)
 
 # ---- Cards and QEMU -----------------------------------------------------
 
