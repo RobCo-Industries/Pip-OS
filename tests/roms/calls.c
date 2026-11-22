@@ -1,7 +1,7 @@
 /*
  * Exercises every system call of this step and reports the results as
  * testrom markers: ticks and sleep, sys_info, mem_info, rand, log errors,
- * unknown numbers, bad out pointers and the callee-saved registers.
+ * numbers outside the table, bad out pointers and the callee-saved registers.
  */
 #include "rt.h"
 
@@ -150,9 +150,8 @@ static void unknown(void)
     rt_dec("n00", pip_syscall(0x00, 0, 0, 0, 0));
     rt_dec("n7f", pip_syscall(0x7f, 0, 0, 0, 0));
     rt_dec("nffffffff", pip_syscall(0xffffffffu, 0, 0, 0, 0));
-    rt_dec("n01", pip_syscall(PIP_SYS_DRAW_LINE, 0, 0, 0, 0));
-    rt_dec("n47", pip_syscall(PIP_SYS_POWER, 0, 0, 0, 0));
-    rt_dec("n4a", pip_syscall(PIP_SYS_SET_TIME, 0, 0, 0, 0));
+    rt_dec("n80", pip_syscall(0x80, 0, 0, 0, 0));
+    rt_dec("n14", pip_syscall(0x14, 0, 0, 0, 0));     /* a gap in the table */
     rt_end();
 }
 

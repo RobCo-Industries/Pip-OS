@@ -35,3 +35,41 @@ void rt_end(void)
     line[len] = '\0';
     pip_log(line);
 }
+
+static int checks_total, checks_failed;
+
+static int check_line(const char *name, int ok)
+{
+    checks_total++;
+    checks_failed += !ok;
+    rt_begin("check");
+    put(" name=%s", name, 0);
+    rt_dec("ok", ok ? 1 : 0);
+    return ok;
+}
+
+int rt_check(const char *name, int ok)
+{
+    ok = check_line(name, ok);
+    rt_end();
+    return ok;
+}
+
+int rt_check_eq(const char *name, int32_t got, int32_t expected)
+{
+    int ok = check_line(name, got == expected);
+
+    rt_dec("got", got);
+    rt_dec("expected", expected);
+    rt_end();
+    return ok;
+}
+
+int rt_checks_done(void)
+{
+    rt_begin("checks");
+    rt_dec("total", checks_total);
+    rt_dec("failed", checks_failed);
+    rt_end();
+    return checks_failed;
+}

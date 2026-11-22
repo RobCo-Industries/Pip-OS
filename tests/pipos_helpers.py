@@ -213,6 +213,77 @@ def screenshot(vm, tmp_path):
     return img
 
 
+def rom_markers(vm, ev):
+    """The "@RC stage=testrom ev=<ev>" markers a test ROM printed."""
+    return [m for m in vm.markers() if m.get("stage") == "testrom" and m.get("ev") == ev]
+
+
+def rom_one(vm, ev):
+    found = rom_markers(vm, ev)
+    assert len(found) == 1, f"expected one testrom ev={ev}, got {found}\n{vm.serial}"
+    return found[0]
+
+
+def rom_checks(vm):
+    """The named checks of a test ROM (rt_check in tests/roms/rt.h), in order.
+
+    Each is a dict with "name", "ok" (a bool) and, from rt_check_eq,
+    "got" and "expected" as ints.
+    """
+    out = []
+    for m in rom_markers(vm, "check"):
+        c = {"name": m["name"], "ok": m["ok"] == "1"}
+        for k in ("got", "expected"):
+            if k in m:
+                c[k] = int(m[k])
+        out.append(c)
+    return out
+
+
+def assert_rom_checks(vm, names):
+    """The ROM ran exactly these checks, in this order, all passed, and printed its summary."""
+    checks = rom_checks(vm)
+    assert [c["name"] for c in checks] == list(names), vm.serial
+    failed = [c for c in checks if not c["ok"]]
+    assert not failed, f"failed checks: {failed}"
+    assert rom_one(vm, "checks") == {"stage": "testrom", "ev": "checks",
+                                     "total": str(len(names)), "failed": "0"}, vm.serial
+
+
+ABI_H = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "sdk", "include", "pipos", "abi.h")
+
+
+def abi_syscalls():
+    """{number: name} of every call in sdk/include/pipos/abi.h's PIP_SYSCALLS table."""
+    with open(ABI_H) as f:
+        src = f.read()
+    numbers = {m[1]: int(m[2], 16)
+               for m in re.finditer(r"#define PIP_SYS_(\w+)\s+(0x[0-9A-Fa-f]+)", src)}
+    table = re.search(r"#define PIP_SYSCALLS\(X\)((?:.*\\\n)*.*)", src)[1]
+    return {numbers[n]: name for n, name in re.findall(r"X\((\w+), (\w+)\)", table)}
+
+
+def served_syscalls(vm):
+    """The numbers the kernel serves, from its ev=syscalls marker."""
+    mask = int(one(vm, "syscalls")["served"], 16)
+    return {n for n in range(128) if mask >> n & 1}
+
+
+SERVED_MAGIC = b"PIPOS-SERVED-MAP"
+
+
+def with_served_map(rom, served):
+    """The enosys test ROM with its served_map set to `served`, resealed."""
+    data = bytearray(rom)
+    at = data.find(SERVED_MAGIC)
+    assert at > 0 and data.find(SERVED_MAGIC, at + 1) < 0, "no single served_map in the ROM"
+    mask = sum(1 << n for n in served)
+    struct.pack_into("<4I", data, at + len(SERVED_MAGIC),
+                     *((mask >> (32 * i)) & 0xFFFFFFFF for i in range(4)))
+    return reseal(data)
+
+
 def no_exception(vm):
     assert not [m for m in vm.markers() if m.get("ev") in ("exception", "panic")], vm.serial
 
