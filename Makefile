@@ -9,6 +9,8 @@
 #   make check-pins-test      the pin check works without git
 #   make sdimage              build/sd.img with the kernel and a sample config
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
+#                             (WINDOW=1 also opens the display window)
+#   make test-roms            build/roms/*.rom from tests/roms/
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
 
 ROBCO_CORE := external/robco-core
