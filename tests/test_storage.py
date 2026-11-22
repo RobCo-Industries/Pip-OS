@@ -9,8 +9,8 @@ import subprocess
 
 from harness.boot import boot
 
-from pipos_helpers import (READY, TIMEOUT, assert_rom_checks, booted, make_card, no_exception, one,
-                           rom_markers, rom_one)
+from pipos_helpers import (READY, TIMEOUT, assert_rom_checks, booted, config, config_summary,
+                           make_card, no_exception, one, rom_markers, rom_one)
 
 ROM = "PIPBOY/ROM1.ROM"
 SAVE_DIR = "PIPBOY/SAVE"
@@ -237,3 +237,69 @@ def test_oversized_saves(board, kernel_image, test_rom, tmp_path, need_mtools):
     run_rom(kernel_image, board, sd, names)
     assert card_names(sd, SAVE_DIR) == ["BIGW.SAV"]
     assert card_read(sd, SAVE_DIR + "/BIGW.SAV") == b"fresh"
+
+
+def set_alias(sd, old, new):
+    """Gives the one directory entry whose 8.3 name is `old` the 8.3 name `new`.
+
+    A FAT directory is an array of 32-byte entries. Bytes 0-10 of an 8.3
+    entry hold the name, base padded to 8 and extension to 3, and byte 11
+    the attributes. Its long name sits in the entries just before it, which
+    have attribute 0x0F and, at byte 13, a checksum of those 11 bytes. FatFs
+    drops a long name whose checksum does not match, so both change.
+    """
+    def field(name):
+        base, _, ext = name.partition(".")
+        return base.ljust(8).encode() + ext.ljust(3).encode()
+
+    def checksum(sfn):
+        s = 0
+        for b in sfn:
+            s = (((s & 1) << 7) + (s >> 1) + b) & 0xFF
+        return s
+
+    img = bytearray(open(sd, "rb").read())
+    hits = [at for at in range(PART_OFFSET, len(img), 32)
+            if img[at:at + 11] == field(old) and img[at + 11] == 0x10
+            and img[at - 32 + 11] == 0x0F]
+    assert len(hits) == 1, hits
+    at = hits[0]
+    img[at:at + 11] = field(new)
+    lfn = at - 32
+    while img[lfn + 11] == 0x0F:
+        img[lfn + 13] = checksum(field(new))
+        lfn -= 32
+    open(sd, "wb").write(img)
+
+
+ALIAS_CHECKS = [
+    "card", "root_lists_pip", "pip_lists_save", "listed_usable",
+    "ls_alias", "ls_alias_lower", "open_alias", "open_alias_pip", "open_alias_save",
+    "ls_plain", "open_plain", "ls_neighbour", "ls_neighbour_name", "open_neighbour",
+    "open_savega", "save_read", "save_write", "save_read_back",
+]
+
+
+def test_save_folder_alias(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """A PC tool can give PIPBOY or SAVE an 8.3 alias that is not its name."""
+    for entry, pip, save in (("SAVE", "PIPBOY", "SAVE~1"), ("PIPBOY", "VAULT111", "SAVE")):
+        # Mixed case makes mtools store a long name next to the 8.3 name.
+        sd = make_card(tmp_path / f"{entry}.img", {
+            "Pipboy/ROM1.ROM": test_rom("storage_alias"),
+            "Pipboy/PIPOS.CFG": config("amber"),
+            "Pipboy/Save/A.SAV": b"secret",
+            "Pipboy/LongFolder/N.TXT": b"neighbour\n",
+            "SaveGames/G.TXT": b"g",
+            "CARD.TXT": f"{pip} {save}".encode(),
+        })
+        set_alias(sd, entry, {"SAVE": save, "PIPBOY": pip}[entry])
+        listing = _mtools("mdir", "-i", f"{os.fspath(sd)}@@{PART_OFFSET}", "::" + pip)
+        assert save.encode() in listing and b"Save" in listing, listing
+        assert card_read(sd, SAVE_DIR + "/A.SAV") == b"secret"
+        with booted(kernel_image, board, sd=sd) as vm:
+            assert config_summary(vm)["scheme"] == "amber"
+            assert_rom_checks(vm, ALIAS_CHECKS)
+            assert one(vm, "rom_exit")["status"] == "0", vm.serial
+            no_exception(vm)
+        assert card_read(sd, SAVE_DIR + "/ALIAS.SAV") == b"fresh"
+        assert card_read(sd, f"{pip}/{save}/A.SAV") == b"secret"
