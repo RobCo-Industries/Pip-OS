@@ -43,6 +43,17 @@ Write commit messages with a short summary line in the present tense, a blank li
 - Code must build for ARMv6: the same image runs on the Pi Zero.
 - New behaviour needs a target test in `tests/` that checks a marker or the screen.
 
+### System-call groups
+
+Each group of system calls lives in `kernel/sys_<group>.c` and exports the interface in `kernel/sys.h`: a table of `PIPOS_SYS_ENTRY(GROUP, NAME, handler)` lines and four hooks, `init`, `image_start`, `image_end` and `poll`. The dispatcher in `kernel/syscall.c` finds every group. A group PR touches only its own files:
+
+- Calls: add handlers and table lines in `kernel/sys_<group>.c`. More kernel files: add `kernel/sys_<group>_<part>.c`; the `Makefile` builds every `kernel/*.c`.
+- Pure code for host tests: one line in the sorted `PURE_SRCS` list of the `Makefile`, and `tests/host/test_<name>.c`.
+- Test ROMs: `tests/roms/<name>.c`, or a folder with its own `Makefile`. Target tests: `tests/test_<group>.py`. See [Writing a test ROM](docs/TESTING.md#writing-a-test-rom).
+- Docs: `docs/pending/<group>.md` and `docs/pending/<group>.changelog.md`. See [docs/pending/README.md](docs/pending/README.md).
+
+Handlers check every pointer with the `pipos_user_*` helpers of `sys.h` and refuse holotapes with `pipos_sys_rom_only()` where the ABI says ROM only. A served call drops out of the `-PIP_ENOSYS` test by itself.
+
 ### Coding style
 
 - C11 with GNU extensions, 4-space indentation, no tabs.

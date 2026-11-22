@@ -151,6 +151,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `card` | `rc` | `ok`, `nocard`, `nopart` or `nomount` |
 | `mount` | `part type lba blocks` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. |
 | `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep` | A configuration problem, or the summary. See [CONFIG.md](CONFIG.md). |
+| `syscalls` | `served` | The calls the kernel serves: a 128-bit hex number, bit n set for call n |
 | `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/` |
 | `load` | `path size crc addr name` | The ROM passed every check |
 | `error` | `code path` | The ROM failed. `code` is a `rimg` error name. |

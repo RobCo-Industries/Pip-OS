@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The kernel serves system calls from one table per group, in `kernel/sys_<group>.c`. `kernel/syscall.c` keeps the dispatcher. A number listed twice or by the wrong group stops the boot.
+- The pure pointer checks for system calls are shared helpers in `kernel/sysdispatch.c`.
 - `sleep_ms` returns `-PIP_ERANGE` at once for `ms` above `0x7FFFFFFF`. Before, a value near `UINT32_MAX` slept forever.
 - The `pip_*` syscall wrappers are functions in `libpip.a` instead of `static inline` functions in `syscall.h`.
 - The test ROMs build through `pipos-app.mk` into `build/roms/<name>/<name>.rom`.
@@ -21,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- `abi.h` has every struct, constant and limit of the ABI, with build-time size and offset checks, and the `PIP_SYSCALLS` table.
+- `libpip.a` has a `pip_<name>()` wrapper for every call, plus `pip_rect_xywh()` and `pip_set_clip_xywh()`.
+- The `ev=syscalls` marker lists the calls the kernel serves.
+- A target test checks that every call the kernel does not serve returns `-PIP_ENOSYS`.
+- `tests/roms/rt.h` has named checks for test ROMs.
 - `libpip.a`: syscall wrappers, `memcpy` and the other string functions, `pip_snprintf` and `pip_printf`, and a heap with `pip_malloc` and `pip_free`.
 - `sdk/pipos-app.mk` builds, seals and verifies a ROM or a holotape. `sdk/holotape.ld` links at `0x00800000`.
 - `sdk/examples/hello` and the ROM developer guide, [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md).

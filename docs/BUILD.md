@@ -47,7 +47,9 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 |---|---|
 | `Makefile` | Includes `external/robco-core/mk/robco.mk` and `mk/host.mk` and adds the test, card and QEMU targets |
 | `kernel/` | Kernel sources and `robco_config.h` |
-| `kernel/settings.c`, `kernel/bootlines.c`, `kernel/sysabi.c` | Pure code, also built for the host tests |
+| `kernel/syscall.c`, `kernel/sys.h` | The system-call dispatcher and the interface of the call groups |
+| `kernel/sys_<group>.c` | One group of system calls each: `system`, `gfx`, `input`, `audio`, `time`, `storage`, `holo` |
+| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: `kernel/bootlines.c`, `kernel/settings.c`, `kernel/sysabi.c`, `kernel/sysdispatch.c` |
 | `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk` and `examples/hello` |
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |

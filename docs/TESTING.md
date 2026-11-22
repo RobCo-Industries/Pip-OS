@@ -13,9 +13,9 @@
 
 ## Host tests
 
-`tests/host/test_<name>.c` files test the pure kernel code: configuration parsing in `kernel/settings.c`, boot line formatting in `kernel/bootlines.c`, and the pure parts of the ROM runner and system calls in `kernel/sysabi.c`. `test_sysabi.c` also checks the struct sizes and offsets of `sdk/include/pipos/abi.h`. They use RobCo-Core's framework, `external/robco-core/tests/host/rc_test.h`.
+`tests/host/test_<name>.c` files test the pure kernel code: configuration parsing in `kernel/settings.c`, boot line formatting in `kernel/bootlines.c`, the pure parts of the ROM runner in `kernel/sysabi.c`, and the dispatcher index and pointer helpers in `kernel/sysdispatch.c`. `test_abi.c` checks `sdk/include/pipos/abi.h` against the spec: struct sizes and offsets, call numbers, constants. `test_sdk_calls.c` builds the wrappers of `sdk/lib/syscall.c` with a fake `pip_syscall()` and checks the number and arguments each one passes. They use RobCo-Core's framework, `external/robco-core/tests/host/rc_test.h`. Every `test_*.c` file is found by wildcard.
 
-RobCo-Core's `mk/host.mk` builds them. The `Makefile` sets `HOST_TEST_DIR`, `HOST_SRCS` to the pure kernel files and `HOST_INCLUDES` to `kernel` and `sdk/include`. Each test links those files and the pure library, `external/robco-core/src/lib/`. It builds with `-Wall -Wextra -Werror` and with ASan and UBSan when the compiler supports them. `HOST_CC` picks the compiler, `HOST_SANITIZE=0` turns the sanitizers off. `make test-host` also runs the pin check, its test and three shell tests:
+RobCo-Core's `mk/host.mk` builds them. The `Makefile` sets `HOST_TEST_DIR`, `HOST_SRCS` to the pure kernel files of `PURE_SRCS` and `HOST_INCLUDES` to `kernel` and `sdk/include`. Each test links those files and the pure library, `external/robco-core/src/lib/`. It builds with `-Wall -Wextra -Werror` and with ASan and UBSan when the compiler supports them. `HOST_CC` picks the compiler, `HOST_SANITIZE=0` turns the sanitizers off. `make test-host` also runs the pin check, its test and three shell tests:
 
 | Script | Checks |
 |---|---|
@@ -35,13 +35,14 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_boot.py` | Boot without a card: markers, boot text on the screen and the UART, input backends, power-on beep, the golden screen, the script commands, the RTC |
 | `tests/test_card.py` | Boot with a card: a valid ROM, bad ROMs, a missing ROM, configuration values and errors, colour schemes, the holotape line, the default card from `make sdimage` running the hello example |
 | `tests/test_input.py` | Events from the script channel and the serial console, control characters included |
+| `tests/test_syscalls.py` | The served numbers in the `ev=syscalls` marker, and `-PIP_ENOSYS` from every call of `abi.h` the kernel does not serve |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
 
 Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` in `tests/pipos_helpers.py` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
 ## Test ROMs
 
-`tests/roms/` holds small ROMs in C. `make` builds each one through `sdk/pipos-app.mk` into `build/roms/<name>/<name>.rom`. They share one `libpip.a` and `rt.c`, which formats the marker lines. The `test_rom` fixture reads them, and each test puts one on its card as `/PIPBOY/ROM1.ROM`. The ROMs report results through the `log` call as `@RC stage=testrom` lines.
+`tests/roms/` holds small ROMs in C. `make` finds them by wildcard and builds each one through `sdk/pipos-app.mk` into `build/roms/<name>/<name>.rom`. They share one `libpip.a` and `rt.c`, which formats the marker lines. The `test_rom` fixture reads them, and each test puts one on its card as `/PIPBOY/ROM1.ROM`. The ROMs report results through the `log` call as `@RC stage=testrom` lines.
 
 | ROM | Does |
 |---|---|
@@ -52,7 +53,34 @@ Each card test builds its own SD card image with mtools in a temporary directory
 | `calls` | Calls each system call, with good and bad arguments, `sleep_ms` with `0x80000000` and `0xFFFFFFFF`, and sleeps from 1 ms to 50 ms timed with `ticks_ms`. `regs.S` checks r4 to r11, sp and lr across a call. |
 | `fault_<case>` | One fault each, from `fault.c`: `wrkern`, `rdperiph`, `jmpkern`, `undef`, `priv`, `null`. It logs the faulting address first. |
 | `sleep`, `spin` | Never end, with and without `sleep_ms` |
+| `enosys` | Calls each number of `PIP_SYSCALLS` that the kernel does not serve. `test_syscalls.py` writes the served numbers into the ROM's `served_map` and reseals it before the boot. |
 | `sdkcheck` | A ROM project of its own in `tests/roms/sdkcheck/`, built only with `pipos-app.mk` and `libpip.a`. It checks printf through `log`, the string functions, and heap exhaustion and recovery, and prints one `ev=check name=<name> ok=<0\|1>` line per check. |
+
+## Writing a test ROM
+
+1. Add `tests/roms/<name>.c`. It includes `rt.h` and defines `int pip_main(const pipos_startup_t *)`. `make` builds it with `rt.c` into `build/roms/<name>/<name>.rom`. A ROM with several files is a folder `tests/roms/<name>/` with its own `Makefile`, like `sdkcheck`.
+2. Report each result with a named check. `rt_check(name, ok)` prints `ev=check name=<name> ok=<0|1>`. `rt_check_eq(name, got, expected)` adds `got=` and `expected=`. End with `rt_checks_done()`, which prints `ev=checks total=<n> failed=<n>`. Names have no spaces.
+3. Add `tests/test_<topic>.py`. Put the ROM on a card and boot it, then call `assert_rom_checks(vm, names)` from `pipos_helpers.py`. It asserts the list of names, that each passed, and the summary. `rom_checks(vm)` returns the checks as dicts with `name`, `ok`, `got` and `expected`, for tests that look closer.
+
+```c
+#include "rt.h"
+
+int pip_main(const pipos_startup_t *startup)
+{
+    (void)startup;
+    rt_check_eq("ticks_positive", pip_ticks_ms() >= 0, 1);
+    rt_check_eq("bad_number", pip_syscall(0x7f, 0, 0, 0, 0), -PIP_ENOSYS);
+    return rt_checks_done();
+}
+```
+
+```python
+def test_mine(board, kernel_image, test_rom, tmp_path, need_mtools):
+    sd = make_card(tmp_path / "sd.img", {"PIPBOY/ROM1.ROM": test_rom("mine")})
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert_rom_checks(vm, ["ticks_positive", "bad_number"])
+        assert one(vm, "rom_exit")["status"] == "0"
+```
 
 On `raspi0` and `raspi1ap` the `jmpkern` test asserts `rom_kill reason=undef` at the kernel's first privileged instruction, read from `pipos.elf` with `arm-none-eabi-objdump`. It fails if QEMU starts to raise the prefetch abort there. See [BOOT.md](BOOT.md#running-the-rom).
 
