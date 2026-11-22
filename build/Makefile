@@ -39,7 +39,7 @@ ARMGNU_VERSION := $(shell $(CC) -dumpversion 2>/dev/null || echo "13.2.1")
 ARMGNU_PATH := $(shell dirname $(shell dirname $(shell which $(CC) 2>/dev/null || echo "/usr/bin/$(CC)")) 2>/dev/null || echo "/usr")
 
 # Bare metal compilation flags
-CFLAGS += -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding
+CFLAGS += -std=gnu11 -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding
 
 # Disable specific warnings
 CFLAGS += -Wno-int-to-pointer-cast
@@ -120,7 +120,7 @@ endif
 all: $(KERNEL).img
 
 run: $(KERNEL).img
-	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL).img
+	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL).elf
 
 clean:
 	@rm -rf $(OBJ_DIR) 2> /dev/null || true
