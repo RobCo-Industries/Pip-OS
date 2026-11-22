@@ -20,13 +20,9 @@ from harness.sdimage import make_sd_image
 
 TIMEOUT = 60
 READY = re.compile(r"@RC stage=pipos ev=ready rom=\d\n")
-SCREEN = re.compile(r"@RC stage=pipos ev=screen [^\n]*\n(.*?)@RC stage=pipos ev=screen_end\n",
-                    re.S)
 
 ROM_BASE = 0x00400000
 ROM_SIZE = 0x00400000
-CMD_DUMP = "\x04"
-CMD_PANIC = "\x10"
 
 SCHEME_BG = {
     "green": (0x0A, 0x1A, 0x0E),
@@ -190,17 +186,16 @@ def wait_markers(vm, ev, count=1, timeout=TIMEOUT, **match):
         time.sleep(0.05)
 
 
+def dump_reply(vm):
+    """Runs the dump command on the script channel and returns its lines."""
+    reply = vm.script("dump", timeout=TIMEOUT)
+    assert reply.status == "ok", reply
+    return reply.lines
+
+
 def dump(vm):
-    """Asks the kernel for a screen dump and returns the rows."""
-    before = len(SCREEN.findall(vm.serial))
-    vm.send(CMD_DUMP)
-    deadline = time.monotonic() + TIMEOUT
-    while True:
-        found = SCREEN.findall(vm.serial)
-        if len(found) > before:
-            return [row[1:] for row in found[-1].splitlines()]
-        assert time.monotonic() < deadline, f"no screen dump\n{vm.serial}"
-        time.sleep(0.05)
+    """The screen rows from the dump command."""
+    return [line[1:] for line in dump_reply(vm) if line.startswith("|")]
 
 
 def screenshot(vm, tmp_path):
@@ -217,8 +212,8 @@ def no_exception(vm):
 
 
 @contextlib.contextmanager
-def booted(image, board, sd=None, **kwargs):
-    """Boots Pip-OS and waits for ev=ready."""
-    with boot(image, board, sd=sd, timeout=TIMEOUT, **kwargs) as vm:
+def booted(image, board, sd=None, serial2=True, **kwargs):
+    """Boots Pip-OS with the script channel and waits for ev=ready."""
+    with boot(image, board, sd=sd, serial2=serial2, timeout=TIMEOUT, **kwargs) as vm:
         vm.wait_for(READY, timeout=TIMEOUT)
         yield vm

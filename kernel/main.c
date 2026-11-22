@@ -26,9 +26,10 @@
 #include "bootlines.h"
 #include "pipos.h"
 
-/* Test commands on the serial console, sent as control characters. */
-#define CMD_DUMP   0x04 /* Ctrl-D: dump the screen as text */
-#define CMD_PANIC  0x10 /* Ctrl-P: take the panic path */
+/* State the script command "state" reports. */
+static int ready_flag;
+static int rom_loaded;
+static input_script_reply_t *dump_reply;
 
 static const struct {
     unsigned pin, code;
@@ -91,6 +92,49 @@ static void start_tick(void)
     k_printf("@RC stage=" PIPOS_STAGE " ev=tick hz=%u\n", (unsigned)tick_hz());
 }
 
+static void dump_char(char c)
+{
+    char s[2] = { c, '\0' };
+
+    dump_reply->write(s);
+}
+
+/* Project commands on the script channel: dump, state, panic <reason>. */
+static int script_command(int argc, char *argv[], input_script_reply_t *reply, void *ctx)
+{
+    static char why[PIPOS_LINE_MAX];
+    k_heap_stats_t heap;
+    char line[64];
+    size_t n = 0;
+    int i;
+
+    (void)ctx;
+    if (k_strcmp(argv[0], "dump") == 0 && argc == 1) {
+        dump_reply = reply;
+        console_dump(dump_char);
+        return 0;
+    }
+    if (k_strcmp(argv[0], "state") == 0 && argc == 1) {
+        k_heap_stats(&heap);
+        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u\n", ready_flag,
+                   rom_loaded, (unsigned)heap.free);
+        reply->write(line);
+        return 0;
+    }
+    if (k_strcmp(argv[0], "panic") == 0 && argc >= 2) {
+        for (i = 1; i < argc; i++) {
+            n += (size_t)k_snprintf(why + n, sizeof(why) - n, "%s%s", i > 1 ? " " : "",
+                                    argv[i]);
+            if (n >= sizeof(why)) {
+                break;
+            }
+        }
+        pipos_panic(why);
+    }
+    reply->reason = "unknown command";
+    return -1;
+}
+
 static void start_input(void)
 {
     int mini = uart_mini_init(115200);
@@ -113,6 +157,7 @@ static void start_input(void)
         gpio = input_gpio_start(PIPOS_TICK_HZ, PIPOS_DEBOUNCE_MS);
     }
     serial = input_serial_start(INPUT_SERIAL_MAIN);
+    input_script_set_handler(script_command, NULL);
     if (mini == 0) {
         script = input_script_start();
     }
@@ -224,11 +269,6 @@ static void main_loop(void)
             continue;
         }
         report_event(&ev);
-        if (ev.type == INPUT_EV_CHAR && ev.code == CMD_DUMP) {
-            console_dump(uart_putc);
-        } else if (ev.type == INPUT_EV_CHAR && ev.code == CMD_PANIC) {
-            pipos_panic("panic requested on the console");
-        }
     }
 }
 
@@ -258,6 +298,8 @@ void robco_main(void)
     apply_settings(&settings);
 
     rom = boot_screen(card);
+    rom_loaded = rom;
+    ready_flag = 1;
     k_printf("@RC stage=" PIPOS_STAGE " ev=ready rom=%d\n", rom);
     main_loop();
 }

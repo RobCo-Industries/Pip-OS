@@ -30,4 +30,10 @@ def test_serial_console_keys(board, kernel_image):
         vm.send("\x1b[B")
         wait_markers(vm, "key", count=2, src="serial")
         assert keys(vm, "serial")[:2] == [("key", "down", "1"), ("key", "down", "0")]
+        # Control characters are plain input: dump and panic left the console.
+        vm.send("\x04\x10")
+        wait_markers(vm, "key", count=2, src="serial", type="char")
+        assert keys(vm, "serial")[2:] == [("char", "4", "0"), ("char", "16", "0")]
+        assert "ev=screen" not in vm.serial
+        no_exception(vm)
         assert one(vm, "ready")["rom"] == "0"
