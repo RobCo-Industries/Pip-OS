@@ -16,13 +16,22 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 6 | Input: GPIO buttons and dial, serial console, script channel on the mini UART | `ev=input` |
 | 7 | Audio. QEMU has no PWM, so the trace backend is picked there. | `ev=audio_init` |
 | 8 | I2C and the RTC. A chip that answers sets the software clock. | `ev=clock` |
-| 9 | SD card and its first FAT partition | `ev=card`, `ev=mount` |
+| 9 | SD card and the first partition that mounts as FAT, see [The card](#the-card) | `ev=card`, `ev=mount` |
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
 | 13 | Main loop | `ev=ready` |
 
 A failed card, file or configuration step never stops the boot. A failure in steps 2 to 5 calls `pipos_panic()`.
+
+## The card
+
+The kernel reads the four primary MBR entries and mounts the first one that holds a FAT volume:
+
+1. Entries with a FAT type byte (`0x01`, `0x04`, `0x06`, `0x0B`, `0x0C`, `0x0E`), in slot order.
+2. Then the other entries, in slot order. Some tools write a wrong type byte, and the mount reads the boot sector anyway.
+
+Extended (`0x05`, `0x0F`) and GPT (`0xEE`) entries are skipped. A card with no partition table whose block 0 is a FAT boot sector mounts as a whole. When no entry mounts, `ev=card` reports `rc=nomount` with the last file system error.
 
 ## Boot text
 
@@ -96,7 +105,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `audio_init` | `rc backend probe` | Audio backend, `pwm` or `trace` |
 | `clock` | `rtc time` | `rtc=present` or `absent`. `time` in ISO form, or `unset`. |
 | `card` | `rc` | `ok`, `nocard`, `nopart` or `nomount` |
-| `mount` | `lba blocks` | The FAT partition |
+| `mount` | `part type lba blocks` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. |
 | `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep` | A configuration problem, or the summary. See [CONFIG.md](CONFIG.md). |
 | `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/` |
 | `load` | `path size crc addr name` | The ROM passed every check |

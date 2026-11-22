@@ -16,35 +16,82 @@
 #define VOL(path)       PIPOS_VOLUME ":" path
 #define CFG_TEXT_MAX    4096u
 
-static part_info_t part;
+static part_info_t parts[PART_MAX];
 static blk_dev_t part_dev;
 static char cfg_text[CFG_TEXT_MAX];
 
+static int is_fat_type(uint8_t type)
+{
+    return type == PART_TYPE_FAT12 || type == PART_TYPE_FAT16_SM || type == PART_TYPE_FAT16 ||
+           type == PART_TYPE_FAT32 || type == PART_TYPE_FAT32_LBA || type == PART_TYPE_FAT16_LBA;
+}
+
+static int is_container_type(uint8_t type)
+{
+    return type == PART_TYPE_EXTENDED || type == PART_TYPE_EXT_LBA || type == PART_TYPE_GPT;
+}
+
+static int try_mount(part_info_t *p)
+{
+    int rc = part_open(sd_blkdev(), p, &part_dev);
+
+    if (rc == 0) {
+        rc = fs_mount(PIPOS_VOLUME, &part_dev);
+    }
+    return rc;
+}
+
+/*
+ * Mounts the first entry that holds a FAT volume. FAT type bytes go first,
+ * in slot order, then the other entries, because some tools write a wrong
+ * type byte. fs_mount() reads the boot sector, so a wrong guess just fails.
+ * Extended and GPT entries never hold a FAT volume and are skipped.
+ */
 int pipos_card_mount(void)
 {
+    part_info_t *used = NULL;
     int rc = sd_init();
-    int n;
+    int n, pass, i;
 
     if (rc != 0) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nocard sd=%d\n", rc);
         return 0;
     }
-    n = part_scan(sd_blkdev(), &part, 1);
+    n = part_scan(sd_blkdev(), parts, PART_MAX);
     if (n < 1) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nopart part=%d\n", n);
         return 0;
     }
-    rc = part_open(sd_blkdev(), &part, &part_dev);
-    if (rc == 0) {
-        rc = fs_mount(PIPOS_VOLUME, &part_dev);
+    rc = FS_ERR_NOFS;
+    for (pass = 0; pass < 2 && used == NULL; pass++) {
+        for (i = 0; i < n && used == NULL; i++) {
+            part_info_t *p = &parts[i];
+
+            int fat = p->superfloppy || is_fat_type(p->type);
+
+            if (is_container_type(p->type) || fat != (pass == 0)) {
+                continue;
+            }
+            rc = try_mount(p);
+            if (rc == 0) {
+                used = p;
+            }
+        }
     }
-    if (rc != 0) {
+    if (used == NULL) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nomount fs=%d\n", rc);
         return 0;
     }
     k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=ok\n");
-    k_printf("@RC stage=" PIPOS_STAGE " ev=mount lba=%u blocks=%u\n",
-             (unsigned)part.start_lba, (unsigned)part.block_count);
+    /* part is the MBR slot 0 to 3, or "whole" for a card without a table. */
+    if (used->superfloppy) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=mount part=whole type=0x00 lba=%u blocks=%u\n",
+                 (unsigned)used->start_lba, (unsigned)used->block_count);
+    } else {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=mount part=%u type=0x%02x lba=%u blocks=%u\n",
+                 (unsigned)used->index, (unsigned)used->type, (unsigned)used->start_lba,
+                 (unsigned)used->block_count);
+    }
     return 1;
 }
 

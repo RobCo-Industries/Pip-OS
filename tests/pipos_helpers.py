@@ -6,8 +6,11 @@ the submodule seals them. The payload never runs in these tests.
 """
 
 import contextlib
+import os
 import re
 import struct
+import subprocess
+import tempfile
 import time
 
 import rimg
@@ -74,6 +77,72 @@ def rom_crc(data):
 def make_card(path, files, size_mib=16):
     """An SD card image with `files` ({"PIPBOY/ROM1.ROM": bytes, ...})."""
     make_sd_image(path, size_mib, files)
+    return path
+
+
+SECTOR = 512
+FAT16_LBA = 0x0E
+
+
+def _mtools(*args):
+    env = dict(os.environ, MTOOLS_SKIP_CHECK="1")
+    subprocess.run(list(args), check=True, env=env, capture_output=True)
+
+
+def _fat_format(img, offset_lba, sectors, files):
+    """Formats FAT16 at `offset_lba` of `img` and copies `files` into it."""
+    target = f"{os.fspath(img)}@@{offset_lba * SECTOR}"
+    _mtools("mformat", "-i", target, "-c", "1", "-v", "PIPOS", "-T", str(sectors),
+            "-h", "64", "-s", "32", "-H", str(offset_lba), "::")
+    made = set()
+    with tempfile.TemporaryDirectory(prefix="pipcard") as tmp:
+        for i, (name, data) in enumerate(sorted(files.items())):
+            parts = [p for p in name.split("/") if p]
+            dirs = parts if name.endswith("/") else parts[:-1]
+            for j in range(1, len(dirs) + 1):
+                d = "/".join(dirs[:j])
+                if d not in made:
+                    _mtools("mmd", "-i", target, "::" + d)
+                    made.add(d)
+            if not name.endswith("/"):
+                src = os.path.join(tmp, f"f{i}")
+                with open(src, "wb") as f:
+                    f.write(data)
+                _mtools("mcopy", "-i", target, src, "::" + "/".join(parts))
+
+
+def make_multi_card(path, parts, size_mib=16):
+    """A card with one MBR entry per item of `parts`, in slot order.
+
+    Each item is (type byte, size in MiB, files). Files None leaves the
+    partition zero-filled; a dict formats it as FAT16 and copies the files.
+    Partitions start at LBA 2048 and follow each other.
+    """
+    size = size_mib << 20
+    entries = b""
+    layout = []
+    lba = 2048
+    for ptype, mib, files in parts:
+        sectors = (mib << 20) // SECTOR
+        entries += struct.pack("<B3sB3sII", 0, b"\xfe\xff\xff", ptype, b"\xfe\xff\xff",
+                               lba, sectors)
+        layout.append((lba, sectors, files))
+        lba += sectors
+    assert lba * SECTOR <= size and len(parts) <= 4
+    with open(path, "wb") as f:
+        f.write(bytes(446) + entries.ljust(64, b"\0") + b"\x55\xaa")
+        f.truncate(size)
+    for start, sectors, files in layout:
+        if files is not None:
+            _fat_format(path, start, sectors, files)
+    return path
+
+
+def make_superfloppy_card(path, files, size_mib=16):
+    """A card with no partition table: a FAT16 volume starts at block 0."""
+    with open(path, "wb") as f:
+        f.truncate(size_mib << 20)
+    _fat_format(path, 0, (size_mib << 20) // SECTOR, files)
     return path
 
 

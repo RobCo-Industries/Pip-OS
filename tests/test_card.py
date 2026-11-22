@@ -5,9 +5,11 @@ import pathlib
 import pytest
 
 from pipos_helpers import (SCHEME_BG, booted, config, config_issues, config_summary,
-                           corrupt, dump, make_big_rom, make_card, make_rom, no_exception,
+                           corrupt, dump, make_big_rom, make_card, make_multi_card, make_rom,
+                           make_superfloppy_card, no_exception,
                            one, pipos_markers, rom_crc, screenshot)
 
+FAT16_LBA = 0x0E
 ROM = "PIPBOY/ROM1.ROM"
 CFG = "PIPBOY/PIPOS.CFG"
 
@@ -30,6 +32,54 @@ def test_valid_rom(board, kernel_image, tmp_path, need_mtools):
         assert "LOAD ROM(1): DEITRIX 3.0.3" in rows, rows
         assert "NO HOLOTAPE FOUND" in rows, rows
         no_exception(vm)
+
+
+def test_mount_reports_partition(board, kernel_image, tmp_path, need_mtools):
+    sd = make_card(tmp_path / "sd.img", {CFG: config()})
+    with booted(kernel_image, board, sd=sd) as vm:
+        m = one(vm, "mount")
+        assert (m["part"], m["lba"]) == ("0", "2048"), vm.serial
+
+
+def test_second_partition_is_fat(board, kernel_image, tmp_path, need_mtools):
+    rom = make_rom(name="DEITRIX", version="3.0.3")
+    sd = make_multi_card(tmp_path / "sd.img", [(0x83, 4, None),
+                                               (FAT16_LBA, 8, {ROM: rom, CFG: config("amber")})])
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert one(vm, "card")["rc"] == "ok", vm.serial
+        m = one(vm, "mount")
+        assert (m["part"], m["type"], m["lba"]) == ("1", "0x0e", str(2048 + 4 * 2048)), vm.serial
+        cfg = config_summary(vm)
+        assert (cfg["rc"], cfg["scheme"]) == ("ok", "amber"), vm.serial
+        assert one(vm, "rom")["rc"] == "ok"
+        assert one(vm, "ready")["rom"] == "1"
+        no_exception(vm)
+
+
+def test_fat_volume_with_wrong_type(board, kernel_image, tmp_path, need_mtools):
+    sd = make_multi_card(tmp_path / "sd.img", [(0x83, 4, None), (0x83, 8, {CFG: config()})])
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert one(vm, "mount")["part"] == "1", vm.serial
+        assert config_summary(vm)["rc"] == "ok"
+
+
+def test_no_fat_partition(board, kernel_image, tmp_path, need_mtools):
+    sd = make_multi_card(tmp_path / "sd.img", [(0x83, 4, None), (FAT16_LBA, 4, None)])
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert one(vm, "card")["rc"] == "nomount", vm.serial
+        assert not pipos_markers(vm, "mount")
+        assert config_summary(vm)["rc"] == "nocard"
+        assert one(vm, "rom")["rc"] == "io"
+        assert one(vm, "ready")["rom"] == "0"
+        no_exception(vm)
+
+
+def test_card_without_partition_table(board, kernel_image, tmp_path, need_mtools):
+    sd = make_superfloppy_card(tmp_path / "sd.img", {CFG: config("blue")})
+    with booted(kernel_image, board, sd=sd) as vm:
+        m = one(vm, "mount")
+        assert (m["part"], m["lba"]) == ("whole", "0"), vm.serial
+        assert config_summary(vm)["scheme"] == "blue"
 
 
 def test_rom_name_from_header(board, kernel_image, tmp_path, need_mtools):
