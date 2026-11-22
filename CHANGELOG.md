@@ -4,6 +4,29 @@ All notable changes to PIP-OS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Rebuilt the kernel on the RobCo-Core library, added as a git submodule in `external/robco-core`.
+- One 32-bit image for the Pi Zero, Pi 1, Pi 2 and Pi 3. The `BCM=` option and the AArch64 build are gone.
+- New layout: a top-level `Makefile`, `kernel/` for the sources, `tests/` for the tests.
+- The boot text now appears on the HDMI framebuffer and the serial console. The holotape and ROM lines report real checks.
+- CI calls the RobCo-Core reusable workflow and tests all four QEMU boards.
+
+### Added
+- MMU and caches, interrupts, a 100 Hz tick and a kernel heap.
+- Configuration from `/PIPBOY/PIPOS.CFG`. See [docs/CONFIG.md](docs/CONFIG.md).
+- ROM check: the kernel loads and validates `/PIPBOY/ROM1.ROM`. It does not run it.
+- Input from GPIO buttons, a dial, the serial console and the mini UART script channel.
+- Power-on beep, the RTC and the software clock.
+- A panic path, `pipos_panic()`.
+- Host unit tests and QEMU target tests with the RobCo-Core harness.
+- `make sdimage`, `make run` and `make bootdir`.
+
+### Removed
+- The old kernel sources in `src/` and `include/`, the old build in `build/` and the old test scripts.
+- The stub system calls, power management and audio code.
+
 ## [7.1.0.8] - 2025-11-09
 
 Note: this entry overstated the state of the code. Most listed items are stubs. See the Status section in [README.md](README.md#status).
