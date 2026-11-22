@@ -213,3 +213,27 @@ def test_card_gone(board, kernel_image, test_rom, tmp_path, need_mtools):
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
         assert state(vm)["files"] == "0"
         no_exception(vm)
+
+
+BIG = pattern(7, 65537)
+
+
+def test_oversized_saves(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """A file over 64 KiB is not a valid save, wherever recovery finds it."""
+    sd = make_card(tmp_path / "sd.img", {
+        ROM: test_rom("storage_big"),
+        SAVE_DIR + "/BIGT.SAV": BIG,
+        SAVE_DIR + "/#BIGH.SAV": BIG,
+        SAVE_DIR + "/~BIGB.SAV": BIG,
+        SAVE_DIR + "/#BIGB.SAV": BIG,
+        SAVE_DIR + "/BIGW.SAV": BIG,
+    })
+    names = []
+    for tag in ("target", "hash", "both", "over"):
+        names += [f"{tag}_info", f"{tag}_size_intact", f"{tag}_read", f"{tag}_buf_intact"]
+        if tag != "over":
+            names += [f"{tag}_delete", f"{tag}_gone"]
+    names += ["over_write", "over_read", "over_same", "over_info", "over_size"]
+    run_rom(kernel_image, board, sd, names)
+    assert card_names(sd, SAVE_DIR) == ["BIGW.SAV"]
+    assert card_read(sd, SAVE_DIR + "/BIGW.SAV") == b"fresh"
