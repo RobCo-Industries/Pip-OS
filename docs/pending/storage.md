@@ -6,7 +6,7 @@ The rules come from the spec's [Save files and Files](https://github.com/RobCo-I
 |---|---|---|---|---|
 | `0x50` | `read_save` | `const char *name, void *buf, uint32 size` | Bytes copied: the save's size, or `size` if smaller | `EINVAL`, `EFAULT`, `ENOENT`, `ERANGE`, `EIO` |
 | `0x51` | `write_save` | `const char *name, const void *buf, uint32 size` | `size` | `EINVAL`, `EFAULT`, `ERANGE`, `ENOSPC`, `EIO` |
-| `0x52` | `save_info` | `const char *name, uint32 *size` | 0. Stores the save's size. | `EINVAL`, `EFAULT`, `ENOENT`, `EIO` |
+| `0x52` | `save_info` | `const char *name, uint32 *size` | 0. Stores the save's size. | `EINVAL`, `EFAULT`, `ENOENT`, `ERANGE`, `EIO` |
 | `0x53` | `save_delete` | `const char *name` | 0 | `EINVAL`, `EFAULT`, `ENOENT`, `EIO` |
 | `0x54` | `file_open` | `const char *path` | Handle 0 to 7 | `EINVAL`, `EFAULT`, `EPERM`, `ENOENT`, `ENOMEM`, `EIO` |
 | `0x55` | `file_read` | `int32 handle, void *buf, uint32 size` | Bytes read, 0 at the end | `EBADF`, `EFAULT`, `EIO` |
@@ -18,7 +18,8 @@ The rules come from the spec's [Save files and Files](https://github.com/RobCo-I
 - A save is `/PIPBOY/SAVE/<NAME>.SAV`. `NAME` is 1 to 8 characters from `A-Z`, `0-9` and `_`. Lower case works and is upper-cased. The name must end with a NUL within 9 bytes.
 - `write_save` takes 0 to 65536 bytes. A larger `size` returns `-PIP_ERANGE`. Pip-OS copies the data first, creates `/PIPBOY/SAVE` if it is missing, then writes with RobCo-Core's atomic write.
 - `read_save`, `save_info` and `save_delete` first recover from the work files `~NAME.SAV` and `#NAME.SAV` that a power cut can leave. See the [recovery table](https://github.com/RobCo-Industries/RobCo-Core/blob/1e0fb655ea09497d133c6e3c3b086a2bb8cbca0e/docs/guide/api/storage.md#whole-files).
-- `read_save` checks the whole `size` bytes of `buf` before it reads. A save larger than 64 KiB, put on the card by a PC, returns `-PIP_ERANGE`. `save_info` still reports its size.
+- `read_save` checks the whole `size` bytes of `buf` before it reads.
+- A file over 64 KiB is not a valid save, even when a PC put it on the card. `read_save` and `save_info` return `-PIP_ERANGE` for it and write nothing; `save_delete` removes it and `write_save` replaces it.
 - `save_delete` removes the save and both work files.
 - `size` 0 needs no buffer.
 
@@ -36,6 +37,17 @@ File calls are read only.
 ## Errors
 
 A missing card, a card that failed or any file system error returns `-PIP_EIO`. A full card returns `-PIP_ENOSPC`. On a missing card each call can take about 3 seconds before it fails: that is the SD driver's time-out.
+
+## Read-only card
+
+- `read_save` and `save_info` change nothing and read whichever file holds the save, by the recovery table.
+- `save_delete` returns `-PIP_EIO` and changes nothing. The save stays readable.
+- `write_save` returns `-PIP_EIO`.
+
+## Choices where the spec is silent
+
+- A file over 64 KiB in the save folder is not a valid save. `save_info` returns `-PIP_ERANGE` for it, like `read_save`.
+- A delete that cannot write, on a read-only card, returns `-PIP_EIO`.
 
 ## Limits
 
