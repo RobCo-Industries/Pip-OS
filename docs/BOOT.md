@@ -76,7 +76,7 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC. The kernel does not jump to the ROM.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC. The kernel does not jump to the ROM.
 
 ## Main loop
 
@@ -100,7 +100,7 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -137,7 +137,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c43528538519ccf4f21a4d6ead6db0cdab8d07f8/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|
