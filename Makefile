@@ -28,6 +28,7 @@ PYTHON     ?= python3
 # sorted, are the ones with no hardware access: the host tests link them.
 PURE_SRCS  := \
               kernel/bootlines.c \
+              kernel/input_events.c \
               kernel/settings.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \
