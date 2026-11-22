@@ -225,3 +225,21 @@ def test_scripts_stop_while_rom_spins(board, kernel_image, test_rom, tmp_path, n
         with pytest.raises(QemuError):
             vm.script("state", timeout=3)
         assert not pipos_markers(vm, "ready")
+
+
+SDK_CHECKS = ["printf_conv", "printf_trunc", "printf_long", "str_mem", "str_memmove",
+              "str_len_cmp", "str_chr", "str_lcpy", "heap_align", "heap_calloc",
+              "heap_exhaust", "heap_recover", "heap_free"]
+
+
+def test_sdk_self_check(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """tests/roms/sdkcheck, built only through sdk/pipos-app.mk and libpip.a."""
+    with booted(kernel_image, board, sd=card(tmp_path, test_rom("sdkcheck"))) as vm:
+        checks = [(m["name"], m["ok"]) for m in rom_markers(vm, "check")]
+        assert checks == [(name, "1") for name in SDK_CHECKS], vm.serial
+        assert rom_one(vm, "checks") == {"stage": "testrom", "ev": "checks",
+                                         "total": str(len(SDK_CHECKS)), "failed": "0"}
+        long_line = "".join(chr(ord("a") + i % 26) for i in range(600)) + "\n"
+        assert long_line in vm.serial
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)

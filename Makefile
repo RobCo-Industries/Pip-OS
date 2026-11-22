@@ -10,7 +10,7 @@
 #   make sdimage              build/sd.img with the kernel and a sample config
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #                             (WINDOW=1 also opens the display window)
-#   make test-roms            build/roms/*.rom from tests/roms/
+#   make test-roms            build/roms/<name>/<name>.rom from tests/roms/
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
 
 ROBCO_CORE := external/robco-core
@@ -50,56 +50,37 @@ include $(ROBCO_CORE)/mk/host.mk
 # Target tests boot the image built here; keep top-level targets serial.
 .NOTPARALLEL:
 
-# ---- Test ROMs ----------------------------------------------------------
+# ---- ROMs ---------------------------------------------------------------
 
-# tests/roms/<name>.c on top of sdk/, linked with sdk/rom.ld and sealed:
-# $(BUILD)/roms/<name>.rom. fault.c builds once per fault case.
+# Every ROM builds through sdk/pipos-app.mk and libpip.a.
+#
+# Test ROMs: tests/roms/<name>.c with rt.c, into $(BUILD)/roms/<name>/<name>.rom.
+# fault.c builds once per fault case. They share one libpip.a.
+# sdkcheck is a ROM project of its own in tests/roms/sdkcheck/.
 ROM_BUILD   := $(BUILD)/roms
 TEST_ROMS   := hello ret5 tramp entry calls sleep spin
 FAULT_CASES := wrkern rdperiph jmpkern undef priv null
-ROM_IMAGES  := $(addprefix $(ROM_BUILD)/,$(addsuffix .rom,$(TEST_ROMS) $(addprefix fault_,$(FAULT_CASES))))
-ROM_CFLAGS  := $(ROBCO_ARCHFLAGS) -std=gnu11 -ffreestanding -nostdlib -fno-builtin \
-               -ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns \
-               -O2 -g -Wall -Wextra -MMD -MP -Isdk/include -Itests/roms
-ifeq ($(CI),1)
-ROM_CFLAGS  += -Werror
-endif
-ROM_LDFLAGS := $(ROBCO_ARCHFLAGS) -nostdlib -T sdk/rom.ld -Wl,--gc-sections $(ROBCO_LD_RWX)
-ROM_COMMON  := $(ROM_BUILD)/crt0.o $(ROM_BUILD)/rt.o $(ROM_BUILD)/regs.o
+ROM_TARGETS := $(addprefix rom-,$(TEST_ROMS) $(addprefix fault_,$(FAULT_CASES)))
+PIP_APP     := $(MAKE) --no-print-directory -f sdk/pipos-app.mk PIPOS_SDK=sdk \
+               ROBCO_CORE=$(ROBCO_CORE) KIND=rom VERSION=1.0.0 LIBPIP_DIR=$(ROM_BUILD)/libpip
+ROM_CFLAGS  := -fno-builtin -Itests/roms
 
-.PHONY: test-roms
+.PHONY: test-roms rom-sdkcheck $(ROM_TARGETS)
 all: test-roms
-test-roms: $(ROM_IMAGES)
+test-roms: $(ROM_TARGETS) rom-sdkcheck
 
-$(ROM_BUILD)/crt0.o: sdk/crt0.S
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -c -o $@ $<
+$(addprefix rom-fault_,$(FAULT_CASES)): rom-fault_%:
+	$(PIP_APP) BUILD=$(ROM_BUILD)/fault_$* IMAGE=fault_$*.rom NAME=fault_$* \
+	    TITLE="Pip-OS test ROM fault_$*" SRCS="tests/roms/fault.c tests/roms/rt.c" \
+	    CFLAGS_EXTRA="$(ROM_CFLAGS) -DFAULT_$*"
 
-$(ROM_BUILD)/fault_%.o: tests/roms/fault.c
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -DFAULT_$* -c -o $@ $<
+$(addprefix rom-,$(TEST_ROMS)): rom-%:
+	$(PIP_APP) BUILD=$(ROM_BUILD)/$* IMAGE=$*.rom NAME=$* TITLE="Pip-OS test ROM $*" \
+	    SRCS="tests/roms/$*.c tests/roms/rt.c $(if $(filter calls,$*),tests/roms/regs.S)" \
+	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
-$(ROM_BUILD)/%.o: tests/roms/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -c -o $@ $<
-
-$(ROM_BUILD)/%.o: tests/roms/%.S
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -c -o $@ $<
-
-$(ROM_BUILD)/%.elf: $(ROM_BUILD)/%.o $(ROM_COMMON) sdk/rom.ld
-	$(CC) $(ROM_LDFLAGS) -Wl,-Map,$(@:.elf=.map) -o $@ $(ROM_COMMON) $< -lgcc
-
-$(ROM_BUILD)/%.rom: $(ROM_BUILD)/%.elf $(ROBCO_CORE)/tools/rimg.py
-	$(OBJCOPY) -O binary $< $@.tmp
-	$(PYTHON) $(ROBCO_CORE)/tools/rimg.py seal $@.tmp --name $* --image-version 1.0.0 \
-	    --title "Pip-OS test ROM $*"
-	mv $@.tmp $@
-
-.SECONDARY: $(ROM_IMAGES:.rom=.elf) $(ROM_IMAGES:.rom=.o) $(ROM_COMMON)
-# Dependency files are never targets (no built-in %: %.o for them).
-$(ROM_BUILD)/%.d: ;
--include $(wildcard $(ROM_BUILD)/*.d)
+rom-sdkcheck:
+	$(MAKE) --no-print-directory -C tests/roms/sdkcheck BUILD=$(abspath $(ROM_BUILD))/sdkcheck
 
 # ---- Python environment for the target tests --------------------------
 

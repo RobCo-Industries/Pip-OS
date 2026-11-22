@@ -32,11 +32,11 @@ def kernel_image(request, robco_build):
 
 @pytest.fixture(scope="session")
 def test_rom(request, kernel_image):
-    """test_rom(name) returns the bytes of <build>/roms/<name>.rom, built with the kernel."""
+    """test_rom(name) returns the bytes of <build>/roms/<name>/<name>.rom, built with the kernel."""
     roms = os.path.join(ROOT, request.config.getoption("--build-dir"), "roms")
 
     def get(name):
-        with open(os.path.join(roms, f"{name}.rom"), "rb") as f:
+        with open(os.path.join(roms, name, f"{name}.rom"), "rb") as f:
             return f.read()
 
     return get
