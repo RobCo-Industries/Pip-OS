@@ -155,3 +155,12 @@ TEST(fault_names)
     pipos_fault_line(ROBCO_EXC_UNDEF, 0xffffffffu, buf, sizeof(buf));
     CHECK_STR(buf, "ROM(1) UNDEFINED INSTRUCTION AT 0xFFFFFFFF");
 }
+
+TEST(sleep_check)
+{
+    CHECK_EQ(pipos_sleep_check(0), 0);
+    CHECK_EQ(pipos_sleep_check(1000), 0);
+    CHECK_EQ(pipos_sleep_check(0x7fffffffu), 0);
+    CHECK_EQ(pipos_sleep_check(0x80000000u), -PIP_ERANGE);
+    CHECK_EQ(pipos_sleep_check(0xffffffffu), -PIP_ERANGE);
+}

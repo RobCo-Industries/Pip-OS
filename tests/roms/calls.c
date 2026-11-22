@@ -29,6 +29,25 @@ static void ticks(void)
     rt_end();
 }
 
+/* Out-of-range sleeps return at once; a normal sleep still waits. */
+static void sleep_range(void)
+{
+    int32_t a = pip_ticks_ms();
+    int32_t big = pip_sleep_ms(0x80000000u);
+    int32_t max = pip_sleep_ms(0xffffffffu);
+    int32_t b = pip_ticks_ms();
+    int32_t ok = pip_sleep_ms(20);
+    int32_t c = pip_ticks_ms();
+
+    rt_begin("sleep_range");
+    rt_dec("big", big);
+    rt_dec("max", max);
+    rt_dec("ok", ok);
+    rt_dec("fast_ms", b - a);
+    rt_dec("slept_ms", c - b);
+    rt_end();
+}
+
 static void sys_info(void)
 {
     pip_sys_info_t si;
@@ -158,6 +177,7 @@ int pip_main(const pipos_startup_t *startup)
 {
     (void)startup;
     ticks();
+    sleep_range();
     sys_info();
     mem_info();
     rand8();

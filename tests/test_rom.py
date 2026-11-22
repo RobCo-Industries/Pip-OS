@@ -105,6 +105,13 @@ def test_ticks_and_sleep(calls):
     assert 50 <= b - a < 1000, t
 
 
+def test_sleep_range(calls):
+    m = rom_one(calls, "sleep_range")
+    assert (m["big"], m["max"], m["ok"]) == ("-34", "-34", "0"), m
+    assert 0 <= int(m["fast_ms"]) < 20, m
+    assert 20 <= int(m["slept_ms"]) < 1000, m
+
+
 def test_sys_info(calls):
     boot_m = one(calls, "boot")
     s = {k: int(v, 16) for k, v in rom_one(calls, "sys_info").items()

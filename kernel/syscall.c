@@ -21,12 +21,19 @@ static int32_t sys_ticks_ms(exc_frame_t *f)
     return (int32_t)(tick_ms() & 0x7fffffffu);
 }
 
-/* Runs the kernel's main-loop work while it waits, so script commands still work. */
+/*
+ * Runs the kernel's main-loop work while it waits, so script commands still
+ * work. ms above 0x7FFFFFFF returns -PIP_ERANGE at once.
+ */
 static int32_t sys_sleep_ms(exc_frame_t *f)
 {
     uint32_t ms = f->r[0];
     uint32_t start = tick_ms();
+    int32_t rc = pipos_sleep_check(ms);
 
+    if (rc != 0) {
+        return rc;
+    }
     while (tick_ms() - start < ms) {
         pipos_poll();
         __asm__ volatile("wfi");
