@@ -164,3 +164,13 @@ TEST(sleep_check)
     CHECK_EQ(pipos_sleep_check(0x80000000u), -PIP_ERANGE);
     CHECK_EQ(pipos_sleep_check(0xffffffffu), -PIP_ERANGE);
 }
+
+TEST(sleep_deadline)
+{
+    CHECK_EQ(pipos_sleep_deadline_us(0, 0), 0);
+    CHECK_EQ(pipos_sleep_deadline_us(5, 1), 1005);
+    CHECK_EQ(pipos_sleep_deadline_us(123456789, 13), 123469789);
+    /* No 32-bit overflow: the largest sleep is about 24.8 days. */
+    CHECK_EQ(pipos_sleep_deadline_us(0, 0x7fffffffu), 0x7fffffffull * 1000u);
+    CHECK_EQ(pipos_sleep_deadline_us(0xffffffffull, 2), 0xffffffffull + 2000u);
+}

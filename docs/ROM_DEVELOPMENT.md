@@ -111,4 +111,5 @@ If the ROM touches memory it does not own or runs an undefined or privileged ins
 - No graphics, input, audio, time, sensors, saves or files. These calls return `-PIP_ENOSYS`.
 - Holotapes build but Pip-OS cannot launch them.
 - A ROM that never calls `sleep_ms` keeps the kernel from its main-loop work, so script commands stop.
-- `sleep_ms` counts in ticks of the 100 Hz timer.
+- `sleep_ms` never ends early, but it can run up to 10 ms long: the 100 Hz tick wakes it.
+- `ticks_ms` moves in steps of 10 ms.

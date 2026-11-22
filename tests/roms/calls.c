@@ -48,6 +48,30 @@ static void sleep_range(void)
     rt_end();
 }
 
+/*
+ * Sleeps of several lengths, each timed with ticks_ms. The first starts
+ * right after a tick edge, the others wherever the last one ended.
+ */
+static void sleep_lengths(void)
+{
+    static const uint32_t lens[] = {1, 7, 10, 13, 25, 50};
+    int32_t t = pip_ticks_ms();
+
+    while (pip_ticks_ms() == t) {
+    }
+    for (unsigned i = 0; i < sizeof(lens) / sizeof(lens[0]); i++) {
+        int32_t a = pip_ticks_ms();
+        int32_t rc = pip_sleep_ms(lens[i]);
+        int32_t b = pip_ticks_ms();
+
+        rt_begin("sleep_len");
+        rt_dec("ms", (int32_t)lens[i]);
+        rt_dec("rc", rc);
+        rt_dec("elapsed", b - a);
+        rt_end();
+    }
+}
+
 static void sys_info(void)
 {
     pip_sys_info_t si;
@@ -178,6 +202,7 @@ int pip_main(const pipos_startup_t *startup)
     (void)startup;
     ticks();
     sleep_range();
+    sleep_lengths();
     sys_info();
     mem_info();
     rand8();

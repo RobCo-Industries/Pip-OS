@@ -112,6 +112,20 @@ def test_sleep_range(calls):
     assert 20 <= int(m["slept_ms"]) < 1000, m
 
 
+TICK_MS = 10  # the kernel's 100 Hz tick
+
+
+def test_sleep_is_never_short(calls):
+    """ROMs only see ticks_ms. A read falls up to one tick after the real
+    time, so a sleep of at least ms shows at least ms rounded down to a
+    whole tick."""
+    got = [(int(m["ms"]), m["rc"], int(m["elapsed"])) for m in rom_markers(calls, "sleep_len")]
+    assert [g[0] for g in got] == [1, 7, 10, 13, 25, 50], calls.serial
+    for ms, rc, elapsed in got:
+        assert rc == "0", got
+        assert ms - ms % TICK_MS <= elapsed < ms + 1000, got
+
+
 def test_sys_info(calls):
     boot_m = one(calls, "boot")
     s = {k: int(v, 16) for k, v in rom_one(calls, "sys_info").items()

@@ -48,6 +48,12 @@ long pipos_log_check(long strnlen_result, int whole_range_ok);
  */
 int32_t pipos_sleep_check(uint32_t ms);
 
+/*
+ * When a sleep_ms of `ms` that starts at `now_us` on the 1 MHz system
+ * timer may end: never before `ms` whole milliseconds passed.
+ */
+uint64_t pipos_sleep_deadline_us(uint64_t now_us, uint32_t ms);
+
 /* rom_kill reason for a ROBCO_EXC_* fault type. */
 const char *pipos_fault_reason(unsigned type);
 

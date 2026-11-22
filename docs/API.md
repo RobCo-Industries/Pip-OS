@@ -9,7 +9,7 @@ A running ROM calls the kernel with `svc #0`. The call number goes in r7, the ar
 | Number | Name | Arguments | Result |
 |---|---|---|---|
 | `0x42` | `ticks_ms` | none | Milliseconds since the tick started at boot, masked to 31 bits |
-| `0x43` | `sleep_ms` | `uint32 ms`, at most `0x7FFFFFFF` | 0 once `ms` milliseconds passed on the 100 Hz tick. IRQs stay on. A larger `ms` returns `-PIP_ERANGE` (-34) at once. |
+| `0x43` | `sleep_ms` | `uint32 ms`, at most `0x7FFFFFFF` | 0 once at least `ms` milliseconds passed on the 1 MHz system timer. It can run up to one 10 ms tick longer. IRQs stay on. A larger `ms` returns `-PIP_ERANGE` (-34) at once. |
 | `0x44` | `exit` | `int32 status` | Does not return. The kernel prints `ev=rom_exit status=<status>`. |
 | `0x45` | `sys_info` | `pip_sys_info_t *out` | 0 |
 | `0x46` | `mem_info` | `pip_mem_info_t *out` | 0 |
