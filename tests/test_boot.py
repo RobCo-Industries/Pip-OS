@@ -11,7 +11,7 @@ from PIL import Image
 from harness.boot import parse_markers
 
 from pipos_helpers import (SCHEME_BG, TIMEOUT, booted, config_summary, dump, dump_reply,
-                           no_exception, one, screenshot, wait_markers)
+                           no_exception, one, pipos_markers, screenshot, wait_markers)
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden",
                       "boot_nocard.png")
@@ -50,6 +50,7 @@ def test_no_card(board, kernel_image):
         assert (rom["rc"], rom["name"], rom["version"]) == ("io", "-", "-"), vm.serial
         assert one(vm, "holo")["count"] == "0"
         assert one(vm, "ready")["rom"] == "0"
+        assert not pipos_markers(vm, "jump")
 
         lines = dump_reply(vm)
         rows = [line[1:] for line in lines if line.startswith("|")]

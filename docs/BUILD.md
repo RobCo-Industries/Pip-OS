@@ -19,7 +19,7 @@ On macOS with Homebrew:
 brew install arm-none-eabi-gcc qemu mtools python
 ```
 
-RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/guide/GETTING_STARTED.md) lists the versions in detail.
+RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/guide/GETTING_STARTED.md) lists the versions in detail.
 
 ## Build the image
 
@@ -36,6 +36,7 @@ In an existing clone, run `git submodule update --init` first. `CI=1` turns warn
 | `build/pipos.img` | The sealed `rimg` image. Copy it to the card as `PIPOS.IMG`. |
 | `build/pipos.elf` | The linked ELF, for `gdb` and `objdump` |
 | `build/pipos.map` | The linker map |
+| `build/roms/*.rom` | The test ROMs, see [TESTING.md](TESTING.md#test-roms) |
 
 The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. The link fails when the image and its stacks pass `0x00400000`, the end of the Pip-OS slot. `python3 external/robco-core/tools/rimg.py info build/pipos.img` prints its header.
 
@@ -45,10 +46,11 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 |---|---|
 | `Makefile` | Includes `external/robco-core/mk/robco.mk` and `mk/host.mk` and adds the test, card and QEMU targets |
 | `kernel/` | Kernel sources and `robco_config.h` |
-| `kernel/settings.c`, `kernel/bootlines.c` | Pure code, also built for the host tests |
+| `kernel/settings.c`, `kernel/bootlines.c`, `kernel/sysabi.c` | Pure code, also built for the host tests |
+| `sdk/` | The ROM SDK: `include/pipos/abi.h`, `include/pipos/syscall.h`, `crt0.S`, `rom.ld` |
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
-| `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py` |
+| `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py`, test ROMs in `tests/roms/` |
 | `pytest.ini` | The boards the QEMU tests run on by default |
 | `external/robco-core/` | The library |
 
@@ -69,7 +71,7 @@ make sdimage
 make run BOARD=raspi2b
 ```
 
-`make sdimage` writes `build/sd.img`: a 64 MiB FAT32 card with `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` from `boot/PIPOS.CFG` and an empty `PIPBOY/HOLO/`. It downloads no firmware. The `Makefile` lists the configuration in `SDIMAGE_FILES`, and its `sdimage-stage::` rule adds the kernel, `config.txt` and the holotape directory. `make run` builds the card again and boots it with RobCo-Core's runner, `python3 -m harness.run`, the way the firmware does, with the serial console on the terminal. `BOARD` is `raspi0`, `raspi1ap`, `raspi2b` or `raspi3b`. Press Ctrl-A, then X, to quit.
+`make sdimage` writes `build/sd.img`: a 64 MiB FAT32 card with `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` from `boot/PIPOS.CFG` and an empty `PIPBOY/HOLO/`. It downloads no firmware. The `Makefile` lists the configuration in `SDIMAGE_FILES`, and its `sdimage-stage::` rule adds the kernel, `config.txt` and the holotape directory. `make run` builds the card again and boots it with RobCo-Core's runner, `python3 -m harness.run`, the way the firmware does, with the serial console on the terminal. `BOARD` is `raspi0`, `raspi1ap`, `raspi2b` or `raspi3b`. `WINDOW=1` also opens the QEMU display window. Press Ctrl-A, then X, to quit.
 
 ## A real card
 
@@ -79,4 +81,4 @@ make bootdir DIR=/path/to/dir
 
 This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself. The kernel has not been tested on hardware yet.
 
-`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/BOARD_SUPPORT.md#configtxt).
+`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/BOARD_SUPPORT.md#configtxt).

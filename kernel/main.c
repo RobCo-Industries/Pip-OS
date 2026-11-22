@@ -1,6 +1,6 @@
 /*
  * Pip-OS kernel start-up: hardware, configuration, boot screen, ROM
- * check, then the main loop. Running the ROM is not implemented yet.
+ * check, the ROM itself, then the main loop.
  */
 #include <stdint.h>
 
@@ -203,11 +203,10 @@ static void apply_settings(const pipos_settings_t *s)
     }
 }
 
-static int boot_screen(int card)
+static int boot_screen(int card, loader_result_t *res)
 {
     char line[PIPOS_LINE_MAX];
     char name[PIPOS_ROM_NAME_MAX + 1];
-    loader_result_t res;
     unsigned i;
     int rc;
 
@@ -217,10 +216,10 @@ static int boot_screen(int card)
     pipos_holo_line(pipos_holo_count(card), line, sizeof(line));
     pipos_screen_line(line);
 
-    rc = pipos_rom_load(card, &res);
+    rc = pipos_rom_load(card, res);
     if (rc == RIMG_OK) {
-        pipos_fmt_name(res.hdr->name, sizeof(res.hdr->name), name, sizeof(name), 1);
-        pipos_rom_line(name, res.hdr->image_version, line, sizeof(line));
+        pipos_fmt_name(res->hdr->name, sizeof(res->hdr->name), name, sizeof(name), 1);
+        pipos_rom_line(name, res->hdr->image_version, line, sizeof(line));
     } else {
         pipos_rom_error_line(card, rc, line, sizeof(line));
     }
@@ -259,6 +258,16 @@ static void report_event(const input_event_t *ev)
     }
 }
 
+void pipos_poll(void)
+{
+    input_event_t ev;
+
+    audio_poll();
+    while (input_poll(&ev)) {
+        report_event(&ev);
+    }
+}
+
 static void main_loop(void)
 {
     input_event_t ev;
@@ -276,6 +285,7 @@ void robco_main(void)
 {
     const robco_board_t *b = board_get();
     pipos_settings_t settings;
+    loader_result_t res;
     int card;
     int rom;
 
@@ -297,8 +307,11 @@ void robco_main(void)
     pipos_config_load(card, &settings);
     apply_settings(&settings);
 
-    rom = boot_screen(card);
+    rom = boot_screen(card, &res);
     rom_loaded = rom;
+    if (rom) {
+        pipos_rom_run(&res);
+    }
     ready_flag = 1;
     k_printf("@RC stage=" PIPOS_STAGE " ev=ready rom=%d\n", rom);
     main_loop();

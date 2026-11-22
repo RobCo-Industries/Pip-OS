@@ -9,8 +9,12 @@
 #define ROBCO_IMG_MAGIC         RIMG_MAGIC_BOOT
 #define ROBCO_IMG_SUBTYPE       RIMG_BOOT_PIPOS
 #define ROBCO_IMG_ABI_VERSION   (2 << 16)
-/* Header image version: (major << 16) | (minor << 8) | patch. */
-#define ROBCO_IMG_VERSION       ((7 << 16) | (1 << 8) | 0)
+/* Pip-OS version. Header image version: (major << 16) | (minor << 8) | patch. */
+#define PIPOS_VERSION_MAJOR     7
+#define PIPOS_VERSION_MINOR     1
+#define PIPOS_VERSION_PATCH     0
+#define ROBCO_IMG_VERSION       ((PIPOS_VERSION_MAJOR << 16) | (PIPOS_VERSION_MINOR << 8) | \
+                                 PIPOS_VERSION_PATCH)
 #define ROBCO_IMG_NAME          "PIPOS"
 
 /* The Pip-OS slot, 0x00008000 to 0x003FFFFF. The link fails if the image does not fit. */

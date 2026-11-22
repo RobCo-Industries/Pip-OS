@@ -28,6 +28,15 @@ unsigned pipos_holo_count(int card);
 /* Loads and validates the ROM. Returns a rimg_err_t code. */
 int pipos_rom_load(int card, loader_result_t *res);
 
+/* rom.c: runs the loaded ROM in user mode until it ends, and reports how. */
+void pipos_rom_run(const loader_result_t *res);
+
+/* syscall.c: installs the system-call handler. */
+void pipos_syscall_install(void);
+
+/* main.c: one pass of the main loop's work: audio, input, script commands. */
+void pipos_poll(void);
+
 /* screen.c: boot text on the screen console and the UART. */
 void pipos_screen_delay(uint32_t ms);
 void pipos_screen_line(const char *text);

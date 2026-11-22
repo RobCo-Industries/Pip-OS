@@ -28,3 +28,15 @@ def kernel_image(request, robco_build):
     path = robco_build(ROOT, **build_args(request.config.getoption("--build-dir")))
     print(f"\nkernel image: {path}")
     return path
+
+
+@pytest.fixture(scope="session")
+def test_rom(request, kernel_image):
+    """test_rom(name) returns the bytes of <build>/roms/<name>.rom, built with the kernel."""
+    roms = os.path.join(ROOT, request.config.getoption("--build-dir"), "roms")
+
+    def get(name):
+        with open(os.path.join(roms, f"{name}.rom"), "rb") as f:
+            return f.read()
+
+    return get

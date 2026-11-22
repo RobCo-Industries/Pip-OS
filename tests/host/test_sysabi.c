@@ -1,0 +1,157 @@
+#include <stddef.h>
+#include <string.h>
+
+#include <pipos/abi.h>
+#include <robco/exc.h>
+
+#include "rc_test.h"
+#include "sysabi.h"
+
+TEST(abi_sizes_and_offsets)
+{
+    CHECK_EQ(sizeof(pipos_startup_t), 128);
+    CHECK_EQ(offsetof(pipos_startup_t, abi_version), 0x00);
+    CHECK_EQ(offsetof(pipos_startup_t, size), 0x04);
+    CHECK_EQ(offsetof(pipos_startup_t, heap_base), 0x08);
+    CHECK_EQ(offsetof(pipos_startup_t, heap_size), 0x0C);
+    CHECK_EQ(offsetof(pipos_startup_t, stack_top), 0x10);
+    CHECK_EQ(offsetof(pipos_startup_t, kind), 0x14);
+    CHECK_EQ(offsetof(pipos_startup_t, flags), 0x18);
+    CHECK_EQ(offsetof(pipos_startup_t, args), 0x1C);
+
+    CHECK_EQ(sizeof(pip_sys_info_t), 32);
+    CHECK_EQ(offsetof(pip_sys_info_t, size), 0);
+    CHECK_EQ(offsetof(pip_sys_info_t, abi_version), 4);
+    CHECK_EQ(offsetof(pip_sys_info_t, pipos_version), 8);
+    CHECK_EQ(offsetof(pip_sys_info_t, board_rev), 12);
+    CHECK_EQ(offsetof(pip_sys_info_t, soc), 16);
+    CHECK_EQ(offsetof(pip_sys_info_t, mem_size), 20);
+    CHECK_EQ(offsetof(pip_sys_info_t, reserved), 24);
+
+    CHECK_EQ(sizeof(pip_mem_info_t), 16);
+    CHECK_EQ(offsetof(pip_mem_info_t, heap_base), 0);
+    CHECK_EQ(offsetof(pip_mem_info_t, heap_size), 4);
+    CHECK_EQ(offsetof(pip_mem_info_t, stack_top), 8);
+    CHECK_EQ(offsetof(pip_mem_info_t, stack_size), 12);
+}
+
+TEST(abi_values)
+{
+    CHECK_EQ(PIP_ABI_VERSION, 0x00010000);
+    CHECK_EQ(PIP_ROM_HEAP_SIZE, 0x007F0000);
+    CHECK_EQ(PIPOS_ROM_STARTUP, 0x017F0000u);
+    CHECK_EQ(PIPOS_ROM_STUB, 0x017F0080u);
+    CHECK_EQ(PIP_SYS_TICKS_MS, 0x42);
+    CHECK_EQ(PIP_SYS_RAND, 0x49);
+    CHECK_EQ(PIP_SYS_HOLO_EJECT_EVENT, 0x63);
+    CHECK_EQ(PIP_EFAULT, 14);
+    CHECK_EQ(PIP_EINVAL, 22);
+    CHECK_EQ(PIP_ENOSYS, 38);
+}
+
+TEST(version_pack)
+{
+    CHECK_EQ(pipos_version_pack(7, 1, 0), 0x00070100u);
+    CHECK_EQ(pipos_version_pack(1, 2, 10), 0x0001020Au);
+    CHECK_EQ(pipos_version_pack(0x1ffff, 0x1ff, 0x1ff), 0xFFFFFFFFu);
+}
+
+TEST(sys_slot)
+{
+    CHECK_EQ(pipos_sys_slot(0x42), 0);
+    CHECK_EQ(pipos_sys_slot(0x43), 1);
+    CHECK_EQ(pipos_sys_slot(0x46), 4);
+    CHECK_EQ(pipos_sys_slot(0x48), 6);
+    CHECK_EQ(pipos_sys_slot(0x49), 7);
+    CHECK_EQ(pipos_sys_slot(0x47), -1);     /* power: not in this step */
+    CHECK_EQ(pipos_sys_slot(0x4A), -1);
+    CHECK_EQ(pipos_sys_slot(0x41), -1);
+    CHECK_EQ(pipos_sys_slot(0x00), -1);
+    CHECK_EQ(pipos_sys_slot(0x01), -1);
+    CHECK_EQ(pipos_sys_slot(0x7F), -1);
+    CHECK_EQ(pipos_sys_slot(0xFFFFFFFFu), -1);
+    CHECK_EQ(pipos_sys_slot(0x80000042u), -1);
+}
+
+TEST(startup_block)
+{
+    pipos_startup_t s;
+    unsigned i;
+
+    memset(&s, 0xaa, sizeof(s));
+    pipos_startup_rom(&s);
+    CHECK_EQ(s.abi_version, 0x00010000u);
+    CHECK_EQ(s.size, 128u);
+    CHECK_EQ(s.heap_base, 0x01000000u);
+    CHECK_EQ(s.heap_size, 0x007F0000u);
+    CHECK_EQ(s.stack_top, 0x01800000u);
+    CHECK_EQ(s.kind, 0u);
+    CHECK_EQ(s.flags, 0u);
+    for (i = 0; i < sizeof(s.args); i++) {
+        CHECK_EQ(s.args[i], 0);
+    }
+}
+
+TEST(info_structs)
+{
+    pip_mem_info_t m;
+    pip_sys_info_t s;
+
+    pipos_mem_info_rom(&m);
+    CHECK_EQ(m.heap_base, 0x01000000u);
+    CHECK_EQ(m.heap_size, 0x007F0000u);
+    CHECK_EQ(m.stack_top, 0x01800000u);
+    CHECK_EQ(m.stack_size, 0x00010000u);
+
+    memset(&s, 0xaa, sizeof(s));
+    pipos_sys_info_fill(&s, 0x00070100u, 0x9000c1u, 0x2835u, 0x1c000000u);
+    CHECK_EQ(s.size, 32u);
+    CHECK_EQ(s.abi_version, 0x00010000u);
+    CHECK_EQ(s.pipos_version, 0x00070100u);
+    CHECK_EQ(s.board_rev, 0x9000c1u);
+    CHECK_EQ(s.soc, 0x2835u);
+    CHECK_EQ(s.mem_size, 0x1c000000u);
+    CHECK_EQ(s.reserved[0], 0u);
+    CHECK_EQ(s.reserved[1], 0u);
+}
+
+TEST(log_char)
+{
+    CHECK_EQ(pipos_log_char('a'), 'a');
+    CHECK_EQ(pipos_log_char(' '), ' ');
+    CHECK_EQ(pipos_log_char('~'), '~');
+    CHECK_EQ(pipos_log_char('\n'), '\n');
+    CHECK_EQ(pipos_log_char('\t'), '\t');
+    CHECK_EQ(pipos_log_char('\r'), '?');
+    CHECK_EQ(pipos_log_char('\x01'), '?');
+    CHECK_EQ(pipos_log_char('\x1b'), '?');
+    CHECK_EQ(pipos_log_char('\x7f'), '?');
+    CHECK_EQ(pipos_log_char((char)0x80), '?');
+    CHECK_EQ(pipos_log_char((char)0xff), '?');
+}
+
+TEST(log_check)
+{
+    CHECK_EQ(pipos_log_check(0, 1), 0);
+    CHECK_EQ(pipos_log_check(255, 0), 255);
+    CHECK_EQ(pipos_log_check(-1, 1), -PIP_EINVAL);
+    CHECK_EQ(pipos_log_check(-1, 0), -PIP_EFAULT);
+}
+
+TEST(fault_names)
+{
+    char buf[64];
+
+    CHECK_STR(pipos_fault_reason(ROBCO_EXC_UNDEF), "undef");
+    CHECK_STR(pipos_fault_reason(ROBCO_EXC_PABT), "prefetch_abort");
+    CHECK_STR(pipos_fault_reason(ROBCO_EXC_DABT), "data_abort");
+    CHECK_STR(pipos_fault_reason(ROBCO_EXC_SVC), "thumb_svc");
+    CHECK_STR(pipos_fault_reason(ROBCO_EXC_IRQ), "other");
+
+    pipos_fault_line(ROBCO_EXC_DABT, 0x004003a8u, buf, sizeof(buf));
+    CHECK_STR(buf, "ROM(1) DATA ABORT AT 0x004003A8");
+    pipos_fault_line(ROBCO_EXC_PABT, 0x8000u, buf, sizeof(buf));
+    CHECK_STR(buf, "ROM(1) PREFETCH ABORT AT 0x00008000");
+    pipos_fault_line(ROBCO_EXC_UNDEF, 0xffffffffu, buf, sizeof(buf));
+    CHECK_STR(buf, "ROM(1) UNDEFINED INSTRUCTION AT 0xFFFFFFFF");
+}

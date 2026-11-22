@@ -1,8 +1,9 @@
 """Helpers for the Pip-OS target tests: ROM files, cards and boots.
 
 Valid ROM files come from rimg.pack in RobCo-Core's tools/rimg.py. The
-broken ones start from a valid ROM and change one field. The payload
-never runs in these tests.
+broken ones start from a valid ROM and change one field. The kernel runs
+a valid ROM: its payload starts with exit(0), the rest is filler. The
+test ROMs built from tests/roms/ come from the test_rom fixture.
 """
 
 import contextlib
@@ -35,9 +36,14 @@ SCHEME_BG = {
 ICON = bytes((i * 37) & 0xFF for i in range(rimg.ICON_SIZE))
 
 
+# mov r0, #0; mov r7, #0x44; svc #0; b . : exit(0).
+EXIT0 = struct.pack("<4I", 0xE3A00000, 0xE3A07044, 0xEF000000, 0xEAFFFFFE)
+
+
 def make_rom(name="DEITRIX", version="3.0.3", title="Deitrix test ROM", payload_size=4096):
-    """A sealed, valid ROM1 image from rimg.pack, with a title and an icon."""
-    payload = bytes((i * 7 + 3) & 0xFF for i in range(payload_size))
+    """A sealed, valid ROM1 image from rimg.pack, with a title and an icon. It calls exit(0)."""
+    filler = bytes((i * 7 + 3) & 0xFF for i in range(payload_size - len(EXIT0)))
+    payload = EXIT0 + filler
     return rimg.pack(payload, "ROM1", 0, ROM_BASE, name=name,
                      image_version=rimg.parse_version(version),
                      mem_size=0x120 + payload_size + 0x10000, title=title, icon=ICON)

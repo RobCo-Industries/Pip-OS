@@ -1,7 +1,9 @@
 # ROM development
 
-Pip-OS cannot run a ROM yet. It loads `/PIPBOY/ROM1.ROM` into the ROM slot, validates it and shows its name and version on the boot screen. It never jumps to it.
+The ROM developer guide comes with the SDK. Until then, this page points at what exists.
 
-The ROM file format is the `rimg` format with the `ROM1` magic and a META block. It is specified in RobCo-Core's [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/IMAGE_FORMAT.md). The system call interface a ROM will use is specified in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/061f224f06200e94b38e49e4fbef7f8300ecc5bd/docs/spec/PIPOS_ABI.md) and is not implemented yet.
+Pip-OS loads `/PIPBOY/ROM1.ROM` into the ROM slot, validates it and runs it in user mode. [BOOT.md](BOOT.md#running-the-rom) describes the entry state and [API.md](API.md) the calls that work.
 
-`make_rom()` in [tests/pipos_helpers.py](../tests/pipos_helpers.py) builds a valid ROM file for the tests. [BOOT.md](BOOT.md#rom-check) lists the checks a ROM file must pass.
+The ROM file format is the `rimg` format with the `ROM1` magic and a META block. It is specified in RobCo-Core's [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/IMAGE_FORMAT.md). The system call interface a ROM will use is specified in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/PIPOS_ABI.md).
+
+`sdk/` holds the ABI header, the syscall wrappers, `crt0.S` and `rom.ld`. The test ROMs in [tests/roms/](../tests/roms) use them, and the `Makefile` shows how to build and seal one. [BOOT.md](BOOT.md#rom-check) lists the checks a ROM file must pass.

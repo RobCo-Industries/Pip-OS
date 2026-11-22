@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `ev=ready` now means the kernel reached its main loop. With a ROM, it comes after the ROM ends.
+- RobCo-Core moved to `bec7ffc` for user-mode tasks.
 - Rebuilt the kernel on the RobCo-Core library, added as a git submodule in `external/robco-core`.
 - One 32-bit image for the Pi Zero, Pi 1, Pi 2 and Pi 3. The `BCM=` option and the AArch64 build are gone.
 - New layout: a top-level `Makefile`, `kernel/` for the sources, `tests/` for the tests.
@@ -16,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- The kernel runs the ROM in user mode after the boot screen and reports `ev=jump`, `ev=rom_exit` or `ev=rom_kill`. A fault shows on screen.
+- System calls `ticks_ms`, `sleep_ms`, `exit`, `sys_info`, `mem_info`, `log` and `rand`. Other numbers return `-PIP_ENOSYS`.
+- `sdk/`: `include/pipos/abi.h`, `include/pipos/syscall.h`, `crt0.S` and `rom.ld`.
+- Test ROMs in `tests/roms/` and `tests/test_rom.py`.
+- `make run WINDOW=1` opens the QEMU display window.
 - MMU and caches, interrupts, a 100 Hz tick and a kernel heap.
 - Configuration from `/PIPBOY/PIPOS.CFG`. See [docs/CONFIG.md](docs/CONFIG.md).
 - ROM check: the kernel loads and validates `/PIPBOY/ROM1.ROM`. It does not run it.

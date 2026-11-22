@@ -27,8 +27,9 @@ def test_valid_rom(board, kernel_image, tmp_path, need_mtools):
         assert int(m["crc"], 16) == rom_crc(rom)
         load = one(vm, "load")
         assert (load["path"], load["addr"]) == ("/PIPBOY/ROM1.ROM", "0x00400000")
+        assert one(vm, "jump")["entry"] == "0x00400000"
+        assert one(vm, "rom_exit")["status"] == "0"
         assert one(vm, "ready")["rom"] == "1"
-        assert not pipos_markers(vm, "jump")
         rows = dump(vm)
         assert "LOAD ROM(1): DEITRIX 3.0.3" in rows, rows
         assert "NO HOLOTAPE FOUND" in rows, rows
@@ -111,6 +112,7 @@ def test_bad_rom(board, kernel_image, tmp_path, need_mtools, error):
         assert (m["rc"], m["name"], m["version"]) == (error, "-", "-"), vm.serial
         assert one(vm, "error")["code"] == error
         assert one(vm, "ready")["rom"] == "0"
+        assert not pipos_markers(vm, "jump")
         rows = dump(vm)
         assert line in rows, rows
         assert not any(r.startswith("LOAD ROM(1)") for r in rows), rows
@@ -124,6 +126,7 @@ def test_no_rom_no_config(board, kernel_image, tmp_path, need_mtools):
         assert config_summary(vm)["rc"] == "nofile"
         assert one(vm, "rom")["rc"] == "nofile"
         assert one(vm, "ready")["rom"] == "0"
+        assert not pipos_markers(vm, "jump")
         assert "ROM(1) NOT LOADED: NO FILE /PIPBOY/ROM1.ROM" in dump(vm)
 
 
