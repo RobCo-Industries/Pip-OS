@@ -30,9 +30,11 @@ File calls are read only.
 - A path is absolute and at most 127 bytes plus the NUL. Each component is an 8.3 name: 1 to 8 characters, then an optional dot and 1 to 3 characters. The characters are `A-Z`, `0-9` and ``! # $ % & ' ( ) - @ ^ _ ` { } ~``. Lower case works and is upper-cased.
 - These return `-PIP_EINVAL`: a relative path, `//`, `.` or `..`, a trailing `/`, a trailing dot, a space anywhere, `\`, `:`, a byte outside the set above. Only `dir_list` accepts `/` alone.
 - `/PIPBOY/SAVE` and everything in it return `-PIP_EPERM`, in any case.
+- FatFs also finds a folder by its 8.3 alias, and a PC tool can give `PIPBOY` or `SAVE` an alias such as `SAVE~1`. So Pip-OS also checks the card. It looks up the first component in the root by long or short name. If that entry is the `PIPBOY` folder by either name, it looks up the second component in it the same way. If that entry is the `SAVE` folder by either name, the call returns `-PIP_EPERM`.
+- That check costs one scan of the root for every path with two or more components, and one more scan of `/PIPBOY` when the first component is that folder. Each scan stops at the matching entry. A path with one component costs no scan.
 - Each ROM has 8 handles, 0 to 7. `file_open` takes the lowest free one. A directory returns `-PIP_EINVAL`. Pip-OS closes every open file when the ROM ends.
 - `file_read` takes any `size`. It checks the whole buffer first, then reads through a 4 KiB kernel buffer. `size` 0 returns 0. A refused read does not move the file position.
-- `dir_list` takes `max` 1 to 64. It checks the whole `out` range for `max` entries first. It skips `start` entries, then writes entries in directory order. `name` is the 8.3 name, never the long name. A file path returns `-PIP_EINVAL`, a missing one `-PIP_ENOENT`. Work files and hidden entries are listed too.
+- `dir_list` takes `max` 1 to 64. It checks the whole `out` range for `max` entries first. It skips `start` entries, then writes entries in directory order. `name` is the 8.3 name, never the long name. An entry whose long name does not fit 8.3 shows its alias, such as `LONGFO~1`, and `file_open` or `dir_list` accepts that name. The save folder shows under the name that returns `-PIP_EPERM`. A file path returns `-PIP_EINVAL`, a missing one `-PIP_ENOENT`. Work files and hidden entries are listed too.
 
 ## Errors
 
