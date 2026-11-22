@@ -5,6 +5,8 @@
  * Paths are strict so that no spelling reaches the save folder: FatFs
  * would accept "." and "..", "\", trailing dots and spaces, and long
  * names, any of which could lead into /PIPBOY/SAVE by another way.
+ * FatFs also resolves a name by its 8.3 alias, which can have any
+ * spelling: pipos_save_dir_check() looks up the entries on the card.
  */
 #include <robco/fs.h>
 
@@ -146,6 +148,86 @@ int32_t pipos_file_path(const char *path, int root_ok, char *out)
         start = end + 1;
     }
     return save_dir && comp >= 2 ? -PIP_EPERM : 0;
+}
+
+/* Entry name e, any case, equals the upper-case s[0..len). */
+static int same_ci(const char *e, const char *s, unsigned len)
+{
+    unsigned i;
+
+    for (i = 0; i < len; i++) {
+        if (e[i] == '\0' || upper(e[i]) != s[i]) {
+            return 0;
+        }
+    }
+    return e[len] == '\0';
+}
+
+static unsigned comp_len(const char *s)
+{
+    unsigned n = 0;
+
+    while (s[n] != '\0' && s[n] != '/') {
+        n++;
+    }
+    return n;
+}
+
+/*
+ * Looks up s[0..len) in dir by long or short name, as FatFs does. 1 if the
+ * entry is a directory whose long or short name is word, 0 if it is not or
+ * nothing matches, or a -PIP_E* code.
+ */
+static int32_t entry_is(const pipos_dir_reader_t *r, const char *dir, const char *s,
+                        unsigned len, const char *word)
+{
+    unsigned wlen = comp_len(word);
+    const char *name, *short_name;
+    int is_dir;
+    int32_t rc = r->open(r->self, dir);
+
+    if (rc != 0) {
+        return rc;
+    }
+    while ((rc = r->next(r->self, &name, &short_name, &is_dir)) == 1) {
+        if (same_ci(name, s, len) || same_ci(short_name, s, len)) {
+            rc = is_dir && (same_ci(name, word, wlen) || same_ci(short_name, word, wlen));
+            break;
+        }
+    }
+    r->close(r->self);
+    return rc;
+}
+
+int32_t pipos_save_dir_check(const char *path, const pipos_dir_reader_t *r)
+{
+    const char *a = path + 1, *b;
+    unsigned alen, i;
+    char dir[1 + 12 + 1];
+    int32_t rc;
+
+    if (path[0] != '/') {
+        return 0;
+    }
+    alen = comp_len(a);
+    if (alen == 0 || a[alen] != '/') {
+        return 0; /* fewer than two components */
+    }
+    if (alen > 12) {
+        return -PIP_EINVAL;
+    }
+    b = a + alen + 1;
+    rc = entry_is(r, "/", a, alen, "PIPBOY");
+    if (rc != 1) {
+        return rc;
+    }
+    dir[0] = '/';
+    for (i = 0; i < alen; i++) {
+        dir[1 + i] = a[i];
+    }
+    dir[1 + alen] = '\0';
+    rc = entry_is(r, dir, b, comp_len(b), "SAVE");
+    return rc == 1 ? -PIP_EPERM : rc;
 }
 
 int32_t pipos_storage_errno(int fs_err)

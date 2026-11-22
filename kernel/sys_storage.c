@@ -192,17 +192,58 @@ static int32_t sys_save_delete(const pipos_sys_ctx_t *ctx, uint32_t uname, uint3
     return frc == FS_OK ? 0 : pipos_storage_errno(frc);
 }
 
+/* The directory reader of pipos_save_dir_check(), on fs_readdir(). */
+static fs_dir_t rd_dir;
+static fs_stat_t rd_st;
+
+static int32_t rd_open(void *self, const char *path)
+{
+    char full[sizeof(VOL) + 14];
+    int frc;
+
+    (void)self;
+    k_strncpy(full, VOL, sizeof(full));
+    k_strncpy(full + sizeof(VOL) - 1, path, sizeof(full) - sizeof(VOL));
+    full[sizeof(full) - 1] = '\0';
+    frc = fs_opendir(&rd_dir, full);
+    return frc == FS_OK ? 0 : pipos_storage_errno(frc);
+}
+
+static int32_t rd_next(void *self, const char **name, const char **short_name, int *is_dir)
+{
+    int frc = fs_readdir(&rd_dir, &rd_st);
+
+    (void)self;
+    if (frc < 0) {
+        return pipos_storage_errno(frc);
+    }
+    *name = rd_st.name;
+    *short_name = rd_st.short_name;
+    *is_dir = rd_st.is_dir;
+    return frc;
+}
+
+static void rd_close(void *self)
+{
+    (void)self;
+    fs_closedir(&rd_dir);
+}
+
+static const pipos_dir_reader_t reader = { rd_open, rd_next, rd_close, NULL };
+
 /* Copies and checks the caller's path into "sd:<PATH>". */
 static int32_t file_path(const pipos_sys_ctx_t *ctx, uint32_t upath, int root_ok, char *path)
 {
     char raw[PIP_PATH_MAX + 1];
     long len = pipos_user_str(ctx, raw, upath, sizeof(raw));
+    int32_t rc;
 
     if (len < 0) {
         return (int32_t)len;
     }
     k_strncpy(path, VOL, PATH_SIZE);
-    return pipos_file_path(raw, root_ok, path + sizeof(VOL) - 1);
+    rc = pipos_file_path(raw, root_ok, path + sizeof(VOL) - 1);
+    return rc == 0 ? pipos_save_dir_check(path + sizeof(VOL) - 1, &reader) : rc;
 }
 
 static int32_t sys_file_open(const pipos_sys_ctx_t *ctx, uint32_t upath, uint32_t a1,

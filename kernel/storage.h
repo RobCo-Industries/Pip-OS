@@ -36,6 +36,27 @@ void pipos_save_path(const char *prefix, const char *name, char mark, char *out,
  */
 int32_t pipos_file_path(const char *path, int root_ok, char *out);
 
+/* Reads one directory for pipos_save_dir_check(). */
+typedef struct {
+    /* Opens the directory at path, "/" or "/NAME". 0 or a -PIP_E* code. */
+    int32_t (*open)(void *self, const char *path);
+    /* The next entry: 1, 0 at the end, or a -PIP_E* code. Empty short_name: none. */
+    int32_t (*next)(void *self, const char **name, const char **short_name, int *is_dir);
+    void (*close)(void *self);
+    void *self;
+} pipos_dir_reader_t;
+
+/*
+ * The save folder by identity, for a path pipos_file_path() accepted. FatFs
+ * finds a component by its long name or its 8.3 alias, so an alias of any
+ * spelling can name PIPBOY or SAVE. With two or more components, this finds
+ * the entry of the first one in the root and, if that is the PIPBOY
+ * directory by either name, the entry of the second one in it. -PIP_EPERM
+ * if that is the SAVE directory by either name. 0 otherwise, or the
+ * reader's error. Costs one root scan, plus one scan of /PIPBOY.
+ */
+int32_t pipos_save_dir_check(const char *path, const pipos_dir_reader_t *r);
+
 /*
  * A negative FS_ERR_* code as a -PIP_E* code: NOENT, NOSPC, TOOBIG as
  * -PIP_ERANGE. Anything else, a read-only card included, is -PIP_EIO.
