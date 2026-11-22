@@ -174,6 +174,8 @@ $(HOST_BUILD)/libpip/$(notdir $(1:.c=.o)): $(1) $(LIBPIP_HOST_HDRS)
 endef
 $(foreach s,$(LIBPIP_HOST_SRCS),$(eval $(call libpip_host_rule,$(s))))
 
+# host.mk only sees headers at the top of HOST_INCLUDES, not sdk/include/pipos/.
+$(HOST_TESTS): $(wildcard sdk/include/pipos/*.h)
 # test_sdk_calls.c includes the wrappers.
 $(HOST_BUILD)/test_sdk_calls: sdk/lib/syscall.c
 
