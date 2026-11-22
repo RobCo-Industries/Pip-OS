@@ -193,14 +193,20 @@ def test_holotape_line(board, kernel_image, tmp_path, need_mtools):
         assert "1 HOLOTAPE FOUND" in rows and "NO HOLOTAPE FOUND" not in rows, rows
 
 
-def test_default_card_runs_hello_example(board, kernel_image, tmp_path, need_mtools):
-    """`make sdimage` puts sdk/examples/hello on the card as ROM1.ROM, and it runs."""
-    build = pathlib.Path(kernel_image).parent
+@pytest.fixture(scope="session")
+def default_card(tmp_path_factory):
+    """The card of a plain `make sdimage`, built once in a folder of its own."""
+    build = tmp_path_factory.mktemp("default_card") / "build"
     root = pathlib.Path(__file__).resolve().parent.parent
     subprocess.run(["make", "-s", "sdimage", f"BUILD={build}"], cwd=root, check=True,
                    stdout=subprocess.DEVNULL)
+    return build / "sd.img"
+
+
+def test_default_card_runs_hello_example(board, kernel_image, need_mtools, default_card, tmp_path):
+    """`make sdimage` puts sdk/examples/hello on the card as ROM1.ROM, and it runs."""
     sd = tmp_path / "sd.img"
-    shutil.copyfile(build / "sd.img", sd)
+    shutil.copyfile(default_card, sd)
     with booted(kernel_image, board, sd=sd) as vm:
         m = one(vm, "rom")
         assert (m["rc"], m["name"], m["version"]) == ("ok", "HELLO", "1.0.0"), vm.serial
