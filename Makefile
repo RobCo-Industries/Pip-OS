@@ -32,6 +32,7 @@ PURE_SRCS  := \
               kernel/settings.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \
+              kernel/time_clock.c \
 
 SRCS       := $(sort $(wildcard kernel/*.c))
 # The ABI header in sdk/include is shared with ROM code.
