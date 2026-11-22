@@ -1,56 +1,22 @@
-name: CI
+name: ci
 
 on:
-  pull_request:
-    branches: [ main, master ]
   push:
-    branches: [ main, master ]
+    branches: [master]
+  pull_request:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
-  build-and-test:
-    name: BCM${{ matrix.BCM }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        BCM: [2835, 2836]
-    env:
-      BCM: ${{ matrix.BCM }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install toolchain and QEMU
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi qemu-system-arm
-          arm-none-eabi-gcc --version
-          qemu-system-arm --version
-
-      - name: Build
-        run: make -C build clean all BCM="$BCM"
-
-      - name: QEMU boot test
-        run: bash tests/qemu_boot_test.sh "$BCM"
-
-      - name: Build checks
-        working-directory: tests
-        run: bash run_tests.sh
-
-      - name: Rebuild artifacts
-        run: make -C build clean all BCM="$BCM"
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-bcm${{ matrix.BCM }}
-          path: |
-            build/kernel*.img
-            build/kernel*.elf
-            build/qemu-bcm*.log
-          retention-days: 30
+  ci:
+    # The commit and the image tag must match the external/robco-core
+    # submodule and its ci/IMAGE_TAG. `make check-pins` checks both.
+    uses: RobCo-Industries/RobCo-Core/.github/workflows/robco-ci.yml@2f5c7dcff7ab012170ae8c42bfeeedf8067256f7
+    with:
+      image-tag: ba6372158e4b
+      make-targets: all test-host
+      test-targets: test-target
+      boards: '["raspi0","raspi1ap","raspi2b","raspi3b"]'
+      artifact-path: build/pipos.img
