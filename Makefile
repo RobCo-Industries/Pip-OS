@@ -7,10 +7,13 @@
 #   make test-target          QEMU target tests
 #   make check-pins           CI workflow pins match the submodule
 #   make check-pins-test      the pin check works without git
-#   make sdimage              build/sd.img with the kernel and a sample config
+#   make sdimage              build/sd.img with the kernel, a sample config and
+#                             the hello example as ROM1.ROM (ROM=<file> picks
+#                             another image, ROM=none leaves it out)
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #                             (WINDOW=1 also opens the display window)
-#   make test-roms            build/roms/*.rom from tests/roms/
+#   make test-roms            build/roms/<name>/<name>.rom from tests/roms/
+#   make sdk-example          build/examples/hello/ROM1.ROM from sdk/examples/hello
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
 
 ROBCO_CORE := external/robco-core
@@ -38,6 +41,14 @@ HOST_INCLUDES := kernel sdk/include
 SDIMAGE_MIB   ?= 64
 SDIMAGE_DEPS  := $(BUILD)/$(IMAGE).img
 SDIMAGE_FILES := boot/PIPOS.CFG:PIPBOY/PIPOS.CFG
+# The card's /PIPBOY/ROM1.ROM: the hello example unless ROM names another
+# image. ROM=none leaves the card without one.
+EXAMPLE_BUILD  = $(abspath $(BUILD))/examples/hello
+EXAMPLE_ROM    = $(EXAMPLE_BUILD)/ROM1.ROM
+ROM           ?= $(EXAMPLE_ROM)
+ifneq ($(ROM),none)
+SDIMAGE_FILES += $(ROM):PIPBOY/ROM1.ROM
+endif
 
 ifeq ($(wildcard $(ROBCO_CORE)/mk/robco.mk),)
 $(error $(ROBCO_CORE) is empty: run git submodule update --init)
@@ -50,56 +61,43 @@ include $(ROBCO_CORE)/mk/host.mk
 # Target tests boot the image built here; keep top-level targets serial.
 .NOTPARALLEL:
 
-# ---- Test ROMs ----------------------------------------------------------
+# ---- ROMs ---------------------------------------------------------------
 
-# tests/roms/<name>.c on top of sdk/, linked with sdk/rom.ld and sealed:
-# $(BUILD)/roms/<name>.rom. fault.c builds once per fault case.
+# Every ROM builds through sdk/pipos-app.mk and libpip.a.
+#
+# Test ROMs: tests/roms/<name>.c with rt.c, into $(BUILD)/roms/<name>/<name>.rom.
+# fault.c builds once per fault case. They share one libpip.a.
+# sdkcheck is a ROM project of its own in tests/roms/sdkcheck/.
 ROM_BUILD   := $(BUILD)/roms
 TEST_ROMS   := hello ret5 tramp entry calls sleep spin
 FAULT_CASES := wrkern rdperiph jmpkern undef priv null
-ROM_IMAGES  := $(addprefix $(ROM_BUILD)/,$(addsuffix .rom,$(TEST_ROMS) $(addprefix fault_,$(FAULT_CASES))))
-ROM_CFLAGS  := $(ROBCO_ARCHFLAGS) -std=gnu11 -ffreestanding -nostdlib -fno-builtin \
-               -ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns \
-               -O2 -g -Wall -Wextra -MMD -MP -Isdk/include -Itests/roms
-ifeq ($(CI),1)
-ROM_CFLAGS  += -Werror
-endif
-ROM_LDFLAGS := $(ROBCO_ARCHFLAGS) -nostdlib -T sdk/rom.ld -Wl,--gc-sections $(ROBCO_LD_RWX)
-ROM_COMMON  := $(ROM_BUILD)/crt0.o $(ROM_BUILD)/rt.o $(ROM_BUILD)/regs.o
+ROM_TARGETS := $(addprefix rom-,$(TEST_ROMS) $(addprefix fault_,$(FAULT_CASES)))
+PIP_APP     := $(MAKE) --no-print-directory -f sdk/pipos-app.mk PIPOS_SDK=sdk \
+               ROBCO_CORE=$(ROBCO_CORE) KIND=rom VERSION=1.0.0 LIBPIP_DIR=$(ROM_BUILD)/libpip
+ROM_CFLAGS  := -fno-builtin -Itests/roms
 
-.PHONY: test-roms
-all: test-roms
-test-roms: $(ROM_IMAGES)
+.PHONY: test-roms sdk-example rom-sdkcheck $(ROM_TARGETS)
+all: test-roms sdk-example
+test-roms: $(ROM_TARGETS) rom-sdkcheck
 
-$(ROM_BUILD)/crt0.o: sdk/crt0.S
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -c -o $@ $<
+$(addprefix rom-fault_,$(FAULT_CASES)): rom-fault_%:
+	$(PIP_APP) BUILD=$(ROM_BUILD)/fault_$* IMAGE=fault_$*.rom NAME=fault_$* \
+	    TITLE="Pip-OS test ROM fault_$*" SRCS="tests/roms/fault.c tests/roms/rt.c" \
+	    CFLAGS_EXTRA="$(ROM_CFLAGS) -DFAULT_$*"
 
-$(ROM_BUILD)/fault_%.o: tests/roms/fault.c
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -DFAULT_$* -c -o $@ $<
+$(addprefix rom-,$(TEST_ROMS)): rom-%:
+	$(PIP_APP) BUILD=$(ROM_BUILD)/$* IMAGE=$*.rom NAME=$* TITLE="Pip-OS test ROM $*" \
+	    SRCS="tests/roms/$*.c tests/roms/rt.c $(if $(filter calls,$*),tests/roms/regs.S)" \
+	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
-$(ROM_BUILD)/%.o: tests/roms/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -c -o $@ $<
+rom-sdkcheck:
+	$(MAKE) --no-print-directory -C tests/roms/sdkcheck BUILD=$(abspath $(ROM_BUILD))/sdkcheck
 
-$(ROM_BUILD)/%.o: tests/roms/%.S
-	@mkdir -p $(dir $@)
-	$(CC) $(ROM_CFLAGS) -c -o $@ $<
+# The hello example, the default ROM of the card.
+sdk-example:
+	$(MAKE) --no-print-directory -C sdk/examples/hello BUILD=$(EXAMPLE_BUILD)
 
-$(ROM_BUILD)/%.elf: $(ROM_BUILD)/%.o $(ROM_COMMON) sdk/rom.ld
-	$(CC) $(ROM_LDFLAGS) -Wl,-Map,$(@:.elf=.map) -o $@ $(ROM_COMMON) $< -lgcc
-
-$(ROM_BUILD)/%.rom: $(ROM_BUILD)/%.elf $(ROBCO_CORE)/tools/rimg.py
-	$(OBJCOPY) -O binary $< $@.tmp
-	$(PYTHON) $(ROBCO_CORE)/tools/rimg.py seal $@.tmp --name $* --image-version 1.0.0 \
-	    --title "Pip-OS test ROM $*"
-	mv $@.tmp $@
-
-.SECONDARY: $(ROM_IMAGES:.rom=.elf) $(ROM_IMAGES:.rom=.o) $(ROM_COMMON)
-# Dependency files are never targets (no built-in %: %.o for them).
-$(ROM_BUILD)/%.d: ;
--include $(wildcard $(ROM_BUILD)/*.d)
+$(EXAMPLE_ROM): sdk-example
 
 # ---- Python environment for the target tests --------------------------
 
@@ -134,7 +132,43 @@ build-dir-test:
 	tests/host/build_dir_test.sh
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
-test-host: check-pins check-pins-test build-dir-test
+test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
+           sdimage-rom-test
+
+.PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test
+sdk-example-test:
+	tests/host/sdk_example_test.sh
+
+sdk-rebuild-test:
+	tests/host/sdk_rebuild_test.sh
+
+sdimage-rom-test:
+	tests/host/sdimage_rom_test.sh
+
+# libpip.a on the host: sdk/lib/ without the svc wrappers, and RobCo-Core's
+# string, printf and heap code. libpip_names.h renames the C library
+# functions to pipt_* in these objects so they do not replace the host's.
+# -UROBCO_HOST keeps k_string.c's memcpy, memmove, memset and memcmp.
+LIBPIP_HOST_SRCS := $(filter-out sdk/lib/syscall.c,$(sort $(wildcard sdk/lib/*.c))) \
+                    $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c alloc.c)
+LIBPIP_HOST_OBJS := $(addprefix $(HOST_BUILD)/libpip/,$(notdir $(LIBPIP_HOST_SRCS:.c=.o)))
+LIBPIP_HOST_HDRS := tests/host/libpip_names.h $(wildcard sdk/include/pipos/*.h) \
+                    $(ROBCO_CORE)/include/robco/klibc.h $(ROBCO_CORE)/include/robco/alloc.h
+
+.PHONY: libpip-host-test
+libpip-host-test: $(HOST_BUILD)/libpip_test
+	$(HOST_BUILD)/libpip_test
+
+define libpip_host_rule
+$(HOST_BUILD)/libpip/$(notdir $(1:.c=.o)): $(1) $(LIBPIP_HOST_HDRS)
+	@mkdir -p $$(dir $$@)
+	$$(HOST_CC) $$(HOST_CFLAGS) -UROBCO_HOST -fno-builtin -Isdk/include -include tests/host/libpip_names.h -c -o $$@ $$<
+endef
+$(foreach s,$(LIBPIP_HOST_SRCS),$(eval $(call libpip_host_rule,$(s))))
+
+$(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP_HOST_HDRS)
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(HOST_CFLAGS) -fno-builtin -Isdk/include -o $@ $< $(LIBPIP_HOST_OBJS)
 
 # ---- Cards and QEMU -----------------------------------------------------
 

@@ -2,6 +2,9 @@
 # Checks that make test-target passes a custom BUILD to pytest and that
 # the fixture resolves the kernel image inside that directory.
 set -eu
+# Build settings from the caller's environment or an outer make
+# (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
 cd "$(dirname "$0")/../.."
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT

@@ -7,6 +7,7 @@
 #include <robco/klibc.h>
 #include <robco/rng.h>
 #include <robco/tick.h>
+#include <robco/timer.h>
 #include <robco/uart.h>
 #include <robco/umode.h>
 
@@ -21,13 +22,22 @@ static int32_t sys_ticks_ms(exc_frame_t *f)
     return (int32_t)(tick_ms() & 0x7fffffffu);
 }
 
-/* Runs the kernel's main-loop work while it waits, so script commands still work. */
+/*
+ * Runs the kernel's main-loop work while it waits, so script commands still
+ * work. ms above 0x7FFFFFFF returns -PIP_ERANGE at once. The deadline is on
+ * the 1 MHz system timer, so the wait is never short; the tick interrupt
+ * wakes the wfi, so it can run up to one tick long.
+ */
 static int32_t sys_sleep_ms(exc_frame_t *f)
 {
     uint32_t ms = f->r[0];
-    uint32_t start = tick_ms();
+    uint64_t deadline = pipos_sleep_deadline_us(timer_now_us(), ms);
+    int32_t rc = pipos_sleep_check(ms);
 
-    while (tick_ms() - start < ms) {
+    if (rc != 0) {
+        return rc;
+    }
+    while (!timer_expired(deadline)) {
         pipos_poll();
         __asm__ volatile("wfi");
     }

@@ -3,6 +3,9 @@
 # container, against the real workflow and against a workflow with a wrong
 # commit and a wrong tag.
 set -euo pipefail
+# Build settings from the caller's environment or an outer make
+# (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)

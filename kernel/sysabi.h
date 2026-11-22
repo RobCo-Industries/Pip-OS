@@ -42,6 +42,18 @@ char pipos_log_char(char c);
  */
 long pipos_log_check(long strnlen_result, int whole_range_ok);
 
+/*
+ * sleep_ms's verdict on its argument: 0, or -PIP_ERANGE when ms is above
+ * 0x7FFFFFFF. A longer wait could never end: tick_ms() wraps at 2^32.
+ */
+int32_t pipos_sleep_check(uint32_t ms);
+
+/*
+ * When a sleep_ms of `ms` that starts at `now_us` on the 1 MHz system
+ * timer may end: never before `ms` whole milliseconds passed.
+ */
+uint64_t pipos_sleep_deadline_us(uint64_t now_us, uint32_t ms);
+
 /* rom_kill reason for a ROBCO_EXC_* fault type. */
 const char *pipos_fault_reason(unsigned type);
 

@@ -68,6 +68,16 @@ long pipos_log_check(long strnlen_result, int whole_range_ok)
     return whole_range_ok ? -PIP_EINVAL : -PIP_EFAULT;
 }
 
+int32_t pipos_sleep_check(uint32_t ms)
+{
+    return ms > 0x7fffffffu ? -PIP_ERANGE : 0;
+}
+
+uint64_t pipos_sleep_deadline_us(uint64_t now_us, uint32_t ms)
+{
+    return now_us + (uint64_t)ms * 1000u;
+}
+
 const char *pipos_fault_reason(unsigned type)
 {
     switch (type) {

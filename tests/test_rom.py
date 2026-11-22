@@ -4,6 +4,10 @@ system calls, faults, and the kernel's script commands while a ROM runs.
 The ROMs print "@RC stage=testrom ..." lines through the log call.
 """
 
+import os
+import re
+import subprocess
+
 import pytest
 
 from harness.boot import boot
@@ -105,6 +109,27 @@ def test_ticks_and_sleep(calls):
     assert 50 <= b - a < 1000, t
 
 
+def test_sleep_range(calls):
+    m = rom_one(calls, "sleep_range")
+    assert (m["big"], m["max"], m["ok"]) == ("-34", "-34", "0"), m
+    assert 0 <= int(m["fast_ms"]) < 20, m
+    assert 20 <= int(m["slept_ms"]) < 1000, m
+
+
+TICK_MS = 10  # the kernel's 100 Hz tick
+
+
+def test_sleep_is_never_short(calls):
+    """ROMs only see ticks_ms. A read falls up to one tick after the real
+    time, so a sleep of at least ms shows at least ms rounded down to a
+    whole tick."""
+    got = [(int(m["ms"]), m["rc"], int(m["elapsed"])) for m in rom_markers(calls, "sleep_len")]
+    assert [g[0] for g in got] == [1, 7, 10, 13, 25, 50], calls.serial
+    for ms, rc, elapsed in got:
+        assert rc == "0", got
+        assert ms - ms % TICK_MS <= elapsed < ms + 1000, got
+
+
 def test_sys_info(calls):
     boot_m = one(calls, "boot")
     s = {k: int(v, 16) for k, v in rom_one(calls, "sys_info").items()
@@ -170,23 +195,51 @@ FAULTS = {
 }
 
 
-# On the ARM1176 boards QEMU lets USR mode fetch from the kernel's
-# privileged-only sections: the ROM runs kernel code until the first
-# privileged instruction, an undef at 0x00008078. Data accesses do fault.
-# Strict, so the test fails once the jump faults as it should.
+# QEMU 10.1 does not check execute permission on ARMv6 CPUs. On these boards
+# the ROM runs kernel code in USR mode until the first privileged instruction.
 ARM1176_BOARDS = ("raspi0", "raspi1ap")
+PRIVILEGED = ("mrc", "mcr", "cps", "srs", "rfe")
+
+
+def first_privileged_pc(elf):
+    """Follows the branch at 0x8000 and returns the address of the first
+    instruction of the entry routine that is undefined in USR mode."""
+    out = subprocess.run(["arm-none-eabi-objdump", "-d", elf], check=True,
+                         capture_output=True, text=True).stdout
+    insns = []
+    for line in out.splitlines():
+        m = re.match(r"\s*([0-9a-f]+):\s+[0-9a-f]{8}\s+(\S+)\s*(.*)", line)
+        if m:
+            insns.append((int(m[1], 16), m[2], m[3]))
+    addrs = [a for a, _, _ in insns]
+    first = insns[addrs.index(0x8000)]
+    assert first[1] == "b", f"expected a branch at 0x8000, got {first}"
+    i = addrs.index(int(first[2].split()[0], 16))
+    for addr, op, args in insns[i:]:
+        if op.startswith(PRIVILEGED):
+            return f"0x{addr:08x}"
+        assert not re.match(r"(b|bl|bx|blx)(eq|ne|cs|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?$", op) \
+            and not op.startswith(("ldr", "ldm", "pop")), \
+            f"{op} {args} at 0x{addr:x} comes before a privileged instruction"
+    raise AssertionError("no privileged instruction after the kernel entry")
 
 
 @pytest.mark.parametrize("case", list(FAULTS))
-def test_fault(board, kernel_image, test_rom, tmp_path, need_mtools, case, request):
+def test_fault(board, kernel_image, test_rom, tmp_path, need_mtools, case):
     reason, text = FAULTS[case]
-    if case == "jmpkern" and board in ARM1176_BOARDS:
-        request.applymarker(pytest.mark.xfail(
-            strict=True, reason="USR fetch from a privileged-only section does not fault "
-                                "on ARM1176 in QEMU"))
     with booted(kernel_image, board, sd=card(tmp_path, test_rom(f"fault_{case}"))) as vm:
         f = rom_one(vm, "fault")
         kill = one(vm, "rom_kill")
+        if case == "jmpkern" and board in ARM1176_BOARDS:
+            assert kill["reason"] != "prefetch_abort", \
+                f"QEMU now refuses the USR fetch on {board}: move it to the " \
+                f"prefetch_abort expectation\n{vm.serial}"
+            pc = first_privileged_pc(os.path.join(os.path.dirname(kernel_image), "pipos.elf"))
+            assert (kill["reason"], kill["pc"]) == ("undef", pc), vm.serial
+            assert one(vm, "ready")["rom"] == "1"
+            assert state(vm)["ready"] == "1"
+            no_exception(vm)
+            return
         assert (kill["reason"], kill["pc"]) == (reason, f["pc"]), vm.serial
         if reason == "data_abort":
             assert kill["dfar"] == f["addr"], vm.serial
@@ -218,3 +271,22 @@ def test_scripts_stop_while_rom_spins(board, kernel_image, test_rom, tmp_path, n
         with pytest.raises(QemuError):
             vm.script("state", timeout=3)
         assert not pipos_markers(vm, "ready")
+
+
+SDK_CHECKS = ["printf_conv", "printf_trunc", "printf_long", "printf_nul", "str_mem", "str_memmove",
+              "str_len_cmp", "str_chr", "str_lcpy", "heap_align", "heap_calloc",
+              "heap_exhaust", "heap_recover", "heap_free"]
+
+
+def test_sdk_self_check(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """tests/roms/sdkcheck, built only through sdk/pipos-app.mk and libpip.a."""
+    with booted(kernel_image, board, sd=card(tmp_path, test_rom("sdkcheck"))) as vm:
+        checks = [(m["name"], m["ok"]) for m in rom_markers(vm, "check")]
+        assert checks == [(name, "1") for name in SDK_CHECKS], vm.serial
+        assert rom_one(vm, "checks") == {"stage": "testrom", "ev": "checks",
+                                         "total": str(len(SDK_CHECKS)), "failed": "0"}
+        long_line = "".join(chr(ord("a") + i % 26) for i in range(600)) + "\n"
+        assert long_line in vm.serial
+        assert "sdkcheck: nul a?b\n" in vm.serial
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)

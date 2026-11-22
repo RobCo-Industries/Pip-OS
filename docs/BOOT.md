@@ -113,7 +113,7 @@ Limits:
 
 - While the ROM runs, the kernel does its main-loop work, such as script commands and input, only inside `sleep_ms`. A ROM that never calls `sleep_ms` blocks the maintenance commands.
 - A ROM that never ends never reaches the main loop, so `ev=ready` does not appear.
-- On the ARM1176 boards in QEMU, `raspi0` and `raspi1ap`, a jump into kernel memory does not fault. The ROM runs the kernel code in USR mode until its first privileged instruction, which faults as `undef`. Data accesses to kernel memory do fault.
+- On the ARM1176 boards in QEMU, `raspi0` and `raspi1ap`, a jump into kernel memory does not fault. The ROM runs the kernel code in USR mode until its first privileged instruction, which faults as `undef`. Data accesses to kernel memory do fault. QEMU 10.1 does not check execute permission on ARMv6 CPUs. Real hardware is not verified yet. The `jmpkern` test asserts this `undef` outcome on these boards.
 
 ## Main loop
 
