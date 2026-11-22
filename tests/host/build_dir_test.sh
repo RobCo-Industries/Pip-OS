@@ -13,10 +13,10 @@ esac
 path=$(python3 -c 'import os,sys
 root=os.getcwd()
 src=open("tests/conftest.py").read()
-start=src.index("def image_path")
+start=src.index("def build_args")
 ns={"os":os,"ROOT":root}
 exec(src[start:src.index("\n\n\n",start)],ns)
-print(ns["image_path"](sys.argv[1]))' "$dir")
+print(ns["build_args"](sys.argv[1])["image"])' "$dir")
 case "$path" in
   "$dir/pipos.img") ;;
   *) echo "build_dir_test: image path $path is not in $dir" >&2; exit 1 ;;
