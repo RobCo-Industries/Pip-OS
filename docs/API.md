@@ -2,14 +2,14 @@
 
 A running ROM calls the kernel with `svc #0`. The call number goes in r7, the arguments in r0 to r3, and the result comes back in r0. A negative result is `-PIP_E*`. The kernel keeps every register except r0. The contract is RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/PIPOS_ABI.md).
 
-[`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers of the whole table, the error codes and the structs. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) wraps each working call as `pip_<name>()`, plus a raw `pip_syscall()`.
+[`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers of the whole table, the error codes and the structs. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for each working call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
 ## Calls that work today
 
 | Number | Name | Arguments | Result |
 |---|---|---|---|
 | `0x42` | `ticks_ms` | none | Milliseconds since the tick started at boot, masked to 31 bits |
-| `0x43` | `sleep_ms` | `uint32 ms` | 0, after at least `ms` milliseconds. IRQs stay on. |
+| `0x43` | `sleep_ms` | `uint32 ms`, at most `0x7FFFFFFF` | 0 once `ms` milliseconds passed on the 100 Hz tick. IRQs stay on. A larger `ms` returns `-PIP_ERANGE` (-34) at once. |
 | `0x44` | `exit` | `int32 status` | Does not return. The kernel prints `ev=rom_exit status=<status>`. |
 | `0x45` | `sys_info` | `pip_sys_info_t *out` | 0 |
 | `0x46` | `mem_info` | `pip_mem_info_t *out` | 0 |

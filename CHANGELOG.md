@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `sleep_ms` returns `-PIP_ERANGE` at once for `ms` above `0x7FFFFFFF`. Before, a value near `UINT32_MAX` slept forever.
+- The `pip_*` syscall wrappers are functions in `libpip.a` instead of `static inline` functions in `syscall.h`.
+- The test ROMs build through `pipos-app.mk` into `build/roms/<name>/<name>.rom`.
 - `ev=ready` now means the kernel reached its main loop. With a ROM, it comes after the ROM ends.
 - RobCo-Core moved to `bec7ffc` for user-mode tasks.
 - Rebuilt the kernel on the RobCo-Core library, added as a git submodule in `external/robco-core`.
@@ -18,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- `libpip.a`: syscall wrappers, `memcpy` and the other string functions, `pip_snprintf` and `pip_printf`, and a heap with `pip_malloc` and `pip_free`.
+- `sdk/pipos-app.mk` builds, seals and verifies a ROM or a holotape. `sdk/holotape.ld` links at `0x00800000`.
+- `sdk/examples/hello` and the ROM developer guide, [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md).
+- `make sdimage` and `make run` put the hello example on the card. `ROM=<file>` picks another image, `ROM=none` none.
 - The kernel runs the ROM in user mode after the boot screen and reports `ev=jump`, `ev=rom_exit` or `ev=rom_kill`. A fault shows on screen.
 - System calls `ticks_ms`, `sleep_ms`, `exit`, `sys_info`, `mem_info`, `log` and `rand`. Other numbers return `-PIP_ENOSYS`.
 - `sdk/`: `include/pipos/abi.h`, `include/pipos/syscall.h`, `crt0.S` and `rom.ld`.

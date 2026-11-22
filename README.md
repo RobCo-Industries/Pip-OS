@@ -18,7 +18,7 @@ What works now:
 - The ROM check: the kernel loads `/PIPBOY/ROM1.ROM` into the ROM slot and validates it. The boot screen shows its name and version, or the reason it failed.
 - Running the ROM in user mode, with the MMU keeping it inside its own memory. A fault stops the ROM and shows on screen.
 - The first system calls: `ticks_ms`, `sleep_ms`, `exit`, `sys_info`, `mem_info`, `log` and `rand`. See [docs/API.md](docs/API.md).
-- An SDK in `sdk/`: the ABI header, syscall wrappers, `crt0.S` and `rom.ld`.
+- A ROM SDK in `sdk/`: headers, `crt0.S`, link scripts, `libpip.a` with the syscall wrappers, string functions, printf and a heap, and `pipos-app.mk` to build and seal a ROM. Start with [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md).
 - Input from GPIO buttons and a dial, the serial console and a test channel on the mini UART.
 - Audio: a power-on beep through PWM, or a trace on the serial console in QEMU.
 - The RTC and software clock when an RTC chip answers.
@@ -26,7 +26,6 @@ What works now:
 What does not work yet:
 
 - The other system calls of RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/PIPOS_ABI.md): graphics, input, audio, time, sensors, saves, files and holotapes.
-- `libpip.a`, `pipos-app.mk` and the ROM developer guide.
 - Loading or running holotapes.
 - Save files.
 - The SPI display, battery monitoring and sensors.
@@ -57,7 +56,7 @@ make test BOARD=raspi0
 make run BOARD=raspi2b
 ```
 
-This builds `build/sd.img` with the kernel and a sample configuration and boots it with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit. `make run WINDOW=1` also opens the QEMU display window.
+This builds `build/sd.img` with the kernel, a sample configuration and the SDK's hello example as the ROM, and boots it with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit. `make run WINDOW=1` also opens the QEMU display window.
 
 ## Prepare a card
 
@@ -77,7 +76,7 @@ Copy the files in `DIR` to the FAT32 boot partition of the card, then add `PIPBO
 | [docs/TESTING.md](docs/TESTING.md) | Host tests, QEMU tests, CI |
 | [docs/HARDWARE.md](docs/HARDWARE.md) | Target hardware and what the kernel supports |
 | [docs/API.md](docs/API.md) | System calls that work today |
-| [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md) | ROM files |
+| [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md) | Writing a ROM with the SDK |
 
 RobCo-Core documents the library and the shared specifications:
 
