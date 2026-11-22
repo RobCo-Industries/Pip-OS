@@ -30,6 +30,7 @@ PURE_SRCS  := \
               kernel/bootlines.c \
               kernel/gfx_draw.c \
               kernel/settings.c \
+              kernel/storage_rules.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \
 
