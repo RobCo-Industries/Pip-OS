@@ -52,18 +52,21 @@ $(VENV)/.installed: $(ROBCO_CORE)/tests/requirements.txt
 
 BOARD ?= all
 
-.PHONY: test test-host test-target check-pins check-pins-test
+.PHONY: test test-host test-target check-pins check-pins-test build-dir-test
 test: test-host
 	$(MAKE) test-target
 
 test-target: all venv
-	$(VENV)/bin/pytest tests -v --board $(BOARD)
+	$(VENV)/bin/pytest tests -v --board $(BOARD) --build-dir $(BUILD)
 
 check-pins:
 	tools/check_pins.sh
 
 check-pins-test:
 	tests/host/check_pins_test.sh
+
+build-dir-test:
+	tests/host/build_dir_test.sh
 
 # Host unit tests: tests/host/test_<name>.c, the pure kernel files and
 # the pure library files they use, built with the host compiler.
@@ -93,7 +96,7 @@ $(HOST_BUILD)/test_%: tests/host/test_%.c $(PURE_SRCS) $(HOST_LIB_SRCS) $(HOST_H
 	@mkdir -p $(HOST_BUILD)
 	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< $(PURE_SRCS) $(HOST_LIB_SRCS)
 
-test-host: check-pins check-pins-test $(HOST_TESTS)
+test-host: check-pins check-pins-test build-dir-test $(HOST_TESTS)
 	@set -u; failed=""; \
 	for t in $(HOST_TESTS); do \
 	  ./$$t || failed="$$failed $${t##*/}"; \

@@ -4,6 +4,8 @@ The QEMU harness comes from the RobCo-Core submodule in external/robco-core.
 
 --board NAME   run board-parametrised tests on NAME (repeatable).
                Default: all four boards. "all" selects all four too.
+--build-dir D  build directory the kernel is built into and booted from.
+               Relative paths are relative to the repo root. Default: build.
 """
 
 import os
@@ -27,6 +29,13 @@ from harness.sdimage import have_mtools  # noqa: E402
 def pytest_addoption(parser):
     parser.addoption("--board", action="append", default=[],
                      help="board to test on (repeatable, or 'all')")
+    parser.addoption("--build-dir", default="build",
+                     help="build directory, as BUILD in the Makefile")
+
+
+def image_path(build_dir):
+    """Returns the kernel image path inside build_dir."""
+    return os.path.join(ROOT, build_dir, "pipos.img")
 
 
 def selected_boards(config):
@@ -53,11 +62,16 @@ def board(request):
 
 
 @pytest.fixture(scope="session")
-def kernel_image():
-    """Builds the kernel once per session and returns build/pipos.img."""
-    subprocess.run(["make", "-s", "-C", ROOT, "CI=1", "all"], check=True,
-                   stdout=subprocess.DEVNULL)
-    return os.path.join(ROOT, "build", "pipos.img")
+def kernel_image(request):
+    """Builds the kernel once per session and returns its image path."""
+    build_dir = request.config.getoption("--build-dir")
+    subprocess.run(["make", "-s", "-C", ROOT, "CI=1", f"BUILD={build_dir}", "all"],
+                   check=True, stdout=subprocess.DEVNULL)
+    path = image_path(build_dir)
+    if not os.path.isfile(path):
+        pytest.fail(f"kernel image missing after build: {path}", pytrace=False)
+    print(f"\nkernel image: {path}")
+    return path
 
 
 @pytest.fixture
