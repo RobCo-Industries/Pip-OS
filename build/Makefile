@@ -119,7 +119,7 @@ endif
 
 all: $(KERNEL).img
 
-run: $(KERNEL).img
+run: $(KERNEL).elf $(KERNEL).img
 	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL).elf
 
 clean:
@@ -141,8 +141,11 @@ $(OBJ_DIR)/$(ARCH)/%_S.o: $(SRC_DIR)/$(ARCH)/%.S
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
-# Build the kernel img file by linking object files
-$(KERNEL).img: $(OBJ_FILES)
+# Link object files into the kernel ELF
+$(KERNEL).elf: $(OBJ_FILES)
 	@echo $(OBJ_FILES)
-	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $(KERNEL).elf $(OBJ_FILES) $(LIBPATH)
-	$(OC) -O binary $(KERNEL).elf $(KERNEL).img
+	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $@ $(OBJ_FILES) $(LIBPATH)
+
+# Build the kernel img file from the ELF
+$(KERNEL).img: $(KERNEL).elf
+	$(OC) -O binary $< $@
