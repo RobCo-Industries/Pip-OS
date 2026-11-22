@@ -36,7 +36,10 @@ void pipos_save_path(const char *prefix, const char *name, char mark, char *out,
  */
 int32_t pipos_file_path(const char *path, int root_ok, char *out);
 
-/* A negative FS_ERR_* code as a -PIP_E* code. Anything else is -PIP_EIO. */
+/*
+ * A negative FS_ERR_* code as a -PIP_E* code: NOENT, NOSPC, TOOBIG as
+ * -PIP_ERANGE. Anything else, a read-only card included, is -PIP_EIO.
+ */
 int32_t pipos_storage_errno(int fs_err);
 
 /* The handle table: bit n of *used is handle n. */

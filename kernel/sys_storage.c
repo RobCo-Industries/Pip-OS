@@ -61,15 +61,15 @@ static void work_path(const char *path, char mark, char *out)
     out[at] = '\0';
 }
 
-/* Reads a save into buf after recovery: its length, or a -PIP_E* code. */
+/*
+ * Reads a save into buf after recovery: its length, or a -PIP_E* code.
+ * A file over 64 KiB is not a valid save: -PIP_ERANGE.
+ */
 static int32_t load_save(const char *path)
 {
     size_t len = 0;
     int rc = fs_read_file_atomic(path, buf, sizeof(buf), &len);
 
-    if (rc == FS_ERR_TOOBIG) {
-        return -PIP_ERANGE;
-    }
     if (rc != FS_OK) {
         return pipos_storage_errno(rc);
     }
@@ -139,8 +139,6 @@ static int32_t sys_save_info(const pipos_sys_ctx_t *ctx, uint32_t uname, uint32_
     char path[PIPOS_SAVE_PATH_MAX];
     int32_t rc = save_path(ctx, uname, path);
     uint32_t size;
-    fs_stat_t st;
-    int frc;
 
     (void)a2, (void)a3;
     if (rc == 0) {
@@ -151,13 +149,6 @@ static int32_t sys_save_info(const pipos_sys_ctx_t *ctx, uint32_t uname, uint32_
     }
     /* A read recovers the work files, also on a read-only card where only a read can tell. */
     rc = load_save(path);
-    if (rc == -PIP_ERANGE) {
-        frc = fs_stat(path, &st);
-        if (frc != FS_OK) {
-            return pipos_storage_errno(frc);
-        }
-        rc = (int32_t)(st.size > 0x7fffffffu ? 0x7fffffffu : st.size);
-    }
     if (rc < 0) {
         return rc;
     }

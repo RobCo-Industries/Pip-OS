@@ -176,7 +176,8 @@ TEST(error_mapping)
         { FS_ERR_CORRUPT, -PIP_EIO },      { FS_ERR_DENIED, -PIP_EIO },
         { FS_ERR_BADF, -PIP_EIO },         { FS_ERR_INVAL, -PIP_EIO },
         { FS_ERR_NAME, -PIP_EIO },         { FS_ERR_EXIST, -PIP_EIO },
-        { FS_ERR_MOUNTED, -PIP_EIO },      { -99, -PIP_EIO },
+        { FS_ERR_MOUNTED, -PIP_EIO },      { FS_ERR_TOOBIG, -PIP_ERANGE },
+        { -99, -PIP_EIO },
     };
     unsigned i;
 

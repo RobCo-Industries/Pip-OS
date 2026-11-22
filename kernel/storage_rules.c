@@ -153,6 +153,7 @@ int32_t pipos_storage_errno(int fs_err)
     switch (fs_err) {
     case FS_ERR_NOENT: return -PIP_ENOENT;
     case FS_ERR_NOSPC: return -PIP_ENOSPC;
+    case FS_ERR_TOOBIG: return -PIP_ERANGE;
     default:           return -PIP_EIO;
     }
 }
