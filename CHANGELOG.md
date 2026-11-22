@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `pip_*` syscall wrappers are functions in `libpip.a` instead of `static inline` functions in `syscall.h`.
 - The test ROMs build through `pipos-app.mk` into `build/roms/<name>/<name>.rom`.
 - `ev=ready` now means the kernel reached its main loop. With a ROM, it comes after the ROM ends.
-- RobCo-Core moved to `bec7ffc` for user-mode tasks.
+- RobCo-Core moved to `1e0fb65` for user-mode tasks and the full Pip-OS ABI spec.
 - Rebuilt the kernel on the RobCo-Core library, added as a git submodule in `external/robco-core`.
 - One 32-bit image for the Pi Zero, Pi 1, Pi 2 and Pi 3. The `BCM=` option and the AArch64 build are gone.
 - New layout: a top-level `Makefile`, `kernel/` for the sources, `tests/` for the tests.

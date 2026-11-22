@@ -19,7 +19,7 @@ On macOS with Homebrew:
 brew install arm-none-eabi-gcc qemu mtools python
 ```
 
-RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/guide/GETTING_STARTED.md) lists the versions in detail.
+RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/1e0fb655ea09497d133c6e3c3b086a2bb8cbca0e/docs/guide/GETTING_STARTED.md) lists the versions in detail.
 
 ## Build the image
 
@@ -82,4 +82,4 @@ make bootdir DIR=/path/to/dir
 
 This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself. The kernel has not been tested on hardware yet.
 
-`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/BOARD_SUPPORT.md#configtxt).
+`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/1e0fb655ea09497d133c6e3c3b086a2bb8cbca0e/docs/spec/BOARD_SUPPORT.md#configtxt).

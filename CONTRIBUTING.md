@@ -48,7 +48,7 @@ Write commit messages with a short summary line in the present tense, a blank li
 - C11 with GNU extensions, 4-space indentation, no tabs.
 - `stdint.h` types for fixed-width values.
 - Comments explain why, not what.
-- Markers follow the format in RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/bec7ffcf267db93e7bf4344e7e687ccfd86f52f6/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+- Markers follow the format in RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/1e0fb655ea09497d133c6e3c3b086a2bb8cbca0e/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 ### Testing on hardware
 
