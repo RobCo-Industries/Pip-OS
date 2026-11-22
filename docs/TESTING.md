@@ -6,9 +6,10 @@
 |---|---|
 | `make test` | `make test-host`, then `make test-target` |
 | `make test BOARD=raspi0` | The same, with the target tests on one board |
-| `make test-host` | `make check-pins` and the host unit tests |
+| `make test-host` | `make check-pins`, `make check-pins-test` and the host unit tests |
 | `make test-target` | The QEMU tests. `BOARD` picks one board, `all` by default. |
 | `make check-pins` | Checks the CI workflow pins, see below |
+| `make check-pins-test` | Runs the pin check with a failing `git` |
 
 ## Host tests
 
@@ -35,3 +36,5 @@ Tests read the screen in two ways: a text dump the kernel prints on Ctrl-D, and 
 `.github/workflows/ci.yml` calls RobCo-Core's reusable workflow. It builds with `make CI=1 all test-host` in the RobCo CI container, uploads `build/pipos.img`, then runs `make CI=1 test-target BOARD=<board>` on each of the four boards.
 
 A reusable workflow takes only literal inputs. So the workflow repeats two values from the submodule: the commit of the reusable workflow, which must be the pinned submodule commit, and the image tag, which must equal `external/robco-core/ci/IMAGE_TAG`. `make check-pins` fails when either differs. After you move the submodule, update both values in the workflow.
+
+The CI job runs as root on a checkout owned by another user, so git refuses every command on the work tree. `tools/check_pins.sh` reads the submodule commit from `external/robco-core/.git` and its git directory instead. It uses git only as a cross-check when git works. `make check-pins-test` runs the check with a `git` that always fails.

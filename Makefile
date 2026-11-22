@@ -6,6 +6,7 @@
 #   make test-host            host unit tests and the pin check
 #   make test-target          QEMU target tests
 #   make check-pins           CI workflow pins match the submodule
+#   make check-pins-test      the pin check works without git
 #   make sdimage              build/sd.img with the kernel and a sample config
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
@@ -51,7 +52,7 @@ $(VENV)/.installed: $(ROBCO_CORE)/tests/requirements.txt
 
 BOARD ?= all
 
-.PHONY: test test-host test-target check-pins
+.PHONY: test test-host test-target check-pins check-pins-test
 test: test-host
 	$(MAKE) test-target
 
@@ -60,6 +61,9 @@ test-target: all venv
 
 check-pins:
 	tools/check_pins.sh
+
+check-pins-test:
+	tests/host/check_pins_test.sh
 
 # Host unit tests: tests/host/test_<name>.c, the pure kernel files and
 # the pure library files they use, built with the host compiler.
@@ -89,7 +93,7 @@ $(HOST_BUILD)/test_%: tests/host/test_%.c $(PURE_SRCS) $(HOST_LIB_SRCS) $(HOST_H
 	@mkdir -p $(HOST_BUILD)
 	$(HOST_CC) $(HOST_CFLAGS) -o $@ $< $(PURE_SRCS) $(HOST_LIB_SRCS)
 
-test-host: check-pins $(HOST_TESTS)
+test-host: check-pins check-pins-test $(HOST_TESTS)
 	@set -u; failed=""; \
 	for t in $(HOST_TESTS); do \
 	  ./$$t || failed="$$failed $${t##*/}"; \
