@@ -39,7 +39,7 @@ ARMGNU_VERSION := $(shell $(CC) -dumpversion 2>/dev/null || echo "13.2.1")
 ARMGNU_PATH := $(shell dirname $(shell dirname $(shell which $(CC) 2>/dev/null || echo "/usr/bin/$(CC)")) 2>/dev/null || echo "/usr")
 
 # Bare metal compilation flags
-CFLAGS += -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding
+CFLAGS += -std=gnu11 -O2 -Wall -Wextra -nostdlib -nostartfiles -ffreestanding
 
 # Disable specific warnings
 CFLAGS += -Wno-int-to-pointer-cast
@@ -119,8 +119,8 @@ endif
 
 all: $(KERNEL).img
 
-run: $(KERNEL).img
-	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL).img
+run: $(KERNEL).elf $(KERNEL).img
+	$(QEMU) $(QEMU_FLAGS) -kernel $(KERNEL).elf
 
 clean:
 	@rm -rf $(OBJ_DIR) 2> /dev/null || true
@@ -141,8 +141,11 @@ $(OBJ_DIR)/$(ARCH)/%_S.o: $(SRC_DIR)/$(ARCH)/%.S
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
-# Build the kernel img file by linking object files
-$(KERNEL).img: $(OBJ_FILES)
+# Link object files into the kernel ELF
+$(KERNEL).elf: $(OBJ_FILES)
 	@echo $(OBJ_FILES)
-	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $(KERNEL).elf $(OBJ_FILES) $(LIBPATH)
-	$(OC) -O binary $(KERNEL).elf $(KERNEL).img
+	$(LD) $(LDFLAGS) -T $(BUILD_DIR)/linker.ld -o $@ $(OBJ_FILES) $(LIBPATH)
+
+# Build the kernel img file from the ELF
+$(KERNEL).img: $(KERNEL).elf
+	$(OC) -O binary $< $@
