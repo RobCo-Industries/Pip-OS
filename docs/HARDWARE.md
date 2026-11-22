@@ -1,4 +1,23 @@
 # PIP-OS Hardware Guide
+
+## Status
+
+This guide describes hardware the project aims for. The kernel supports only part of it today.
+
+| Part | Kernel support today |
+|---|---|
+| HDMI framebuffer at 640x480 | Yes |
+| Serial console on the PL011, GPIO 14 and 15 | Yes |
+| GPIO buttons and a rotary dial | Yes, through the RobCo-Core input layer |
+| PWM audio | Yes, through the RobCo-Core audio layer |
+| RTC module at I2C address 0x68 | Yes, when a chip answers |
+| SPI display | No |
+| Battery monitoring | No |
+| Sensors: GPS, accelerometer, Geiger counter | No |
+| Raspberry Pi 4 | No |
+
+The button and dial pins the kernel uses come from `kernel/robco_config.h`. They follow the example mapping of RobCo-Core and differ from the pin tables below. Those tables are a draft.
+
 ## Supported Configurations and Pin Assignments
 
 ## Overview
