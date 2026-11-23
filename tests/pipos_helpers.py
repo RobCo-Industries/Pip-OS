@@ -17,6 +17,7 @@ import time
 import rimg
 from PIL import Image
 from harness.boot import boot
+from harness.env import minimal_env
 from harness.sdimage import make_sd_image
 
 TIMEOUT = 60
@@ -93,7 +94,7 @@ FAT16_LBA = 0x0E
 
 
 def _mtools(*args):
-    env = dict(os.environ, MTOOLS_SKIP_CHECK="1")
+    env = minimal_env(MTOOLS_SKIP_CHECK="1")
     subprocess.run(list(args), check=True, env=env, capture_output=True)
 
 

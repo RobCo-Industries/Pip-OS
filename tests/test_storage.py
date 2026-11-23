@@ -8,6 +8,7 @@ import os
 import subprocess
 
 from harness.boot import boot
+from harness.env import minimal_env
 
 from pipos_helpers import (READY, TIMEOUT, assert_rom_checks, booted, config, config_summary,
                            make_card, no_exception, one, rom_markers, rom_one)
@@ -23,7 +24,7 @@ def pattern(seed, n):
 
 
 def _mtools(*args):
-    env = dict(os.environ, MTOOLS_SKIP_CHECK="1")
+    env = minimal_env(MTOOLS_SKIP_CHECK="1")
     return subprocess.run(list(args), check=True, env=env, capture_output=True).stdout
 
 

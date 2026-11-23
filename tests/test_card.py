@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 
 from harness.boot import boot
+from harness.env import minimal_env
 
 from pipos_helpers import (READY, SCHEME_BG, TIMEOUT, booted, config, config_issues,
                            config_summary, corrupt, dump, make_big_rom, make_card,
@@ -204,9 +205,9 @@ def default_card(tmp_path_factory):
     """The card of a plain `make sdimage`, built once in a folder of its own."""
     build = tmp_path_factory.mktemp("default_card") / "build"
     root = pathlib.Path(__file__).resolve().parent.parent
-    # A plain build: ROM, CI or flags from the caller or an outer make do not apply.
-    drop = {"MAKEFLAGS", "MFLAGS", "MAKELEVEL", "CI", "ROM", "TAPE", "CFLAGS_EXTRA", "WINDOW"}
-    env = {k: v for k, v in os.environ.items() if k not in drop}
+    # A plain build: ROM, CI or flags from the caller or an outer make do not
+    # apply. The allowlist has no MAKEFLAGS, ROM, TAPE, CFLAGS_EXTRA or WINDOW.
+    env = minimal_env(CI=None)
     subprocess.run(["make", "-s", "sdimage", f"BUILD={build}"], cwd=root, check=True,
                    stdout=subprocess.DEVNULL, env=env)
     return build / "sd.img"
