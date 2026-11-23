@@ -50,7 +50,7 @@ Each group of system calls lives in `kernel/sys_<group>.c` and exports the inter
 - Calls: add handlers and table lines in `kernel/sys_<group>.c`. More kernel files: add `kernel/sys_<group>_<part>.c`; the `Makefile` builds every `kernel/*.c`.
 - Pure code for host tests: one line in the sorted `PURE_SRCS` list of the `Makefile`, and `tests/host/test_<name>.c`.
 - Test ROMs: `tests/roms/<name>.c`, or a folder with its own `Makefile`. Target tests: `tests/test_<group>.py`. See [Writing a test ROM](docs/TESTING.md#writing-a-test-rom).
-- Docs: `docs/pending/<group>.md` and `docs/pending/<group>.changelog.md`. See [docs/pending/README.md](docs/pending/README.md).
+- Docs: the group's section in [docs/API.md](docs/API.md) and its lines in `CHANGELOG.md`, in the same PR.
 
 Handlers check every pointer with the `pipos_user_*` helpers of `sys.h` and refuse holotapes with `pipos_sys_rom_only()` where the ABI says ROM only. A served call drops out of the `-PIP_ENOSYS` test by itself.
 

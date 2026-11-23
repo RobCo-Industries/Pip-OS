@@ -1,7 +1,7 @@
 /*
  * Pure rules of the holotape group: file names, the listing check, the
  * holo_enumerate entry, the startup block and the launch result.
- * holo_rules.c builds on the host too. See docs/pending/holo.md.
+ * holo_rules.c builds on the host too. See docs/API.md.
  */
 #ifndef PIPOS_HOLO_H
 #define PIPOS_HOLO_H
