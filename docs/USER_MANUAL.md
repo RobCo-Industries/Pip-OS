@@ -35,7 +35,7 @@ cd Pip-OS
 make bootdir DIR=card
 ```
 
-`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` and an empty `PIPBOY/HOLO/`. Format the card as FAT32 and copy everything in `card/` to it. Then add a ROM, see [Your own ROM and holotapes](#your-own-rom-and-holotapes). To use the example ROM, copy `build/examples/hello/ROM1.ROM` to `PIPBOY/` and `build/examples/tape/BEACON.HTP` to `PIPBOY/HOLO/`.
+`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the example ROM as `PIPBOY/ROM1.ROM` and the example holotape `PIPBOY/HOLO/BEACON.HTP`. Format the card as FAT32 and copy everything in `card/` to it. For another ROM, see [Your own ROM and holotapes](#your-own-rom-and-holotapes), or pass `ROM=<file>` to `make bootdir`. Run it again into the same folder with other settings and it may stop and list old files. Use a new folder, or see [Running bootdir again](BUILD.md#running-bootdir-again).
 
 ## Try it in QEMU
 
@@ -105,7 +105,7 @@ When the ROM starts, it owns the screen. When it ends, the boot text comes back.
 | BACK | Backspace, or Escape alone |
 | Dial | None |
 
-The dial reports 15 degrees per detent. A ROM reads the controls only while it runs.
+The dial reports 15 degrees per detent. A ROM reads the controls only while it runs. BACK reaches the ROM like the other buttons. The example ROM ends on LEFT or BACK.
 
 ## The example ROM and holotape
 

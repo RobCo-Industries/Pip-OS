@@ -83,7 +83,7 @@ def test_entry_state(board, kernel_image, test_rom, tmp_path, need_mtools):
         s = rom_one(vm, "startup")
         fields = {k: int(v, 16) for k, v in s.items()
                   if k not in ("stage", "ev", "args_zero")}
-        assert fields == {"abi_version": 0x00010001, "size": 128, "heap_base": HEAP_BASE,
+        assert fields == {"abi_version": 0x00010002, "size": 128, "heap_base": HEAP_BASE,
                           "heap_size": HEAP_SIZE, "stack_top": STACK_TOP, "kind": 0,
                           "flags": 0}, vm.serial
         assert s["args_zero"] == "1"
@@ -91,14 +91,15 @@ def test_entry_state(board, kernel_image, test_rom, tmp_path, need_mtools):
 
 
 
-def test_abi_1_0_image_runs(board, kernel_image, test_rom, tmp_path, need_mtools):
-    """The loader checks only the major: an image sealed for ABI 1.0 runs
-    and reads the version it runs on, 1.1, in its startup block."""
+@pytest.mark.parametrize("sealed", [0x00010000, 0x00010001])
+def test_older_abi_image_runs(board, kernel_image, test_rom, tmp_path, need_mtools, sealed):
+    """The loader checks only the major: an image sealed for ABI 1.0 or 1.1
+    runs and reads the version it runs on, 1.2, in its startup block."""
     rom = bytearray(test_rom("entry"))
-    assert struct.unpack_from("<I", rom, 0x40)[0] == 0x00010001
-    struct.pack_into("<I", rom, 0x40, 0x00010000)
+    assert struct.unpack_from("<I", rom, 0x40)[0] == 0x00010002
+    struct.pack_into("<I", rom, 0x40, sealed)
     with booted(kernel_image, board, sd=card(tmp_path, reseal(rom))) as vm:
-        assert int(rom_one(vm, "startup")["abi_version"], 16) == 0x00010001, vm.serial
+        assert int(rom_one(vm, "startup")["abi_version"], 16) == 0x00010002, vm.serial
         assert one(vm, "rom_exit")["status"] == "0"
 
 @pytest.fixture
@@ -145,7 +146,7 @@ def test_sys_info(calls):
     s = {k: int(v, 16) for k, v in rom_one(calls, "sys_info").items()
          if k not in ("stage", "ev", "rc")}
     assert rom_one(calls, "sys_info")["rc"] == "0"
-    assert s == {"size": 32, "abi_version": 0x00010001, "pipos_version": PIPOS_VERSION,
+    assert s == {"size": 32, "abi_version": 0x00010002, "pipos_version": PIPOS_VERSION,
                  "board_rev": int(boot_m["board_rev"], 16),
                  "soc": int(boot_m["soc"].removeprefix("bcm"), 16),
                  "mem_size": int(boot_m["mem"], 16), "reserved0": 0, "reserved1": 0}, s
@@ -284,7 +285,8 @@ def test_scripts_stop_while_rom_spins(board, kernel_image, test_rom, tmp_path, n
 
 SDK_CHECKS = ["printf_conv", "printf_trunc", "printf_long", "printf_nul", "str_mem", "str_memmove",
               "str_len_cmp", "str_chr", "str_lcpy", "heap_align", "heap_calloc",
-              "heap_exhaust", "heap_recover", "heap_free"]
+              "heap_exhaust", "heap_recover", "heap_free", "ini_get", "ini_get_int",
+              "ini_get_bool", "ini_missing", "crc32_known", "crc32_stream"]
 
 
 def test_sdk_self_check(board, kernel_image, test_rom, tmp_path, need_mtools):

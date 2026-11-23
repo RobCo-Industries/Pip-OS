@@ -2,7 +2,7 @@
 
 A ROM is the program Pip-OS runs after boot. It is one file, `/PIPBOY/ROM1.ROM` on the SD card. Pip-OS loads it at `0x00400000`, checks it and runs it in user mode. The ROM talks to the kernel only through system calls.
 
-The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
+The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
 
 ## A first ROM
 
@@ -71,13 +71,13 @@ What differs from a ROM:
 - The return value of `pip_main`, or the value given to `pip_exit()`, is the exit status, 0 to 255. The ROM gets it back from `pip_holo_launch()`. A fault ends the tape and the ROM gets `-PIP_EFAULT`.
 - Pip-OS stops the sound, empties the event queue and resets the drawing state before and after the tape. The ROM redraws its screen when the tape ends.
 
-To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/PIPOS_ABI.md#holotapes).
+To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/PIPOS_ABI.md#holotapes).
 
 ## Start-up and entry state
 
 `crt0.S` puts the branch, the `rimg` header and an empty META block at the start of the image. On entry it saves r0 to r3, sp and lr in `pip_entry_regs`, clears BSS and calls `int pip_main(const pipos_startup_t *startup)`. The return value of `pip_main` goes to `exit`.
 
-The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/PIPOS_ABI.md#entry-state).
+The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/PIPOS_ABI.md#entry-state).
 
 ## System calls
 
@@ -174,22 +174,98 @@ A 4096-byte chunk lasts 512 ms, so a 20 ms sleep leaves plenty of margin. If the
 | `pipos/string.h` | `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strnlen`, `strcmp`, `strncmp`, `strchr`, `strlcpy` |
 | `pipos/printf.h` | `pip_snprintf`, `pip_vsnprintf`, `pip_printf` |
 | `pipos/heap.h` | `pip_malloc`, `pip_calloc`, `pip_free`, `pip_heap_free`, `pip_heap_init` |
+| `pipos/ini.h` | `pip_ini_parse`, `pip_ini_get`, `pip_ini_get_int`, `pip_ini_get_bool`, `pip_ini_strerror` |
+| `pipos/crc32.h` | `pip_crc32`, `pip_crc32_update` |
+| `pipos/selftest.h` | `pip_check`, `pip_check_eq`, `pip_checks_done`, `pip_marker_begin`, `pip_marker_hex`, `pip_marker_dec`, `pip_marker_end`, `pip_marker_time` |
 
 The printf functions know `%d %u %x %X %c %s %p %%` with the `-` and `0` flags, a width and a precision, as in C. `*` takes the width or precision from an `int` argument. There are no `l` modifiers and no floating point. `pip_printf` prints up to 1023 bytes per call, split into `log` calls of 255 bytes.
 
 The heap sets itself up on the first call. Blocks are 8-byte aligned and cost 16 bytes of header each. `pip_malloc` returns NULL when no free block fits. The headers list every limit.
 
+The INI functions read a config file held in memory, such as one read with `file_read`. They allocate nothing. Keys before the first `[section]` belong to the section `""`. `pip_ini_get_int` takes decimal or `0x` hex within a range, and `pip_ini_get_bool` takes `true`, `yes`, `on`, `1` and their opposites. A line holds at most 255 bytes, a value 127. `pipos/ini.h` gives the full syntax and the error codes.
+
+`pip_crc32` is CRC-32/ISO-HDLC, the zlib `crc32()` and the CRC of the image header. `pip_crc32("123456789", 9)` is `0xCBF43926`. To checksum data in pieces, start `pip_crc32_update` with 0 and pass each result back in.
+
+The `selftest.h` functions print the check lines that the tests read, see [TESTING.md](TESTING.md#testing-a-rom-project).
+
 Do not include `<robco/...>` headers. The `pipos/` headers are the whole interface.
 
 ## Put the ROM on a card
 
-`make sdimage` writes `build/sd.img` with the hello example as `/PIPBOY/ROM1.ROM` and the tape example as `/PIPBOY/HOLO/BEACON.HTP`. `ROM=<file>` puts another image there, and `ROM=none` leaves it out. The tape stays on the card in both cases. `TAPE=<file>` puts another holotape there under its own name, and `TAPE=none` leaves it out. `make run` builds the card and boots it in QEMU. `BOARD` picks the board, `WINDOW=1` opens the screen. The keys are in [BUILD.md](BUILD.md#sd-card-image-for-qemu).
+`make sdimage` writes `build/sd.img` with the hello example as `/PIPBOY/ROM1.ROM` and the tape example as `/PIPBOY/HOLO/BEACON.HTP`. `ROM=<file>` puts another image there, and `ROM=none` leaves it out. The tape stays on the card in both cases. `TAPE=<files>` puts other holotapes there under their own names, and `TAPE=none` leaves it out. `CARD_DIR=<dir>` copies a folder tree onto the card, see [Using Pip-OS from another repository](#using-pip-os-from-another-repository). `make run` builds the card and boots it in QEMU. `BOARD` picks the board, `WINDOW=1` opens the screen. The keys are in [BUILD.md](BUILD.md#sd-card-image-for-qemu).
 
 ```sh
 make run ROM=$HOME/myrom/build/ROM1.ROM BOARD=raspi3b WINDOW=1
 ```
 
 For a real card, copy the file to `PIPBOY/ROM1.ROM` on the boot partition. See [BUILD.md](BUILD.md#a-real-card).
+
+## Using Pip-OS from another repository
+
+A ROM project in a repository of its own adds Pip-OS as a git submodule, for example in `external/pip-os`, and fetches it with `git submodule update --init --recursive`. It builds its ROM with `pipos-app.mk`, then calls Pip-OS's own Makefile for the kernel, the card and QEMU:
+
+```sh
+make -C external/pip-os <target> BUILD=<absolute folder> ...
+```
+
+Pass absolute paths. `make -C` runs in the Pip-OS folder, so a relative path would point inside it. With `ROM=<file>` and `TAPE=none` or `TAPE=<files>`, none of these targets builds the bundled examples, the test ROMs or the conformance ROM.
+
+| Target | What it does |
+|---|---|
+| `kernel` | `$(BUILD)/pipos.img` and `$(BUILD)/pipos.elf` only |
+| `sdimage` | `$(BUILD)/sd.img`, the card for QEMU |
+| `run` | Builds the card and boots it in QEMU on this terminal |
+| `bootdir DIR=<dir>` | The files of the card for a real one, firmware included |
+
+| Variable | Meaning |
+|---|---|
+| `BUILD` | Output folder. Use an absolute path outside the Pip-OS tree. |
+| `ROM` | The card's `PIPBOY/ROM1.ROM`. `none` leaves it out. The hello example by default. |
+| `TAPE` | One or more holotapes for `PIPBOY/HOLO/`, separated by spaces. Each keeps its file name. Two names that differ only in case stop the build, because FAT ignores case. A name that does not end in `.HTP` stops it too, since `holo_enumerate` never lists it. A longer name than 8.3 `NAME.HTP` gets a warning: ROMs see it under a FAT short name such as `LONGNA~1.HTP`. `none` leaves the folder empty. The tape example by default. |
+| `CARD_DIR` | A folder whose tree is copied onto the card root after the standard files, such as `content/PIPBOY/DATA/README.TXT`. |
+| `BOARD`, `WINDOW` | The QEMU board for `run`, and `WINDOW=1` for the display window |
+| `DIR`, `FIRMWARE`, `CLEAN` | The folder for `bootdir`, `FIRMWARE=0` to leave the firmware out, and `CLEAN=1` to remove files an earlier `bootdir` run wrote, see [Running bootdir again](BUILD.md#running-bootdir-again) |
+
+The standard files are `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, `PIPBOY/ROM1.ROM`, the `TAPE` files and, for `bootdir`, the firmware. When a file in `CARD_DIR` has the path of a standard file, the build stops and writes nothing. FAT ignores case, so `pipboy/rom1.rom` counts as `PIPBOY/ROM1.ROM`. A folder in `CARD_DIR` that differs from a standard folder only in case also stops the build. `BOOTDIR.LST` at the root of `CARD_DIR`, in any case, stops `sdimage`, `run` and `bootdir`: that name is reserved for the manifest `bootdir` writes there, and deeper paths such as `DATA/BOOTDIR.LST` are fine. Folders with the same name merge, so `CARD_DIR` can add tapes to `PIPBOY/HOLO/`. `CARD_DIR` holds regular files and folders only: a symbolic link, a device, a FIFO or a socket inside it stops the build, and so does a `ROM` or `TAPE` file that is one. A `ROM` or `TAPE` that is a folder stops the build too. `CARD_DIR` itself may be a link to a folder, see [Links and special files](BUILD.md#links-and-special-files). Use `TAPE` for the tapes you build and `CARD_DIR` for files you keep in the repository.
+
+After staging, the build checks the whole card at once, for `sdimage`, `run` and `bootdir` alike. Two paths that differ only in case, such as `NAME.TXT` and `name.txt`, or a file and a folder such as `Data` and `DATA/`, stop it: FAT would keep only one. A ROM opens these files with `file_open`, which takes 8.3 names and upper-cases the path. So case does not matter: `content/data/level1.bin` opens as `/DATA/LEVEL1.BIN`. A longer name, such as `LongLevelName.bin`, is stored under a FAT alias such as `LONGLE~1.BIN`. A ROM can open it only by that alias, which it finds with `dir_list`, so the build warns and names the file. Use 8.3 names for files a ROM reads.
+
+`bootdir` keeps a `PIPBOY/PIPOS.CFG` that is already in `DIR`, because it holds the user's settings.
+
+A complete Makefile for such a project:
+
+```make
+PIP_OS     := external/pip-os
+BUILD      ?= build
+BOARD      ?= raspi2b
+
+PIPOS_SDK  := $(PIP_OS)/sdk
+IMAGE      := ROM1.ROM
+KIND       := rom
+NAME       := MYROM
+TITLE      := My ROM
+VERSION    := 0.1.0
+SRCS       := $(sort $(wildcard src/*.c))
+include $(PIPOS_SDK)/pipos-app.mk
+
+PIPOS_MAKE := $(MAKE) --no-print-directory -C $(PIP_OS) BUILD=$(abspath $(BUILD))/pipos
+CARD_VARS  := ROM=$(abspath $(PIP_OUT)) TAPE=none CARD_DIR=$(abspath content)
+
+.PHONY: kernel sdimage run bootdir
+kernel:
+	$(PIPOS_MAKE) kernel
+
+sdimage: all
+	$(PIPOS_MAKE) sdimage $(CARD_VARS)
+
+run: all
+	$(PIPOS_MAKE) run $(CARD_VARS) BOARD=$(BOARD) WINDOW=$(WINDOW)
+
+bootdir: all
+	$(PIPOS_MAKE) bootdir $(CARD_VARS) DIR=$(abspath $(DIR)) FIRMWARE=$(FIRMWARE) CLEAN=$(CLEAN)
+```
+
+`$(PIP_OUT)` is the sealed image that `pipos-app.mk` builds. The card lands in `build/pipos/sd.img`. For tests, see [TESTING.md](TESTING.md#testing-a-rom-project).
 
 ## Faults
 

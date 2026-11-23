@@ -88,16 +88,20 @@ ifeq ($(CI),1)
 PIP_BASEFLAGS += -Werror
 endif
 PIP_CFLAGS   := $(PIP_BASEFLAGS) $(CFLAGS_EXTRA)
-# Only the library sees RobCo-Core's headers.
-PIP_LIBFLAGS := $(PIP_BASEFLAGS) -I$(ROBCO_CORE)/include
+# Only the library sees RobCo-Core's headers. The INI and CRC functions
+# get private names in the archive, so a ROM may define its own crc32 or
+# ini_parse next to pip_crc32 and pip_ini_parse.
+PIP_RENAMES  := $(foreach f,crc32 crc32_update ini_parse ini_get ini_get_int ini_get_bool ini_strerror,-D$(f)=pip__robco_$(f))
+PIP_LIBFLAGS := $(PIP_BASEFLAGS) -I$(ROBCO_CORE)/include $(PIP_RENAMES)
 
 # --no-warn-rwx-segments needs binutils 2.39 or later.
 PIP_LD_RWX := $(shell $(PIP_LD) --help 2>/dev/null | grep -q no-warn-rwx-segments && echo -Wl,--no-warn-rwx-segments)
 
-# libpip.a: sdk/lib/*.c and RobCo-Core's pure string, printf and heap code.
+# libpip.a: sdk/lib/*.c and RobCo-Core's pure string, printf, heap, INI
+# and CRC code.
 LIBPIP          := $(LIBPIP_DIR)/libpip.a
 PIP_LIB_SRCS    := $(sort $(wildcard $(PIP_SDK)/lib/*.c))
-PIP_LIB_CORE    := $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c alloc.c)
+PIP_LIB_CORE    := $(addprefix $(ROBCO_CORE)/src/lib/,k_string.c k_printf.c alloc.c ini.c crc32.c)
 PIP_LIB_OBJS    := $(patsubst %.c,$(LIBPIP_DIR)/pip_%.o,$(notdir $(PIP_LIB_SRCS))) \
                    $(patsubst %.c,$(LIBPIP_DIR)/robco_%.o,$(notdir $(PIP_LIB_CORE)))
 

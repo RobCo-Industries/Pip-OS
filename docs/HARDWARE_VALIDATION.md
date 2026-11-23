@@ -17,6 +17,8 @@ Nothing in Pip-OS has been validated on a real Raspberry Pi yet. The tests run i
 make conformance-bootdir DIR=card
 ```
 
+If `card` already holds files from another `bootdir` run, the target may stop and list them. Use a new folder, or see [Running bootdir again](BUILD.md#running-bootdir-again).
+
 2. Format the card as FAT32 and copy everything in `card/` to it.
 
 `card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the conformance ROM as `PIPBOY/ROM1.ROM`, and `PIPBOY/HOLO/CONFTAPE.HTP` and `CONFDATA.HTP`. The make target downloads the firmware. `build/conformance.img` from `make conformance-card` has the same files without the firmware, so it boots only in QEMU.
@@ -32,11 +34,11 @@ The `set_time` check writes the real-time clock chip. If the chip held a valid t
 3. The automatic checks run first. The screen shows which call runs. This takes a few seconds.
 4. A screen then says what comes next. Press SELECT to start the checks by hand, or LEFT to skip them all. With no answer in 10 minutes, they are all SKIP.
 5. Answer the prompts. Each one waits 30 s, then moves on and marks its check SKIP.
-   - "Press and hold UP" and the other buttons: press that button and keep it down until the screen says "Now let go", then let go. Other buttons are ignored. A tap that ends too soon shows "Too quick" and asks again.
+   - "Press and hold UP" and the other buttons, BACK last: press that button and keep it down until the screen says "Now let go", then let go. Other buttons are ignored. A tap that ends too soon shows "Too quick" and asks again.
    - "Turn the dial clockwise" and "counter-clockwise": turn it a few clicks that way.
    - "Did you hear it?" for a tone, a tune, a buzz and a buzz in two halves with no click between: the sound starts once the prompt shows. UP plays it again. SELECT for yes, LEFT for no.
    - "Is the picture right?": SELECT for yes, LEFT for no. You should see a frame around the screen, a circle on the left, a filled square in the middle, a triangle on the right, and a line under them.
-   - The serial terminal works as buttons too: arrow keys for UP, DOWN, LEFT and RIGHT, Enter for SELECT. It has no dial. Its keys cannot be held, so the hold checks of the buttons stay SKIP with it.
+   - The serial terminal works as buttons too: arrow keys for UP, DOWN, LEFT and RIGHT, Enter for SELECT, Backspace for BACK. It has no dial. Its keys cannot be held, so the hold checks of the buttons stay SKIP with it.
 6. Read the results pages. If a check failed, the pages open on the first page with a FAIL. DOWN or RIGHT turns the page, UP or LEFT goes back, SELECT jumps to the summary. A page waits for a button, at most 10 minutes.
 7. The summary shows four counts and, after a FAIL, the pages that hold one. UP or LEFT goes back to the last page. DOWN and RIGHT do nothing. SELECT ends the run. With no button pressed, the run ends after 10 minutes.
 

@@ -1,6 +1,7 @@
 /*
  * libpip.a on the host: pip_snprintf and pip_printf, the string
- * functions and the heap. The system calls are fakes below.
+ * functions, the heap, the self-check markers, the INI parser and the CRC. The system calls are
+ * fakes below.
  */
 #include <stdarg.h>
 #include <stddef.h>
@@ -9,8 +10,11 @@
 #include "rc_test.h"
 
 #include "libpip_names.h"
+#include <pipos/crc32.h>
 #include <pipos/heap.h>
+#include <pipos/ini.h>
 #include <pipos/printf.h>
+#include <pipos/selftest.h>
 #include <pipos/string.h>
 #include <pipos/syscall.h>
 #define LIBPIP_NAMES_UNDO
@@ -42,6 +46,11 @@ int32_t pip_log(const char *text)
         logged[logged_len] = '\0';
     }
     return 0;
+}
+
+int32_t pip_ticks_ms(void)
+{
+    return 1234;
 }
 
 /* Fails: a host address does not fit the 32-bit fields. */
@@ -449,4 +458,120 @@ TEST(heap_calloc)
     CHECK(pip_calloc((size_t)-1 / 2 + 2, 2) == NULL);   /* n * size overflows */
     CHECK(pip_calloc((size_t)1 << (sizeof(size_t) * 4), (size_t)1 << (sizeof(size_t) * 4)) == NULL);
     CHECK(pip_calloc(1024, 1024) == NULL);              /* fits size_t, not the heap */
+}
+
+/* ---- INI ------------------------------------------------------------- */
+
+static const char ini_text[] =
+    "# saves\n"
+    "name = Vault 101\n"
+    "[game]\r\n"
+    "level = 12 ; trailing comment\n"
+    "hard = yes\n"
+    "motto = \"war never changes\"\n";
+
+struct ini_seen {
+    int count;
+    char last[64];
+    unsigned line;
+};
+
+static int ini_collect(const char *section, const char *key, const char *value, unsigned line,
+                       void *ctx)
+{
+    struct ini_seen *s = ctx;
+
+    s->count++;
+    pip_snprintf(s->last, sizeof(s->last), "%s.%s=%s", section, key, value);
+    s->line = line;
+    return s->count == 3;   /* stop at the third key */
+}
+
+TEST(ini_get_values)
+{
+    char buf[32];
+    int32_t n = 0;
+    int b = 0;
+    size_t len = sizeof(ini_text) - 1;
+
+    CHECK_EQ(pip_ini_get(ini_text, len, "", "name", buf, sizeof(buf)), 0);
+    CHECK_STR(buf, "Vault 101");
+    CHECK_EQ(pip_ini_get(ini_text, len, "game", "motto", buf, sizeof(buf)), 0);
+    CHECK_STR(buf, "war never changes");
+    CHECK_EQ(pip_ini_get_int(ini_text, len, "game", "level", 0, 99, &n), 0);
+    CHECK_EQ(n, 12);
+    CHECK_EQ(pip_ini_get_int(ini_text, len, "game", "level", 0, 11, &n), PIP_INI_ERR_RANGE);
+    CHECK_EQ(pip_ini_get_bool(ini_text, len, "game", "hard", &b), 0);
+    CHECK_EQ(b, 1);
+    CHECK_EQ(pip_ini_get_bool(ini_text, len, "", "name", &b), PIP_INI_ERR_VALUE);
+    CHECK_EQ(pip_ini_get(ini_text, len, "game", "none", buf, sizeof(buf)), PIP_INI_ERR_NOT_FOUND);
+    CHECK_EQ(pip_ini_get(ini_text, len, "", "name", buf, 4), PIP_INI_ERR_SPACE);
+}
+
+TEST(ini_parse_handler_and_errors)
+{
+    struct ini_seen seen = { 0 };
+    unsigned line = 99;
+    static const char bad[] = "[ok]\nkey = 1\nthis is not ini\n";
+
+    CHECK_EQ(pip_ini_parse(ini_text, sizeof(ini_text) - 1, ini_collect, &seen, &line),
+             PIP_INI_STOPPED);
+    CHECK_EQ(seen.count, 3);
+    CHECK_STR(seen.last, "game.hard=yes");
+    CHECK_EQ(seen.line, 5);
+    CHECK_EQ(line, 0);
+    CHECK_EQ(pip_ini_parse(bad, sizeof(bad) - 1, ini_collect, &seen, &line), PIP_INI_ERR_SYNTAX);
+    CHECK_EQ(line, 3);
+    CHECK_EQ(pip_ini_parse(bad, 4, NULL, NULL, NULL), PIP_INI_ERR_ARG);
+    CHECK_STR(pip_ini_strerror(PIP_INI_ERR_SYNTAX), "syntax error");
+}
+
+/* ---- CRC-32 ---------------------------------------------------------- */
+
+TEST(crc32_check_values)
+{
+    uint32_t c;
+
+    CHECK_EQ(pip_crc32("123456789", 9), 0xCBF43926u);    /* CRC-32/ISO-HDLC check value */
+    CHECK_EQ(pip_crc32("", 0), 0u);
+    c = pip_crc32_update(0, "1234", 4);
+    c = pip_crc32_update(c, "56789", 5);
+    CHECK_EQ(c, 0xCBF43926u);
+    CHECK_EQ(pip_crc32("The quick brown fox jumps over the lazy dog", 43), 0x414FA339u);
+}
+
+/* ---- Self-check markers ---------------------------------------------- */
+
+TEST(selftest_lines)
+{
+    log_reset();
+    CHECK_EQ(pip_check("first", 1), 1);
+    CHECK_EQ(pip_check_eq("second", 5, 6), 0);
+    pip_marker_begin("mine");
+    pip_marker_hex("addr", 0xbeefu);
+    pip_marker_dec("n", -3);
+    pip_marker_end();
+    pip_marker_time("now");
+    CHECK_EQ(pip_checks_done(), 1);
+    CHECK_STR(logged,
+              "@RC stage=testrom ev=check name=first ok=1\n"
+              "@RC stage=testrom ev=check name=second ok=0 got=5 expected=6\n"
+              "@RC stage=testrom ev=mine addr=0x0000beef n=-3\n"
+              "@RC stage=testrom ev=now t_ms=1234\n"
+              "@RC stage=testrom ev=checks total=2 failed=1\n");
+    CHECK_EQ(log_calls, 5);
+}
+
+TEST(selftest_long_line_is_cut)
+{
+    char name[300];
+
+    memset(name, 'n', sizeof(name) - 1);
+    name[sizeof(name) - 1] = '\0';
+    log_reset();
+    pip_marker_begin(name);
+    pip_marker_end();
+    CHECK_EQ(log_calls, 1);
+    CHECK_EQ(log_longest, PIP_LOG_MAX - 1);
+    CHECK_EQ(logged[log_longest - 1], '\n');
 }

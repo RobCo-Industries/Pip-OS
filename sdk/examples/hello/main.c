@@ -1,7 +1,7 @@
 /*
  * Prints a greeting, the system and memory info, then lists the
  * holotapes on the card. The dial or UP and DOWN pick one, SELECT runs
- * it, LEFT ends the ROM with status 0.
+ * it, LEFT or BACK ends the ROM with status 0.
  */
 #include <pipos/pip.h>
 
@@ -125,7 +125,7 @@ static void draw_menu(void)
     }
     pip_set_color(dim, PIP_COLOR_NONE);
     pip_draw_text(8, 208, "DIAL or UP/DOWN: pick a tape", 1);
-    pip_draw_text(8, 224, "SELECT: run      LEFT: quit", 1);
+    pip_draw_text(8, 224, "SELECT: run  LEFT/BACK: quit", 1);
     pip_present();
     pip_printf("hello: menu, %d tapes, tape %d selected\n", count, count > 0 ? sel + 1 : 0);
 }
@@ -186,7 +186,7 @@ int pip_main(const pipos_startup_t *startup)
             move(1);
         } else if (ev.code == PIP_BTN_SELECT) {
             run_selected();
-        } else if (ev.code == PIP_BTN_LEFT) {
+        } else if (ev.code == PIP_BTN_LEFT || ev.code == PIP_BTN_BACK) {
             break;
         } else {
             continue;

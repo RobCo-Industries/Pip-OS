@@ -22,10 +22,12 @@ RobCo-Core's `mk/host.mk` builds them. The `Makefile` sets `HOST_TEST_DIR`, `HOS
 | `build_dir_test.sh` | `BUILD` reaches the target tests |
 | `sdk_example_test.sh` | `sdk/examples/hello` builds from its folder and from a copy outside the tree, with an absolute and a relative `PIPOS_SDK`, and as a holotape. Each result passes `rimg.py verify` with the right magic, subtype and load address. |
 | `sdk_rebuild_test.sh` | A ROM project rebuilds after each change: a source removed from `SRCS` leaves the ELF, a header edit rebuilds its object, a new `TITLE` reseals, new flags rebuild `libpip.a`. `start.c` and `start.S` both link, objects stay in `BUILD`, and a failed seal leaves no image. |
-| `sdimage_rom_test.sh` | `make sdimage` puts the hello example on the card as `PIPBOY/ROM1.ROM`, `ROM=<file>` puts that file, `ROM=none` puts none. It reads the card with mtools. |
+| `sdimage_rom_test.sh` | `make sdimage` puts the hello example on the card as `PIPBOY/ROM1.ROM`, `ROM=<file>` puts that file, `ROM=none` puts none. `TAPE` names that differ only in case, a name not ending in `.HTP`, or a `CARD_DIR` file with a tape's name stop the build, and a long tape name only warns. It reads the card with mtools. |
+| `outside_project_test.sh` | A ROM project in a temporary folder builds its ROM with `pipos-app.mk`, then calls `make -C <pip-os>` with an absolute `BUILD`. `kernel` builds only the kernel. `sdimage` and `bootdir` with `ROM=<file>` and `TAPE=none` build no example and write the same files. `CARD_DIR` lands on the card, a `CARD_DIR` file at a standard path stops the build in any case, `TAPE` takes a list, `SDIMAGE_DIR` is refused and `bootdir` keeps an existing `PIPOS.CFG`. |
+| `bootdir_test.sh` | `make bootdir FIRMWARE=0` run again into the same `DIR`: an identical run changes nothing, a stale ROM or tape stops it, `CLEAN=1` removes only what `BOOTDIR.LST` names, and `PIPBOY/PIPOS.CFG` and the person's own files stay. |
 | `conformance_bootdir_test.sh` | `make conformance-bootdir FIRMWARE=0` writes the same files as `build/conformance.img`, under the same names and with the same bytes. It needs no network, so it does not test the firmware download. |
 
-`tests/host/libpip_test.c` tests `libpip.a` on the host: printf conversions and truncation, the split of long `pip_printf` output into `log` calls, the string functions, and the heap. It is not a `test_*.c` file because it builds apart: the library sources get `tests/host/libpip_names.h` forced in, which renames `memcpy`, `strlen` and the others to `pipt_*` so they do not replace the host libc. `log` and `mem_info` are fakes in the test. `make libpip-host-test` runs it alone.
+`tests/host/libpip_test.c` tests `libpip.a` on the host: printf conversions and truncation, the split of long `pip_printf` output into `log` calls, the string functions, the heap, the self-check markers, the INI parser and the CRC. It is not a `test_*.c` file because it builds apart: the library sources get `tests/host/libpip_names.h` forced in, which renames `memcpy`, `strlen` and the others to `pipt_*` so they do not replace the host libc. `log`, `ticks_ms` and `mem_info` are fakes in the test. `make libpip-host-test` runs it alone.
 
 ## Target tests
 
@@ -44,18 +46,19 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
+| `tests/tools/test_card_tool.py` | `tools/card.py` on its own, without a build or QEMU: the `TAPE` and `CARD_DIR` rules, the staged-card check and each `bootdir` stop, links at every position in `DIR` and in the sources, `BOOTDIR.LST` lines, read-only folders, and a sweep of 300 random trees from a fixed seed. Either a run stops and `DIR` is unchanged, or it holds exactly the staged files plus the files it left alone, and a file outside `DIR` that links point at never changes. Cases that need two spellings of a name run only on a case-sensitive temp folder; the run prints which branch it took. The read-only cases skip as root, as in the CI container. |
 | `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers and in auto mode. See [Conformance ROM](#conformance-rom). |
 
-While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/TESTING.md#qemu-keep-alive).
+While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/TESTING.md#qemu-keep-alive).
 
-Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` in `tests/pipos_helpers.py` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
+The helpers live in the SDK, in `sdk/testing/pipos_testing/`, so a ROM project can use them too. `tests/pipos_helpers.py` re-exports them. Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
 A test that runs a subprocess builds its environment with `minimal_env()` from RobCo-Core's `harness.env`, and passes the variables it needs as arguments. Never copy `os.environ`: pytest prints locals when a test fails, so a copy puts every host secret in the log. `tests/test_env_hygiene.py` fails on such a copy.
 
 ## Test ROMs
 
-`tests/roms/` holds small ROMs in C. `make` finds them by wildcard and builds each one through `sdk/pipos-app.mk` into `build/roms/<name>/<name>.rom`. They share one `libpip.a` and `rt.c`, which formats the marker lines. The `test_rom` fixture reads them, and each test puts one on its card as `/PIPBOY/ROM1.ROM`. The ROMs report results through the `log` call as `@RC stage=testrom` lines.
+`tests/roms/` holds small ROMs in C. `make` finds them by wildcard and builds each one through `sdk/pipos-app.mk` into `build/roms/<name>/<name>.rom`. They share one `libpip.a`. `rt.h` gives its self-check markers, `pipos/selftest.h`, the short `rt_` names. The `test_rom` fixture reads them, and each test puts one on its card as `/PIPBOY/ROM1.ROM`. The ROMs report results through the `log` call as `@RC stage=testrom` lines.
 
 | ROM | Does |
 |---|---|
@@ -77,7 +80,7 @@ A test that runs a subprocess builds its environment with `minimal_env()` from R
 
 ## Writing a test ROM
 
-1. Add `tests/roms/<name>.c`. It includes `rt.h` and defines `int pip_main(const pipos_startup_t *)`. `make` builds it with `rt.c` into `build/roms/<name>/<name>.rom`. A ROM with several files is a folder `tests/roms/<name>/` with its own `Makefile`, like `sdkcheck`.
+1. Add `tests/roms/<name>.c`. It includes `rt.h` and defines `int pip_main(const pipos_startup_t *)`. `make` builds it into `build/roms/<name>/<name>.rom`. A ROM with several files is a folder `tests/roms/<name>/` with its own `Makefile`, like `sdkcheck`.
 2. Report each result with a named check. `rt_check(name, ok)` prints `ev=check name=<name> ok=<0|1>`. `rt_check_eq(name, got, expected)` adds `got=` and `expected=`. End with `rt_checks_done()`, which prints `ev=checks total=<n> failed=<n>`. Names have no spaces.
 3. Add `tests/test_<topic>.py`. Put the ROM on a card and boot it, then call `assert_rom_checks(vm, names)` from `pipos_helpers.py`. It asserts the list of names, that each passed, and the summary. `rom_checks(vm)` returns the checks as dicts with `name`, `ok`, `got` and `expected`, for tests that look closer.
 
@@ -105,9 +108,61 @@ On `raspi0` and `raspi1ap` the `jmpkern` test asserts `rom_kill reason=undef` at
 
 Tests read the screen in two ways: the `dump` command on the script channel, which `vm.script("dump")` sends, and a QEMU screenshot. See [BOOT.md](BOOT.md#maintenance-commands) for the commands. `tests/golden/boot_nocard.png` is the screen after a boot without a card. `card_hello_list.png` and `card_beacon.png` show the default card's hello example and tape. `gfx_prims.png`, `gfx_text.png` and `gfx_blits.png` are the graphics scenes. `boot_nocard.png` must match on every board, pixel for pixel. Run the tests with `PIPOS_UPDATE_GOLDEN=1` to write it again after a deliberate change to the boot screen.
 
+## Testing a ROM project
+
+A ROM project that has Pip-OS as a submodule tests its ROM with the same helpers. They are the `pipos_testing` package in `sdk/testing/`. Its plugin loads RobCo-Core's `harness.plugin`, which adds `--board`, the `board` fixture and `need_mtools`. Importing the package puts RobCo-Core's harness and `rimg.py` on `sys.path`, so the project's `tests/conftest.py` needs only the Pip-OS root:
+
+```python
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "external", "pip-os", "sdk", "testing"))
+pytest_plugins = ["pipos_testing.plugin"]
+```
+
+Build the kernel and the ROM first with `make -C external/pip-os kernel BUILD=<absolute folder>` and the project's own `make`, see [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#using-pip-os-from-another-repository). The package needs the Python packages of RobCo-Core's `tests/requirements.txt`: pytest and Pillow.
+
+The main helpers:
+
+| Helper | Does |
+|---|---|
+| `booted(image, board, sd=None, wait="ready")` | Boots the kernel in QEMU with the script channel and yields the VM. `wait="ready"` waits for `ev=ready`, which the kernel prints only when no ROM runs. `wait="jump"` waits for `ev=jump`, printed right before the kernel enters the ROM: use it for a ROM that never exits. `wait=None` does not wait. |
+| `make_card(path, files)` | An SD card image with the given files, such as `{"PIPBOY/ROM1.ROM": data}` |
+| `script(vm, command)`, `press(vm, key)` | One script command, checked to answer `ok`, and a press and release of a button: `up`, `down`, `left`, `right`, `select`, `dial_push`, `back` |
+| `screenshot(vm, tmp_path)`, `check_golden(img, path)` | A 640x480 screenshot, and its pixel compare with a PNG. With `PIPOS_UPDATE_GOLDEN=1` set, `check_golden` writes the PNG first. Pass another variable name as `update_var`. |
+| `rom_checks(vm)`, `assert_rom_checks(vm, names)` | The checks a ROM printed with `pipos/selftest.h` |
+| `pipos_markers(vm, ev)`, `one(vm, ev)`, `no_exception(vm)` | The kernel's `@RC stage=pipos` markers, and a check that nothing faulted |
+
+`vm.wait_for(text)` waits for a line on the serial console. A ROM logs with `pip_printf`, which goes there. A test that boots the project's ROM on the four boards, waits for its first line, presses SELECT and compares the screen:
+
+```python
+import pathlib
+
+from pipos_testing import booted, check_golden, make_card, no_exception, press, screenshot
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+KERNEL = ROOT / "build" / "pipos" / "pipos.img"
+ROM = ROOT / "build" / "ROM1.ROM"
+
+
+def test_menu(board, tmp_path, need_mtools):
+    sd = make_card(tmp_path / "sd.img", {"PIPBOY/ROM1.ROM": ROM.read_bytes()})
+    with booted(KERNEL, board, sd=sd, wait="jump") as vm:
+        vm.wait_for("myrom: ready\n")
+        press(vm, "select")
+        vm.wait_for("myrom: menu\n")
+        check_golden(screenshot(vm, tmp_path), ROOT / "tests" / "golden" / "menu.png")
+        no_exception(vm)
+```
+
+Run it with `pytest tests --board all`. `tests/test_outside_project.py` proves the import: it builds a small project in a temporary folder and runs its own pytest on one board.
+
+For self-checks inside the ROM, include `<pipos/selftest.h>`. `pip_check(name, ok)` and `pip_check_eq(name, got, expected)` print one `@RC stage=testrom ev=check` line each, and `pip_checks_done()` prints the summary that `assert_rom_checks` reads. The test ROMs of Pip-OS use the same functions through `tests/roms/rt.h`.
+
 ## Conformance ROM
 
-`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
 
 | File | Is |
 |---|---|
