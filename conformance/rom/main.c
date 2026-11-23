@@ -235,7 +235,7 @@ static void draw_row(int y, const row_t *row)
         text(0, y, fg, line, 1);
         return;
     }
-    /* libpip's printf has no string width or precision: pad by hand. */
+    /* Dot leaders: printf pads with spaces only, so fill by hand. */
     n = pip_snprintf(line, sizeof(line), "%3d ", row->result + 1);
     for (i = 0; r->name[i] != '\0' && i < NAME_COLS; i++) {
         line[n++] = r->name[i];

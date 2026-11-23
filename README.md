@@ -84,9 +84,9 @@ Copy the files in `DIR` to the FAT32 boot partition of the card, then add `PIPBO
 
 RobCo-Core documents the library and the shared specifications:
 
-- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/guide/API.md)
-- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/MEMORY_MAP.md)
-- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md)
+- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/guide/API.md)
+- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/MEMORY_MAP.md)
+- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/PIPOS_ABI.md)
 
 ## Related projects
 

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ABI 1.1: `PIP_ABI_VERSION` is `0x00010001`. The SDK seals images with it, and `sys_info` and the startup block report it. Images sealed for 1.0 still run.
 - `tone`, `sample`, `play_seq`, `audio_stop` and image start and end drop a waiting sample too. `audio_status` is 1 while one waits.
 - `docs/API.md` is the full system-call reference. The `docs/pending/` fragments are gone.
+- RobCo-Core moved to `d6f756d` for the `-` flag, precision and `*` in `k_printf` and the printf functions of `libpip.a`, and the updated `set_time` spec.
 - RobCo-Core moved to `222f4e4` for queued PCM playback and the `sample_queue` spec (ABI 1.1).
 - RobCo-Core moved to `06316cd` for the updated Pip-OS ABI spec.
 - RobCo-Core moved to `891b3a2` for 8-bit PCM playback with `audio_play_pcm()`.
