@@ -183,13 +183,78 @@ Do not include `<robco/...>` headers. The `pipos/` headers are the whole interfa
 
 ## Put the ROM on a card
 
-`make sdimage` writes `build/sd.img` with the hello example as `/PIPBOY/ROM1.ROM` and the tape example as `/PIPBOY/HOLO/BEACON.HTP`. `ROM=<file>` puts another image there, and `ROM=none` leaves it out. The tape stays on the card in both cases. `TAPE=<file>` puts another holotape there under its own name, and `TAPE=none` leaves it out. `make run` builds the card and boots it in QEMU. `BOARD` picks the board, `WINDOW=1` opens the screen. The keys are in [BUILD.md](BUILD.md#sd-card-image-for-qemu).
+`make sdimage` writes `build/sd.img` with the hello example as `/PIPBOY/ROM1.ROM` and the tape example as `/PIPBOY/HOLO/BEACON.HTP`. `ROM=<file>` puts another image there, and `ROM=none` leaves it out. The tape stays on the card in both cases. `TAPE=<files>` puts other holotapes there under their own names, and `TAPE=none` leaves it out. `CARD_DIR=<dir>` copies a folder tree onto the card, see [Using Pip-OS from another repository](#using-pip-os-from-another-repository). `make run` builds the card and boots it in QEMU. `BOARD` picks the board, `WINDOW=1` opens the screen. The keys are in [BUILD.md](BUILD.md#sd-card-image-for-qemu).
 
 ```sh
 make run ROM=$HOME/myrom/build/ROM1.ROM BOARD=raspi3b WINDOW=1
 ```
 
 For a real card, copy the file to `PIPBOY/ROM1.ROM` on the boot partition. See [BUILD.md](BUILD.md#a-real-card).
+
+## Using Pip-OS from another repository
+
+A ROM project in a repository of its own adds Pip-OS as a git submodule, for example in `external/pip-os`, and fetches it with `git submodule update --init --recursive`. It builds its ROM with `pipos-app.mk`, then calls Pip-OS's own Makefile for the kernel, the card and QEMU:
+
+```sh
+make -C external/pip-os <target> BUILD=<absolute folder> ...
+```
+
+Pass absolute paths. `make -C` runs in the Pip-OS folder, so a relative path would point inside it. With `ROM=<file>` and `TAPE=none` or `TAPE=<files>`, none of these targets builds the bundled examples, the test ROMs or the conformance ROM.
+
+| Target | What it does |
+|---|---|
+| `kernel` | `$(BUILD)/pipos.img` and `$(BUILD)/pipos.elf` only |
+| `sdimage` | `$(BUILD)/sd.img`, the card for QEMU |
+| `run` | Builds the card and boots it in QEMU on this terminal |
+| `bootdir DIR=<dir>` | The files of the card for a real one, firmware included |
+
+| Variable | Meaning |
+|---|---|
+| `BUILD` | Output folder. Use an absolute path outside the Pip-OS tree. |
+| `ROM` | The card's `PIPBOY/ROM1.ROM`. `none` leaves it out. The hello example by default. |
+| `TAPE` | One or more holotapes for `PIPBOY/HOLO/`, separated by spaces. Each keeps its file name, and two files with the same name stop the build. `none` leaves the folder empty. The tape example by default. |
+| `CARD_DIR` | A folder whose tree is copied onto the card root after the standard files, such as `content/PIPBOY/DATA/README.TXT`. |
+| `BOARD`, `WINDOW` | The QEMU board for `run`, and `WINDOW=1` for the display window |
+| `DIR`, `FIRMWARE` | The folder for `bootdir`, and `FIRMWARE=0` to leave the firmware out |
+
+The standard files are `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, `PIPBOY/ROM1.ROM`, the `TAPE` files and, for `bootdir`, the firmware. When a file in `CARD_DIR` has the path of a standard file, the build stops and writes nothing. FAT ignores case, so `pipboy/rom1.rom` counts as `PIPBOY/ROM1.ROM`. A folder in `CARD_DIR` that differs from a standard folder only in case also stops the build. Folders with the same name merge, so `CARD_DIR` can add tapes to `PIPBOY/HOLO/`. Use `TAPE` for the tapes you build and `CARD_DIR` for files you keep in the repository.
+
+`bootdir` keeps a `PIPBOY/PIPOS.CFG` that is already in `DIR`, because it holds the user's settings.
+
+A complete Makefile for such a project:
+
+```make
+PIP_OS     := external/pip-os
+BUILD      ?= build
+BOARD      ?= raspi2b
+
+PIPOS_SDK  := $(PIP_OS)/sdk
+IMAGE      := ROM1.ROM
+KIND       := rom
+NAME       := MYROM
+TITLE      := My ROM
+VERSION    := 0.1.0
+SRCS       := $(sort $(wildcard src/*.c))
+include $(PIPOS_SDK)/pipos-app.mk
+
+PIPOS_MAKE := $(MAKE) --no-print-directory -C $(PIP_OS) BUILD=$(abspath $(BUILD))/pipos
+CARD_VARS  := ROM=$(abspath $(PIP_OUT)) TAPE=none CARD_DIR=$(abspath content)
+
+.PHONY: kernel sdimage run bootdir
+kernel:
+	$(PIPOS_MAKE) kernel
+
+sdimage: all
+	$(PIPOS_MAKE) sdimage $(CARD_VARS)
+
+run: all
+	$(PIPOS_MAKE) run $(CARD_VARS) BOARD=$(BOARD) WINDOW=$(WINDOW)
+
+bootdir: all
+	$(PIPOS_MAKE) bootdir $(CARD_VARS) DIR=$(abspath $(DIR)) FIRMWARE=$(FIRMWARE)
+```
+
+`$(PIP_OUT)` is the sealed image that `pipos-app.mk` builds. The card lands in `build/pipos/sd.img`.
 
 ## Faults
 

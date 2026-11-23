@@ -10,3 +10,5 @@ This folder builds ROMs and holotapes for Pip-OS.
 - `examples/tape/`: a first holotape to copy.
 
 Read the guide: [docs/ROM_DEVELOPMENT.md](../docs/ROM_DEVELOPMENT.md).
+
+A ROM project with Pip-OS as a submodule also calls Pip-OS's Makefile for the kernel and the card: see [Using Pip-OS from another repository](../docs/ROM_DEVELOPMENT.md#using-pip-os-from-another-repository).

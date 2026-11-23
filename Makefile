@@ -7,20 +7,25 @@
 #   make test-target          QEMU target tests
 #   make check-pins           CI workflow pins and doc links match the submodule
 #   make check-pins-test      the pin check and the link check wiring work without git
+#   make kernel               build/pipos.img and its ELF only
 #   make sdimage              build/sd.img with the kernel, a sample config,
 #                             the hello example as ROM1.ROM (ROM=<file> picks
-#                             another image, ROM=none leaves it out) and the
-#                             tape example in PIPBOY/HOLO (TAPE=<file>, TAPE=none)
+#                             another image, ROM=none leaves it out), the
+#                             tape example in PIPBOY/HOLO (TAPE=<files>,
+#                             TAPE=none) and the CARD_DIR=<dir> tree
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #                             (WINDOW=1 also opens the display window)
 #   make test-roms            build/roms/<name>/<name>.rom from tests/roms/
 #   make sdk-example          build/examples/hello/ROM1.ROM and
 #                             build/examples/tape/BEACON.HTP from sdk/examples
-#   make bootdir DIR=<path>   boot files for a real card, firmware included
-#                             (FIRMWARE=0 leaves the firmware out)
+#   make bootdir DIR=<path>   the files of build/sd.img for a real card,
+#                             firmware included (FIRMWARE=0 leaves it out)
 #   make conformance-bootdir DIR=<path>
-#                             bootdir plus the conformance ROM as
+#                             bootdir with the conformance ROM as
 #                             PIPBOY/ROM1.ROM and its two holotapes
+#
+# Another repository calls these as make -C <pip-os> <target> with an
+# absolute BUILD and absolute paths: see docs/ROM_DEVELOPMENT.md.
 
 ROBCO_CORE := external/robco-core
 IMAGE      := pipos
@@ -66,13 +71,26 @@ ROM           ?= $(EXAMPLE_ROM)
 ifneq ($(ROM),none)
 SDIMAGE_FILES += $(ROM):PIPBOY/ROM1.ROM
 endif
-# The card's holotape, whatever ROM says: the tape example unless TAPE
-# names another file, which keeps its own name. TAPE=none leaves it out.
+# The card's holotapes, whatever ROM says: the tape example unless TAPE
+# names other files, which keep their own names. TAPE=none leaves it out.
 TAPE_BUILD     = $(abspath $(BUILD))/examples/tape
 EXAMPLE_TAPE   = $(TAPE_BUILD)/BEACON.HTP
 TAPE          ?= $(EXAMPLE_TAPE)
-ifneq ($(TAPE),none)
-SDIMAGE_FILES += $(TAPE):PIPBOY/HOLO/
+CARD_TAPES    := $(filter-out none,$(TAPE))
+ifneq ($(words $(sort $(notdir $(CARD_TAPES)))),$(words $(CARD_TAPES)))
+$(error TAPE names two files with the same name: $(TAPE))
+endif
+SDIMAGE_FILES += $(addsuffix :PIPBOY/HOLO/,$(CARD_TAPES))
+CARD_ROM      := $(filter-out none,$(ROM))
+# CARD_DIR: a folder tree copied onto the card root after the standard
+# files above and the kernel. tools/card_dir.sh stops the build when one
+# of its files would replace a standard one. It replaces RobCo-Core's
+# SDIMAGE_DIR, which copies first and lets the standard files win.
+ifneq ($(filter command% environment%,$(origin SDIMAGE_DIR)),)
+$(error SDIMAGE_DIR is not a Pip-OS setting: use CARD_DIR=<dir>, see docs/BUILD.md)
+endif
+ifneq ($(word 2,$(CARD_DIR)),)
+$(error CARD_DIR cannot contain spaces)
 endif
 
 ifeq ($(wildcard $(ROBCO_CORE)/mk/robco.mk),)
@@ -143,11 +161,17 @@ $(addprefix rom-,$(ROM_PROJECTS)): rom-%:
 	$(MAKE) --no-print-directory -C tests/roms/$* BUILD=$(abspath $(ROM_BUILD))/$*
 
 # The hello and tape examples, the default ROM and holotape of the card.
-sdk-example:
+# Each builds only when the card uses it, so ROM=<file> TAPE=none builds
+# neither.
+.PHONY: example-hello example-tape
+sdk-example: example-hello example-tape
+example-hello:
 	$(MAKE) --no-print-directory -C sdk/examples/hello BUILD=$(EXAMPLE_BUILD)
+example-tape:
 	$(MAKE) --no-print-directory -C sdk/examples/tape BUILD=$(TAPE_BUILD)
 
-$(EXAMPLE_ROM) $(EXAMPLE_TAPE): sdk-example
+$(EXAMPLE_ROM): example-hello
+$(EXAMPLE_TAPE): example-tape
 
 # ---- Conformance ROM ------------------------------------------------------
 
@@ -218,9 +242,9 @@ build-dir-test:
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
-           sdimage-rom-test conformance-bootdir-test
+           sdimage-rom-test conformance-bootdir-test outside-project-test
 
-.PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test
+.PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
 	tests/host/sdk_example_test.sh
 
@@ -229,6 +253,9 @@ sdk-rebuild-test:
 
 sdimage-rom-test:
 	tests/host/sdimage_rom_test.sh
+
+outside-project-test:
+	tests/host/outside_project_test.sh
 
 .PHONY: conformance-bootdir-test
 conformance-bootdir-test:
@@ -266,27 +293,44 @@ $(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP
 
 # ---- Cards and QEMU -----------------------------------------------------
 
-# Runs after SDIMAGE_FILES are copied, before the card is packed.
+# Runs after SDIMAGE_FILES are copied, before the card is packed. CARD_DIR
+# comes last, so card_dir.sh sees every standard file.
 sdimage-stage::
 	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(SDIMAGE_STAGE) \
 	    --kernel-name PIPOS.IMG --no-firmware
 	mkdir -p $(SDIMAGE_STAGE)/PIPBOY/HOLO
+	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(SDIMAGE_STAGE) $(CARD_DIR))
 
-.PHONY: run bootdir conformance-bootdir
+.PHONY: kernel run bootdir conformance-bootdir
+
+# Only the kernel: no test ROM, example or conformance ROM.
+kernel: $(BUILD)/$(IMAGE).img
 
 RUN_BOARD := $(if $(filter all,$(BOARD)),raspi2b,$(BOARD))
 run: sdimage
 	PYTHONPATH=$(ROBCO_CORE)/tests $(PYTHON) -m harness.run $(BUILD)/$(IMAGE).img \
 	    --board $(RUN_BOARD) --sd $(BUILD)/sd.img $(if $(filter 1,$(WINDOW)),--window)
 
-bootdir: all
+# The files of `make sdimage`, with the same ROM, TAPE and CARD_DIR rules,
+# plus the firmware. They are staged in $(BUILD)/bootstage first, so a
+# CARD_DIR clash stops the build before DIR changes. A PIPBOY/PIPOS.CFG
+# already in DIR stays: it holds the user's settings.
+BOOT_STAGE := $(BUILD)/bootstage
+bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 	$(if $(strip $(DIR)),,$(error DIR is not set: make bootdir DIR=<path>))
-	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(DIR) --kernel-name PIPOS.IMG \
+	rm -rf $(BOOT_STAGE)
+	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(BOOT_STAGE) --kernel-name PIPOS.IMG \
 	    $(if $(filter 0,$(FIRMWARE)),--no-firmware)
-	mkdir -p $(DIR)/PIPBOY/HOLO
-	test -e $(DIR)/PIPBOY/PIPOS.CFG || cp boot/PIPOS.CFG $(DIR)/PIPBOY/PIPOS.CFG
+	mkdir -p $(BOOT_STAGE)/PIPBOY/HOLO
+	cp boot/PIPOS.CFG $(BOOT_STAGE)/PIPBOY/PIPOS.CFG
+	$(if $(CARD_ROM),cp $(CARD_ROM) $(BOOT_STAGE)/PIPBOY/ROM1.ROM)
+	$(if $(CARD_TAPES),cp $(CARD_TAPES) $(BOOT_STAGE)/PIPBOY/HOLO/)
+	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(BOOT_STAGE) $(CARD_DIR))
+	if [ -e $(DIR)/PIPBOY/PIPOS.CFG ]; then rm $(BOOT_STAGE)/PIPBOY/PIPOS.CFG; fi
+	mkdir -p $(DIR)
+	cp -R $(BOOT_STAGE)/. $(DIR)/
 
 # The same files as build/conformance.img, plus the firmware.
-conformance-bootdir: bootdir
-	cp $(CONF_ROM) $(DIR)/PIPBOY/ROM1.ROM
-	cp $(CONF_TAPE) $(CONF_DATA) $(DIR)/PIPBOY/HOLO/
+conformance-bootdir: conformance
+	$(MAKE) --no-print-directory bootdir ROM=$(CONF_ROM) TAPE="$(CONF_TAPE) $(CONF_DATA)" \
+	    CARD_DIR=

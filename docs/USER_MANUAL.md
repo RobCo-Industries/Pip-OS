@@ -35,7 +35,7 @@ cd Pip-OS
 make bootdir DIR=card
 ```
 
-`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` and an empty `PIPBOY/HOLO/`. Format the card as FAT32 and copy everything in `card/` to it. Then add a ROM, see [Your own ROM and holotapes](#your-own-rom-and-holotapes). To use the example ROM, copy `build/examples/hello/ROM1.ROM` to `PIPBOY/` and `build/examples/tape/BEACON.HTP` to `PIPBOY/HOLO/`.
+`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the example ROM as `PIPBOY/ROM1.ROM` and the example holotape `PIPBOY/HOLO/BEACON.HTP`. Format the card as FAT32 and copy everything in `card/` to it. For another ROM, see [Your own ROM and holotapes](#your-own-rom-and-holotapes), or pass `ROM=<file>` to `make bootdir`.
 
 ## Try it in QEMU
 

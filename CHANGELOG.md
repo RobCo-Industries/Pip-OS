@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `make kernel` builds only the kernel image and its ELF, for a ROM project that calls Pip-OS's Makefile from another repository.
+- `CARD_DIR=<dir>` copies a folder tree onto the card for `make sdimage`, `run` and `bootdir`. A file at the path of a standard card file stops the build. `TAPE` takes several files.
+- "Using Pip-OS from another repository" in `docs/ROM_DEVELOPMENT.md`, with a complete Makefile, and `tests/host/outside_project_test.sh`.
 - The `rtc` script command prints the time the RTC chip holds, and `ev=rtc_set` reports each chip write.
 - `sample_queue` (0x26) plays a sample right after the one that plays, with no gap. One sample can wait; a second call returns `-PIP_EBUSY`. With no sample playing it acts as `sample`.
 - `pip_sample_queue()` in `libpip.a` and `PIP_SYS_SAMPLE_QUEUE` in `abi.h`.
@@ -14,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - RobCo-Core moved to `00d9a2d` for the Back button in the ABI 1.2 spec and `check_doc_links.sh --repo`.
+- `make bootdir` writes the same files as `make sdimage`, the example ROM and tape included, plus the firmware. It builds only the kernel and the files it copies, not `all`.
+- With `ROM=<file>`, `make sdimage`, `run` and `bootdir` no longer build the hello example. The tape example builds only when `TAPE` is left at its default.
+- `SDIMAGE_DIR` stops the build: use `CARD_DIR`.
 - The tests build subprocess environments with RobCo-Core's `minimal_env()` instead of a copy of the host environment, so a failing test cannot print it. `tests/test_env_hygiene.py` guards the rule.
 - `make check-pins` uses RobCo-Core's shared `tools/check_doc_links.sh` through the new `make check-doc-links`. A short hash in a RobCo-Core link is now an error. Pip-OS's own copy is gone.
 - `set_time` writes the RTC chip when one answers, so the time survives a reboot. A failed chip write returns `-PIP_EIO`; the clock keeps the new value. A time outside 2000 to 2099 sets the clock only.

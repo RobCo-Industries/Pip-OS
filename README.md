@@ -63,7 +63,7 @@ Type the keys in the terminal: Up and Down pick a holotape, Enter runs it, Left 
 make bootdir DIR=/path/to/dir
 ```
 
-Copy the files in `DIR` to the FAT32 boot partition of the card, then add `PIPBOY/ROM1.ROM`. See [docs/BUILD.md](docs/BUILD.md#a-real-card).
+Copy the files in `DIR` to the FAT32 boot partition of the card. They include the example ROM, and `ROM=<file>` picks another. See [docs/BUILD.md](docs/BUILD.md#a-real-card).
 
 ## Documentation
 
