@@ -4,4 +4,4 @@
 - `play_seq` takes up to 256 notes and rests. Pip-OS checks and copies them before it returns.
 - The volume starts at the `PIPOS.CFG` setting and stays until the next power-on.
 - Pip-OS stops a ROM's sound when the ROM starts and when it ends.
-- `sample` (`0x21`) still returns `-PIP_ENOSYS`: RobCo-Core cannot play PCM data yet.
+- `sample` (`0x21`) plays up to 65536 bytes of 8-bit unsigned mono PCM at 8000 Hz. Pip-OS copies the data before it returns. Not yet tried on real hardware.
