@@ -97,6 +97,8 @@ The console has no key for the dial. On the default card, the hello example list
 make bootdir DIR=/path/to/dir
 ```
 
-This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself, such as `build/examples/hello/ROM1.ROM`, and holotapes in `PIPBOY/HOLO/`, such as `build/examples/tape/BEACON.HTP`. `make sdk-example` builds both. The kernel has not been tested on hardware yet.
+This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt`, an empty `PIPBOY/HOLO/` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself, such as `build/examples/hello/ROM1.ROM`, and holotapes in `PIPBOY/HOLO/`, such as `build/examples/tape/BEACON.HTP`. `make sdk-example` builds both. The kernel has not been tested on hardware yet.
+
+`make conformance-bootdir DIR=/path/to/dir` writes the same files, plus the conformance ROM as `PIPBOY/ROM1.ROM` and its two holotapes in `PIPBOY/HOLO/`. See [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md). With `FIRMWARE=0`, both targets leave the firmware out and need no network.
 
 `config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/BOARD_SUPPORT.md#configtxt).

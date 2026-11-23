@@ -11,17 +11,15 @@ Nothing in Pip-OS has been validated on a real Raspberry Pi yet. The tests run i
 
 ## Write the card
 
-1. Format the card as FAT32 and mount it.
-2. Build and copy the boot files and the conformance images:
+1. Build the card's files into a new folder, here `card`:
 
 ```sh
-make conformance
-make bootdir DIR=/path/to/card
-cp build/conformance/rom/CONFORM.ROM /path/to/card/PIPBOY/ROM1.ROM
-cp build/conformance/tape/CONFTAPE.HTP build/conformance/CONFDATA.HTP /path/to/card/PIPBOY/HOLO/
+make conformance-bootdir DIR=card
 ```
 
-`make bootdir` downloads the firmware. `build/conformance.img` from `make conformance-card` has no firmware, so it boots only in QEMU.
+2. Format the card as FAT32 and copy everything in `card/` to it.
+
+`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the conformance ROM as `PIPBOY/ROM1.ROM`, and `PIPBOY/HOLO/CONFTAPE.HTP` and `CONFDATA.HTP`. The make target downloads the firmware. `build/conformance.img` from `make conformance-card` has the same files without the firmware, so it boots only in QEMU.
 
 For a run with no prompts, also write a file `PIPBOY/CONFORM.CFG` that holds the word `auto`.
 
