@@ -165,7 +165,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 ### holo
 
-`sys_holo.c`: `holo_enumerate`, `holo_launch`, `holo_last_status`, `holo_eject_event`. Lists up to 32 valid `.HTP` files in `/PIPBOY/HOLO`, checking magic, version and size but not the CRC. `holo_launch` loads and runs one tape as described above. Only the ROM may launch. State: the last launch result and a running flag. `holo_eject_event` always returns 0. Pure rules in `holo_rules.c`, tested by `tests/host/test_holo.c`.
+`sys_holo.c`: `holo_enumerate`, `holo_launch`, `holo_last_status`, `holo_eject_event`. Lists up to 32 `.HTP` files in `/PIPBOY/HOLO`. The listing is a first header check: it checks magic, header version and file size. `holo_launch` loads and runs one tape as described above, after the full validation. So it can refuse a listed tape for its slot bounds, ABI major or CRC. Only the ROM may launch. State: the last launch result and a running flag. `holo_eject_event` always returns 0. Pure rules in `holo_rules.c`, tested by `tests/host/test_holo.c`.
 
 ## Main loop and maintenance port
 
