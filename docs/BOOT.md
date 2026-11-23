@@ -77,11 +77,11 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
 
 ## Running the ROM
 
-After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/guide/api/umode.md) with the MMU on.
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/guide/api/umode.md) with the MMU on.
 
 1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
 2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
@@ -139,7 +139,7 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -190,7 +190,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|
