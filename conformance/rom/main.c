@@ -16,7 +16,7 @@
 #define ROWS_PER_PAGE 12
 #define ROW_H         PIP_FONT_H
 #define TOP_Y         20
-#define PAGE_WAIT_MS  60000u      /* interactive: a page turns by itself after this */
+#define PAGE_WAIT_MS  600000u     /* interactive: a page turns by itself after 10 minutes */
 #define AUTO_PAGE_MS  300u
 #define SUMMARY_MS    600000u     /* interactive: the summary stays 10 minutes */
 #define AUTO_SUMMARY_MS 1000u
@@ -241,22 +241,127 @@ static void draw_page(int page, int pages)
     }
     pip_draw_line(0, PIP_SCREEN_H - 19, PIP_SCREEN_W - 1, PIP_SCREEN_H - 19);
     text(0, PIP_SCREEN_H - PIP_FONT_H, dim,
-         auto_mode ? "Automatic run" : "DOWN next  UP back  SELECT end", 1);
+         auto_mode ? "Automatic run" : "DOWN next  UP back  SELECT summary", 1);
     /* Drop stale presses before the page shows: a press after this is an answer. */
     drain_events();
     pip_present();
     pip_printf("@RC stage=conform ev=page n=%d of=%d\n", page + 1, pages);
 }
 
-static void show_pages(void)
+/* The page of row r. */
+static int page_of_row(int r)
+{
+    return r / ROWS_PER_PAGE;
+}
+
+/* The first page with a FAIL, or -1. */
+static int first_fail_page(void)
+{
+    int r;
+
+    for (r = 0; r < nrows; r++) {
+        if (rows[r].result >= 0 && results[rows[r].result].res == R_FAIL) {
+            return page_of_row(r);
+        }
+    }
+    return -1;
+}
+
+/* "RESULT: FAILED, see pages 2, 5" when it fits a line, else the first page only. */
+static void fail_line(char *line, size_t size)
+{
+    int fail_pages[MAX_RESULTS * 3 / ROWS_PER_PAGE + 1];
+    int r, i, n, count = 0;
+
+    for (r = 0; r < nrows; r++) {
+        int p = page_of_row(r);
+
+        if (rows[r].result >= 0 && results[rows[r].result].res == R_FAIL &&
+            (count == 0 || fail_pages[count - 1] != p)) {
+            fail_pages[count++] = p;
+        }
+    }
+    n = pip_snprintf(line, size, "RESULT: FAILED, see page%s", count > 1 ? "s" : "");
+    for (i = 0; i < count; i++) {
+        if (n + 5 > PIP_SCREEN_W / PIP_FONT_W) {
+            pip_snprintf(line, size, "RESULT: FAILED, first on page %d", fail_pages[0] + 1);
+            return;
+        }
+        n += pip_snprintf(line + n, size - (size_t)n, i ? ", %d" : " %d", fail_pages[i] + 1);
+    }
+}
+
+/* Shows the summary. Returns the button pressed, or -1. */
+static int show_summary(void)
+{
+    char line[48];
+    int i;
+
+    pip_clear(0);
+    centered(4, fg, "CONFORMANCE", 2);
+    for (i = 0; i < 4; i++) {
+        pip_snprintf(line, sizeof(line), "%3d", counts[i]);
+        text(56, 42 + i * 34, i == R_FAIL && counts[i] ? fg : i == R_PASS ? fg : dim,
+             res_text[i], 2);
+        text(PIP_SCREEN_W - 56 - 3 * 2 * PIP_FONT_W, 42 + i * 34,
+             i == R_FAIL && counts[i] ? fg : i == R_PASS ? fg : dim, line, 2);
+    }
+    if (counts[R_FAIL]) {
+        fail_line(line, sizeof(line));
+    } else {
+        pip_snprintf(line, sizeof(line), "RESULT: NO FAILURES");
+    }
+    centered(180, fg, line, 1);
+    if (auto_mode) {
+        centered(PIP_SCREEN_H - PIP_FONT_H, dim, "Automatic run", 1);
+    } else {
+        centered(204, dim, "UP or LEFT: back   SELECT: end", 1);
+        centered(PIP_SCREEN_H - PIP_FONT_H, dim, "DOWN and RIGHT do nothing", 1);
+    }
+    drain_events();
+    pip_present();
+    pip_printf("@RC stage=conform ev=summary total=%d pass=%d fail=%d skip=%d absent=%d "
+               "mode=%s\n", nresults, counts[R_PASS], counts[R_FAIL], counts[R_SKIP],
+               counts[R_ABSENT], auto_mode ? "auto" : "interactive");
+    if (auto_mode) {
+        pip_sleep_ms(AUTO_SUMMARY_MS);
+        return -1;
+    }
+    for (;;) {
+        int b = wait_press(SUMMARY_MS);
+
+        if (b < 0 || b == PIP_BTN_SELECT || b == PIP_BTN_UP || b == PIP_BTN_LEFT) {
+            return b;
+        }
+    }
+}
+
+/*
+ * The results pages, then the summary. Interactive: the pages open on the
+ * first FAIL. DOWN or RIGHT turns the page, UP or LEFT goes back, SELECT
+ * jumps to the summary. From the summary, UP or LEFT goes back to the last
+ * page and SELECT ends the run. Every wait ends after 10 minutes.
+ */
+static void show_results(void)
 {
     int pages, page = 0;
 
     build_rows();
     pages = (nrows + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
-    while (page < pages) {
+    if (!auto_mode && first_fail_page() > 0) {
+        page = first_fail_page();
+    }
+    for (;;) {
         int b;
 
+        if (page >= pages) {
+            b = show_summary();
+            if (b != PIP_BTN_UP && b != PIP_BTN_LEFT) {
+                return;
+            }
+            page = pages - 1;
+            continue;
+        }
         draw_page(page, pages);
         if (auto_mode) {
             pip_sleep_ms(AUTO_PAGE_MS);
@@ -265,41 +370,14 @@ static void show_pages(void)
         }
         b = wait_press(PAGE_WAIT_MS);
         if (b == PIP_BTN_SELECT) {
-            break;
-        }
-        if ((b == PIP_BTN_UP || b == PIP_BTN_LEFT) && page > 0) {
-            page--;
-        } else if (b != PIP_BTN_UP && b != PIP_BTN_LEFT) {
+            page = pages;
+        } else if (b == PIP_BTN_UP || b == PIP_BTN_LEFT) {
+            if (page > 0) {
+                page--;
+            }
+        } else {
             page++;
         }
-    }
-}
-
-static void show_summary(void)
-{
-    char line[32];
-    int i;
-
-    pip_clear(0);
-    centered(4, fg, "CONFORMANCE", 2);
-    for (i = 0; i < 4; i++) {
-        pip_snprintf(line, sizeof(line), "%3d", counts[i]);
-        text(40, 44 + i * 36, i == R_FAIL && counts[i] ? fg : i == R_PASS ? fg : dim,
-             res_text[i], 3);
-        text(PIP_SCREEN_W - 40 - 3 * 3 * PIP_FONT_W, 44 + i * 36,
-             i == R_FAIL && counts[i] ? fg : i == R_PASS ? fg : dim, line, 3);
-    }
-    centered(192, fg, counts[R_FAIL] ? "RESULT: FAILED" : "RESULT: NO FAILURES", 1);
-    centered(PIP_SCREEN_H - PIP_FONT_H, dim, "Press any button to end", 1);
-    drain_events();
-    pip_present();
-    pip_printf("@RC stage=conform ev=summary total=%d pass=%d fail=%d skip=%d absent=%d "
-               "mode=%s\n", nresults, counts[R_PASS], counts[R_FAIL], counts[R_SKIP],
-               counts[R_ABSENT], auto_mode ? "auto" : "interactive");
-    if (auto_mode) {
-        pip_sleep_ms(AUTO_SUMMARY_MS);
-    } else {
-        wait_press(SUMMARY_MS);
     }
 }
 
@@ -318,7 +396,6 @@ int pip_main(const pipos_startup_t *startup)
                auto_mode ? "auto" : "interactive", PIP_SYSCALL_COUNT);
     run_automatic();
     run_interactive();
-    show_pages();
-    show_summary();
+    show_results();
     return counts[R_FAIL] ? 1 : 0;
 }

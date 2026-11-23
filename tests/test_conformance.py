@@ -147,7 +147,7 @@ def steps(vm):
 
 
 # An answered step shows the next one within this. A lost answer waits for
-# the ROM's own timeout instead: 30 s for a prompt, 60 s for a page.
+# the ROM's own timeout instead: 30 s for a prompt, 10 minutes for a page.
 STEP_S = 10
 
 
@@ -211,7 +211,10 @@ def assert_results(vm, skip):
     tape = conform(vm, "tape_check")
     assert tape and all(m["ok"] == "1" for m in tape), tape
     assert "conform: ROM slot text read by the tape\n" in vm.serial
-    summary = one_conform(vm, "summary")
+    # The summary shows again after a step back from it: each time the same.
+    found = conform(vm, "summary")
+    assert found and all(m == found[0] for m in found), found
+    summary = found[0]
     assert (summary["total"], summary["fail"], summary["skip"], summary["absent"]) == \
         (str(len(NAMES)), "0", str(len(skip)), str(len(ABSENT))), summary
 
@@ -262,8 +265,12 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
                     page1 = screenshot(vm, tmp_path)
                 reply = vm.script("key down", timeout=TIMEOUT)
                 assert reply.status == "ok", reply
-            else:
+            elif summary is None:
+                # Back to the last page once, then forward to the summary again.
                 summary = screenshot(vm, tmp_path)
+                reply = vm.script("key up", timeout=TIMEOUT)
+                assert reply.status == "ok", reply
+            else:
                 reply = vm.script("key select", timeout=TIMEOUT)
                 assert reply.status == "ok", reply
                 break
@@ -278,7 +285,10 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
         assert len([m for m in pipos_markers(vm, "audio")
                     if m.get("op") == "pcm" and m.get("len") == "8000"]) == 2, vm.serial
         pages = int(conform(vm, "page")[0]["of"])
-        assert [m["n"] for m in conform(vm, "page")] == [str(i) for i in range(1, pages + 1)]
+        assert [m["n"] for m in conform(vm, "page")] == \
+            [str(i) for i in range(1, pages + 1)] + [str(pages)], vm.serial
+        assert [m["ev"] for m in steps(vm)][-pages - 3:] == \
+            ["page"] * pages + ["summary", "page", "summary"], vm.serial
         no_exception(vm)
     # After the results, so a FAIL shows its serial line first.
     check_golden(intro, "conform_intro")

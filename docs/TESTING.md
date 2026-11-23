@@ -151,7 +151,7 @@ ROMs get no argument string from the kernel. A file `/PIPBOY/CONFORM.CFG` that s
 | SKIP | A prompt got no answer, or the run is automatic |
 | ABSENT | The hardware is not there and the call said so as the spec requires, for example `-PIP_ENODEV` from a sensor |
 
-The screen shows 13 rows per page: the check number, its name and the result. DOWN or RIGHT turns the page, UP or LEFT goes back, SELECT jumps to the summary. The summary shows the four counts in large text. It stays until a button is pressed, at most 10 minutes, or 1 s in auto mode. The ROM exits with status 0 when no check failed, 1 otherwise.
+The screen shows 12 rows per page: the check number, its name and the result. In an interactive run, the pages open on the first page with a FAIL, or on page 1. DOWN or RIGHT turns the page, UP or LEFT goes back, SELECT jumps to the summary. Each page waits for a button, at most 10 minutes. The summary shows the four counts and, after a FAIL, the pages that hold one. From the summary, UP or LEFT goes back to the last page, DOWN and RIGHT do nothing, and SELECT ends the run. The summary also ends the run after 10 minutes. In auto mode, each page shows for 0.3 s and the summary for 1 s. The ROM exits with status 0 when no check failed, 1 otherwise.
 
 On the serial port, each check prints one line:
 
@@ -159,11 +159,11 @@ On the serial port, each check prints one line:
 @RC stage=conform ev=check n=86 call=get_time name=time_at_boot result=ABSENT got=-41 expected=0
 ```
 
-Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` once it is answered, `ev=prompt name=<check>` when a prompt is on screen, `ev=page n=<n> of=<pages>` per results page, and `ev=summary total= pass= fail= skip= absent= mode=` at the end. The tape prints `ev=tape_check name=<name> ok=<0|1>` for each of its own checks.
+Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` once it is answered, `ev=prompt name=<check>` when a prompt is on screen, `ev=page n=<n> of=<pages>` per results page, and `ev=summary total= pass= fail= skip= absent= mode=` each time the summary shows. The tape prints `ev=tape_check name=<name> ok=<0|1>` for each of its own checks.
 
 ### Test
 
-`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel and turns the pages. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, and golden screens of the intro, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_page1.png` and `conform_summary.png`. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP.
+`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel, turns every page with DOWN, goes back from the summary to the last page once, then ends on SELECT. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, and golden screens of the intro, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_page1.png` and `conform_summary.png`. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP.
 
 ## CI
 
