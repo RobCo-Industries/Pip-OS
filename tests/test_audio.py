@@ -20,6 +20,7 @@ CALL_CHECKS = [
     "tone_hz19", "tone_hz20001", "tone_ms0", "tone_ms60001", "volume_101",
     "seq_count0", "seq_bad_hz19", "seq_bad_hz20001", "seq_bad_ms0", "seq_bad_ms60001",
     "seq_bad_rest0", "seq_kernel", "seq_mmio", "seq_slot_end",
+    "seq_count0_kernel", "seq_count257_kernel",
     "idle_status", "idle_stop",
     "vol_start", "tone_1050", "tone_busy", "tone_wait", "tone_done",
     "vol_90", "tone_1100", "tone_1200", "replace_wait",

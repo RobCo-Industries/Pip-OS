@@ -24,7 +24,8 @@ LONG_LEN = 2000
 
 CHECKS = [
     "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "idle_status",
-    "b_play", "b_queue", "b_busy", "b_len0", "b_kernel", "b_busy_max", "b_status", "b_wait",
+    "b_play", "b_queue", "b_busy", "b_len0", "b_kernel", "b_len0_kernel", "b_len65537",
+    "b_null", "b_busy_max", "b_status", "b_wait",
     "c_first", "c_second", "c_status", "c_third", "c_third_waited", "c_status2", "c_wait",
     "c_done",
     "t_tone", "t_queue", "t_wait",

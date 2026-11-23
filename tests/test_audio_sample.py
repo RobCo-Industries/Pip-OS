@@ -22,7 +22,7 @@ RATE = 8000
 SLACK_MS = 150
 
 CHECKS = [
-    "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "idle_status",
+    "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "len0_kernel", "idle_status",
     "tone_2100", "err_len0", "err_kernel", "err_busy", "err_stop",
     "s800", "s800_busy", "s800_wait", "s800_done",
     "s1", "s1_wait",
