@@ -289,10 +289,11 @@ void check_read_sensor(void)
     int32_t rc, rt;
     unsigned s;
 
-    /* Sensor 0 answers like get_time. */
+    /* Sensor 0 answers like get_time. ABSENT only for -PIP_ENODEV, the code for no clock. */
     rc = pip_read_sensor(PIP_SENSOR_RTC, &v);
     rt = pip_get_time(&t);
-    ck_res(sensor_names[0], rc == rt ? (rc == 0 ? R_PASS : R_ABSENT) : R_FAIL, 1, rc, rt);
+    ck_res(sensor_names[0], rc != rt ? R_FAIL : rc == 0 ? R_PASS :
+           rc == -PIP_ENODEV ? R_ABSENT : R_FAIL, 1, rc, rc != rt ? rt : -PIP_ENODEV);
     for (s = 1; s < PIP_SENSOR_COUNT; s++) {
         int32_t avail = pip_sensor_available(s);
 
