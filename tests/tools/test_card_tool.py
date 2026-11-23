@@ -216,7 +216,44 @@ def test_card_dir_root_may_be_a_link(tmp_path, stage):
     assert snap(stage)["DATA/A.BIN"] == ("f", b"a")
 
 
+@pytest.mark.parametrize("name", ["BOOTDIR.LST", "bootdir.lst", "BootDir.Lst"])
+def test_card_dir_refuses_manifest_name(tmp_path, stage, fs, name):
+    # Review finding P2: make bootdir replaced a supplied BOOTDIR.LST with
+    # its manifest while make sdimage put it on the card.
+    src = str(tmp_path / "cd")
+    make(src, {name: b"mine\n", "DATA/BOOTDIR.LST": b"deeper is fine\n"})
+    before = snap(stage)
+    status, _, err = run("stage-card-dir", stage, src)
+    assert status == 1, err
+    assert f"{name}: the name BOOTDIR.LST is reserved for the boot folder manifest" in err, err
+    assert "DATA/BOOTDIR.LST" not in err, err
+    assert snap(stage) == before
+
+
+def test_card_dir_supplied_settings_clash(tmp_path, stage):
+    # PIPBOY/PIPOS.CFG is a standard file: a CARD_DIR copy stops sdimage
+    # and bootdir alike, instead of being kept or dropped by P2.
+    src = str(tmp_path / "cd")
+    make(src, {"PIPBOY/PIPOS.CFG": b"mine\n"})
+    status, _, err = run("stage-card-dir", stage, src)
+    assert status == 1 and "PIPBOY/PIPOS.CFG clashes with the standard PIPBOY/PIPOS.CFG" in err, err
+
+
 # ---- check-stage ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("spec", [{"bootdir.lst": b"x"}, {"BOOTDIR.LST/X": b"x"}])
+def test_stage_refuses_manifest_name(tmp_path, spec):
+    s = str(tmp_path / "s")
+    make(s, dict(spec, **{"PIPOS.IMG": b"k", "DATA/BOOTDIR.LST": b"ok"}))
+    status, _, err = run("check-stage", s)
+    assert status == 1, err
+    assert "the name BOOTDIR.LST is reserved for the boot folder manifest" in err, err
+    assert "DATA/BOOTDIR.LST" not in err, err
+    d = str(tmp_path / "card")
+    status, _, err = run("sync-bootdir", s, d)
+    assert status == 1 and "reserved for the boot folder manifest" in err, err
+    assert not os.path.exists(d)
+
 
 def test_stage_case_pairs(tmp_path, fs):
     if fs != "sensitive":
@@ -266,6 +303,30 @@ def test_first_run_and_again(tmp_path, stage):
     assert status == 0 and "NOTES.TXT" in err
     assert snap(d) == before
     assert not [n for n in os.listdir(os.path.join(d, "PIPBOY")) if n.startswith(".bootdir-")]
+
+
+def test_temporary_names_never_clobber(tmp_path, stage):
+    # put() picks each temporary name with mkstemp (O_EXCL), so a file
+    # named like one, staged or already in DIR, is never overwritten, and
+    # no temporary file is left behind.
+    make(stage, {"PIPBOY/.bootdir-staged": b"staged\n"})
+    d = str(tmp_path / "card")
+    make(d, {"PIPBOY/.bootdir-mine": b"mine\n", ".bootdir-top": b"top\n"})
+    # Force the random part to the names already there, to make mkstemp
+    # meet each of them.
+    names = iter(["mine", "top", "staged"] * 20)
+    real = card.tempfile._RandomNameSequence.__next__
+    card.tempfile._RandomNameSequence.__next__ = lambda self: next(names, None) or real(self)
+    try:
+        status, _, err = run("sync-bootdir", stage, d)
+    finally:
+        card.tempfile._RandomNameSequence.__next__ = real
+    assert status == 0, err
+    s = snap(d)
+    assert s["PIPBOY/.bootdir-mine"] == ("f", b"mine\n") and s[".bootdir-top"] == ("f", b"top\n")
+    assert s["PIPBOY/.bootdir-staged"] == ("f", b"staged\n")
+    assert sorted(p for p in s if ".bootdir-" in p) == [".bootdir-top", "PIPBOY/.bootdir-mine",
+                                                        "PIPBOY/.bootdir-staged"]
 
 
 def test_cli_wiring(tmp_path, stage):

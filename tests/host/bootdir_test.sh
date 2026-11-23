@@ -149,4 +149,24 @@ cp "$tmp/lst" "$dir/BOOTDIR.LST"
 grep -qx 'PIPBOY/HOLO/one.htp' "$dir/BOOTDIR.LST" || fail "test setup: manifest not renamed"
 casestop "manifest spelling" PIPBOY/HOLO/one.htp PIPBOY/HOLO/ONE.HTP TAPE="$tmp/ONE.HTP"
 
+# A CARD_DIR with a root BOOTDIR.LST (the manifest name) or its own
+# PIPBOY/PIPOS.CFG (a standard file) stops sdimage and bootdir the same
+# way, before DIR changes.
+for spec in 'bootdir.lst:reserved for the boot folder manifest' \
+            'PIPBOY/PIPOS.CFG:PIPBOY/PIPOS.CFG clashes with the standard PIPBOY/PIPOS.CFG'; do
+    f=${spec%%:*} msg=${spec#*:}
+    rm -rf "$tmp/content" "$dir"
+    mkdir -p "$tmp/content/$(dirname "$f")" "$dir"
+    printf 'mine\n' >"$tmp/content/$f"
+    snap >"$tmp/before"
+    bootdir stop CARD_DIR="$tmp/content"
+    grep -q -F "$msg" "$tmp/out" || fail "bootdir with CARD_DIR $f: wrong stop: $(cat "$tmp/out")"
+    snap >"$tmp/after"
+    cmp -s "$tmp/before" "$tmp/after" || fail "bootdir with CARD_DIR $f changed DIR"
+    if make -s sdimage BUILD="$b" CARD_DIR="$tmp/content" >"$tmp/out" 2>&1; then
+        fail "sdimage with CARD_DIR $f did not stop"
+    fi
+    grep -q -F "$msg" "$tmp/out" || fail "sdimage with CARD_DIR $f: wrong stop: $(cat "$tmp/out")"
+done
+
 echo "bootdir_test: passed (case-$fs branch)"

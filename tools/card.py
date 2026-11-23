@@ -30,14 +30,29 @@ stage-card-dir
       file: "clashes with the standard ...". Nothing is copied.
   C3. A CARD_DIR folder that folds to a staged folder spelled otherwise:
       "differs only in case from the standard ...". Nothing is copied.
-  C4. Otherwise the tree is copied into the stage; folders merge.
+  C4. A CARD_DIR path at the card root whose name folds to BOOTDIR.LST:
+      error, see R1. Nothing is copied.
+  C5. Otherwise the tree is copied into the stage; folders merge.
 
 check-stage
   S1. The stage holds regular files and folders only.
   S2. No two staged paths fold to the same path. Each pair is listed once,
       only the outermost clashing component. Error.
-  S3. A CARD_DIR path with a component that is not 8.3 (case ignored):
+  S3. A staged path at the card root whose name folds to BOOTDIR.LST:
+      error, see R1.
+  S4. A CARD_DIR path with a component that is not 8.3 (case ignored):
       warning, on stderr.
+
+Reserved names
+  R1. BOOTDIR.LST at the card root is reserved for the manifest of
+      sync-bootdir (P3), so sdimage, run and bootdir all refuse a staged
+      file or folder there. Only the root: sync-bootdir writes and reads
+      the manifest only there, so DATA/BOOTDIR.LST is an ordinary file.
+  R2. PIPBOY/PIPOS.CFG is a standard file of the stage, so a CARD_DIR
+      copy of it stops at C2 in sdimage and bootdir alike.
+  R3. The temporary names of A1 (.bootdir-XXXXXXXX) are not reserved:
+      mkstemp creates each one with O_EXCL, so it never takes the name
+      of a file already there, staged or not, and A1 removes it on error.
 
 sync-bootdir: plan, check, apply. DIR belongs to the person.
   Plan
@@ -50,7 +65,8 @@ sync-bootdir: plan, check, apply. DIR belongs to the person.
       write, is stale (the manifest names it), unknown (at a managed path:
       firmware, PIPOS.IMG, config.txt, PIPBOY/ROM1.ROM, PIPBOY/HOLO/*.HTP)
       or other. With --clean, stale entries are removed.
-  P5. DIR may be a link to a folder: it is resolved once and the real
+  P5. A staged BOOTDIR.LST stops the run (R1), before DIR is read.
+  P6. DIR may be a link to a folder: it is resolved once and the real
       folder is used. A DIR that exists and is not a folder stops the run.
   Check: reads DIR only; it lists every problem, then stops with
   "Nothing was changed." when there is one.
@@ -177,6 +193,16 @@ def special(entries):
     return sorted(p for p, k in entries.items() if k not in ("file", "folder"))
 
 
+def reserved(entries, prog):
+    """Stops on a path at the card root whose name folds to MANIFEST (R1)."""
+    bad = [p for p in sorted(entries) if "/" not in p and fold(p) == fold(MANIFEST)]
+    if bad:
+        for p in bad:
+            print(f"{prog}: {p}: the name {MANIFEST} is reserved for the boot folder manifest "
+                  "that make bootdir writes at the card root", file=sys.stderr)
+        raise Stop(f"rename or move {', '.join(bad)} in CARD_DIR. Nothing was written.")
+
+
 def is_dir(path):
     """A folder, or a link to one (for a root named on the command line)."""
     return os.path.isdir(path)
@@ -255,6 +281,7 @@ def stage_card_dir(args):
         for c in clashes:
             print(f"card_dir: {c}", file=sys.stderr)
         raise Stop(f"CARD_DIR={src} would replace a standard card file: nothing copied")
+    reserved(entries, "card_dir")
     for p, k in sorted(entries.items()):
         if k == "folder":
             os.makedirs(os.path.join(stage, p), exist_ok=True)
@@ -276,6 +303,7 @@ def check_stage(args):
     if src and not is_dir(src):
         raise Stop(f"CARD_DIR={src} is not a folder")
     entries = source_tree(stage, "the staged card", "check_stage")
+    reserved(entries, "check_stage")
     seen, bad, clashes = {}, [], []
     for p in sorted(entries):
         if any(p.startswith(b + "/") for b in bad):
@@ -350,6 +378,7 @@ def sync_bootdir(args):
 
     # ---- plan
     staged = source_tree(stage, "the staged card", "bootdir")
+    reserved(staged, "bootdir")
     special_names = {fold(MANIFEST), fold(CFG)}
     newdirs = sorted(p for p, k in staged.items() if k == "folder")
     new = sorted(p for p, k in staged.items() if k == "file" and fold(p) not in special_names)
