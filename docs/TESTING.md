@@ -103,7 +103,7 @@ Tests read the screen in two ways: the `dump` command on the script channel, whi
 
 ## Conformance ROM
 
-`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
 
 | File | Is |
 |---|---|
