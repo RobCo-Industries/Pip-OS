@@ -1,4 +1,4 @@
-/* The audio group's argument rules and the note conversion. See audio_rules.h. */
+/* The audio group's argument rules, the note conversion and sample_queue's buffer state. See audio_rules.h. */
 #include "audio_rules.h"
 
 static int hz_ok(uint32_t hz)
@@ -61,4 +61,45 @@ int32_t pipos_audio_volume_swap(unsigned *level, uint32_t new_level)
     }
     *level = new_level;
     return (int32_t)prev;
+}
+
+void pipos_pcmq_sync(pipos_pcmq_t *q, int can_queue, int busy)
+{
+    if (!busy) {
+        pipos_pcmq_drop(q);
+    } else if (q->wait >= 0 && can_queue) {
+        q->play = q->wait;
+        q->wait = -1;
+    }
+}
+
+pipos_pcmq_plan_t pipos_pcmq_plan(const pipos_pcmq_t *q, int can_queue)
+{
+    pipos_pcmq_plan_t p = { PIPOS_PCMQ_START, 0 };
+
+    if (q->wait >= 0) {
+        p.action = PIPOS_PCMQ_BUSY;
+        p.buf = -1;
+    } else if (q->play >= 0 && can_queue) {
+        p.action = PIPOS_PCMQ_QUEUE;
+        p.buf = 1 - q->play;
+    }
+    return p;
+}
+
+void pipos_pcmq_queued(pipos_pcmq_t *q, int buf)
+{
+    q->wait = buf;
+}
+
+void pipos_pcmq_started(pipos_pcmq_t *q, int buf)
+{
+    q->play = buf;
+    q->wait = -1;
+}
+
+void pipos_pcmq_drop(pipos_pcmq_t *q)
+{
+    q->play = -1;
+    q->wait = -1;
 }

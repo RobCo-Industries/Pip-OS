@@ -19,7 +19,7 @@ On macOS with Homebrew:
 brew install arm-none-eabi-gcc qemu mtools python
 ```
 
-RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/guide/GETTING_STARTED.md) lists the versions in detail.
+RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/guide/GETTING_STARTED.md) lists the versions in detail.
 
 ## Build the image
 
@@ -101,4 +101,4 @@ This writes the boot files into `DIR`: the firmware files from RobCo-Core's `too
 
 `make conformance-bootdir DIR=/path/to/dir` writes the same files, plus the conformance ROM as `PIPBOY/ROM1.ROM` and its two holotapes in `PIPBOY/HOLO/`. See [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md). With `FIRMWARE=0`, both targets leave the firmware out and need no network.
 
-`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/BOARD_SUPPORT.md#configtxt).
+`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/BOARD_SUPPORT.md#configtxt).

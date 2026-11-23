@@ -2,7 +2,7 @@
 
 A ROM is the program Pip-OS runs after boot. It is one file, `/PIPBOY/ROM1.ROM` on the SD card. Pip-OS loads it at `0x00400000`, checks it and runs it in user mode. The ROM talks to the kernel only through system calls.
 
-The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
+The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
 
 ## A first ROM
 
@@ -71,13 +71,13 @@ What differs from a ROM:
 - The return value of `pip_main`, or the value given to `pip_exit()`, is the exit status, 0 to 255. The ROM gets it back from `pip_holo_launch()`. A fault ends the tape and the ROM gets `-PIP_EFAULT`.
 - Pip-OS stops the sound, empties the event queue and resets the drawing state before and after the tape. The ROM redraws its screen when the tape ends.
 
-To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#holotapes).
+To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#holotapes).
 
 ## Start-up and entry state
 
 `crt0.S` puts the branch, the `rimg` header and an empty META block at the start of the image. On entry it saves r0 to r3, sp and lr in `pip_entry_regs`, clears BSS and calls `int pip_main(const pipos_startup_t *startup)`. The return value of `pip_main` goes to `exit`.
 
-The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#entry-state).
+The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#entry-state).
 
 ## System calls
 
@@ -110,6 +110,7 @@ Include `<pipos/pip.h>` for everything, or the single headers in `sdk/include/pi
 | `0x23` | `volume` | `pip_volume()` |
 | `0x24` | `audio_status` | `pip_audio_status()` |
 | `0x25` | `play_seq` | `pip_play_seq()` |
+| `0x26` | `sample_queue` | `pip_sample_queue()` |
 | `0x30` | `read_sensor` | `pip_read_sensor()` |
 | `0x31` | `sensor_available` | `pip_sensor_available()` |
 | `0x40` | `get_time` | `pip_get_time()` |
@@ -139,6 +140,32 @@ Include `<pipos/pip.h>` for everything, or the single headers in `sdk/include/pi
 `pip_syscall(nr, a0, a1, a2, a3)` makes any call by number. A number outside the table returns `-PIP_ENOSYS`.
 
 `rect` and `set_clip` take the width and height packed as `PIP_WH(w, h)`. `pip_rect_xywh()` and `pip_set_clip_xywh()` take them apart. `PIP_TM_WIDTH()` and `PIP_TM_HEIGHT()` unpack the result of `text_metrics`. `abi.h` names every limit of the spec, such as `PIP_TEXT_MAX` and `PIP_SAVE_MAX`.
+
+## Playing long audio
+
+`sample` plays at most 65536 bytes, 8.192 s at 8000 Hz. For longer sounds, read the data in chunks and pass each one to `pip_sample_queue()`. The kernel copies the chunk, so one buffer is enough. It plays the chunk right after the one that plays. When a chunk already waits, the call returns `-PIP_EBUSY`: do other work or sleep, then call again with the same chunk.
+
+```c
+static uint8_t chunk[4096];
+
+void play_file(const char *path)
+{
+    int32_t fd = pip_file_open(path);
+    int32_t n;
+
+    if (fd < 0) {
+        return;
+    }
+    while ((n = pip_file_read(fd, chunk, sizeof chunk)) > 0) {
+        while (pip_sample_queue(chunk, (uint32_t)n) == -PIP_EBUSY) {
+            pip_sleep_ms(20);   /* or draw a frame, read input */
+        }
+    }
+    pip_file_close(fd);
+}
+```
+
+A 4096-byte chunk lasts 512 ms, so a 20 ms sleep leaves plenty of margin. If the ROM comes back too late, the sound ends and the next call starts it again, with a gap. `sample_queue` is new in ABI 1.1: on a 1.0 Pip-OS it returns `-PIP_ENOSYS`. Read `startup->abi_version` to check.
 
 ## Library functions
 

@@ -1,10 +1,10 @@
 # System call reference
 
-A running image calls the kernel with `svc #0`. The call number goes in r7, the arguments in r0 to r3, and the result comes back in r0. A negative result is `-PIP_E*`. The kernel keeps every register except r0. The contract is RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md). This page lists what Pip-OS does on top of it.
+A running image calls the kernel with `svc #0`. The call number goes in r7, the arguments in r0 to r3, and the result comes back in r0. A negative result is `-PIP_E*`. The kernel keeps every register except r0. The contract is RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md). This page lists what Pip-OS does on top of it.
 
 [`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers, the error codes, the structs and every limit. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for every call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
-The kernel serves all 50 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
+Pip-OS implements ABI 1.1, `PIP_ABI_VERSION` `0x00010001`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
 
 | Error | Value |
 |---|---|
@@ -14,6 +14,7 @@ The kernel serves all 50 calls of the spec's table. A number outside the table r
 | `-PIP_EBADF` | -9 |
 | `-PIP_ENOMEM` | -12 |
 | `-PIP_EFAULT` | -14 |
+| `-PIP_EBUSY` | -16 |
 | `-PIP_EINVAL` | -22 |
 | `-PIP_ENOSPC` | -28 |
 | `-PIP_ERANGE` | -34 |
@@ -26,7 +27,7 @@ The tables below drop the `-PIP_` prefix in the error column.
 
 ## Pointer checks
 
-The kernel checks every pointer against the caller's regions before it reads or writes. A bad pointer returns `-PIP_EFAULT` and the kernel writes nothing. The regions are in the spec's [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#sandbox) section.
+The kernel checks every pointer against the caller's regions before it reads or writes. A bad pointer returns `-PIP_EFAULT` and the kernel writes nothing. The regions are in the spec's [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#sandbox) section.
 
 | Case | Result |
 |---|---|
@@ -48,12 +49,12 @@ A holotape's input pointers may also point into the ROM slot. Its output pointer
 | `0x48` | `log` | `const char *text` | 0 | `EFAULT`, `EINVAL` with no NUL in the first 256 bytes |
 | `0x49` | `rand` | none | 0 to 2^31 - 1 from the hardware generator | `EIO` when the generator fails |
 
-The rules are in the spec's [System information](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#system-information) section.
+The rules are in the spec's [System information](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#system-information) section.
 
 - `ticks_ms` moves in steps of 10 ms, the 100 Hz tick.
 - `sleep_ms` waits on the 1 MHz system timer, so it never ends early. The tick wakes it, so it can run up to 10 ms long. IRQs stay on, and the kernel runs its main-loop work while it waits.
 - The exit status is the low 8 bits of `status`. `exit` prints it as `ev=rom_exit status=<0 to 255>` for the ROM. For a holotape, `holo_launch` returns it.
-- `sys_info` writes `size` 32, `abi_version` `0x00010000`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, and two reserved words set to 0.
+- `sys_info` writes `size` 32, `abi_version` `0x00010001`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, and two reserved words set to 0.
 - `mem_info` reports the caller's own region. For the ROM: `heap_base` `0x01000000`, `heap_size` `0x007F0000`, `stack_top` `0x01800000`, `stack_size` `0x00010000`. For a holotape: `0x01800000`, `0x007F0000`, `0x02000000`, `0x00010000`.
 - `log` prints on the PL011 with no newline added. Printable ASCII, `\n` and `\t` print as they are, every other byte as `?`.
 
@@ -77,7 +78,7 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 | `0x0E` | `present` | none | 0 | `ENODEV` with no framebuffer, or one smaller than 320x240 |
 | `0x0F` | `set_font` | `uint32 font_id` | 0 | `EINVAL` for any font but 0 |
 
-The drawing rules, the pixel rules of lines, rectangles, arcs and text, and the check order are in the spec's [Display](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#display) section.
+The drawing rules, the pixel rules of lines, rectangles, arcs and text, and the check order are in the spec's [Display](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#display) section.
 
 - `gfx_info` reports `backend` 0, HDMI, and `fg_default` as the normal text colour of the `PIPOS.CFG` scheme. Green is `0x33E066`.
 - The back buffer is 320x240 words at `0x00C00000`, in kernel-only memory. The boot prints `ev=gfx bb=0x00c00000 size=307200 user=0 heap_end=...` and panics if an image could reach that memory or the kernel heap overlaps it.
@@ -96,7 +97,7 @@ The drawing rules, the pixel rules of lines, rectangles, arcs and text, and the 
 | `0x12` | `poll_event` | `pip_event_t *out` | 1 with the oldest event in `*out`, 0 when the queue is empty | `EFAULT` |
 | `0x13` | `wait_event` | `pip_event_t *out`, `uint32 timeout_ms` | 1 with the oldest event in `*out` | `ETIMEDOUT`, `ERANGE` for a timeout above `0x7FFFFFFF` other than `PIP_WAIT_FOREVER`, `EFAULT` |
 
-The queue, the event layout, the time stamps and the repeat schedule are in the spec's [Input](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#input) section.
+The queue, the event layout, the time stamps and the repeat schedule are in the spec's [Input](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#input) section.
 
 | Input | Event |
 |---|---|
@@ -120,14 +121,17 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 | `0x21` | `sample` | `const uint8 *data`, `uint32 length` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EIO` |
 | `0x22` | `audio_stop` | none | 0, also when nothing plays | none |
 | `0x23` | `volume` | `uint32 level` | The previous level | `EINVAL` for `level` above 100 |
-| `0x24` | `audio_status` | none | 1 while a sound the image started plays, else 0 | none |
+| `0x24` | `audio_status` | none | 1 while a sound the image started plays or a queued sample waits, else 0 | none |
 | `0x25` | `play_seq` | `const pip_note_t *notes`, `uint32 count` | 0 | `EINVAL` for `count` outside 1 to 256 or any bad note, `EFAULT`, `EIO` |
+| `0x26` | `sample_queue` | `const uint8 *data`, `uint32 length` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EBUSY` when a sample already waits, `EIO` |
 
-`EIO` means the audio driver refused the sound. The rules are in the spec's [Audio](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#audio) section.
+`EIO` means the audio driver refused the sound. The rules are in the spec's [Audio](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#audio) section.
 
 - The level starts at the `volume` key of `PIPOS.CFG`, 100 without one. See [CONFIG.md](CONFIG.md). It is a percentage of the square wave's duty cycle for tones. For a sample it scales each byte around 128.
 - A ROM that wants its own level sets it and restores the old one before it exits.
 - `sample` stops the current sound before it copies the data. An argument error returns before that, so the current sound plays on.
+- `sample_queue` checks the length, then the pointer, then whether a sample waits. When a sample plays, it copies the data and queues it behind, with no gap. When none plays, it acts as `sample`. `sample_queue` is new in ABI 1.1. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#playing-long-audio) has a streaming loop.
+- `tone`, `sample`, `play_seq` and `audio_stop` drop the waiting sample with the one that plays. Image start and end stop both.
 - On PWM the sound goes out on the audio pins in [HARDWARE.md](HARDWARE.md). Samples are not tried on real hardware yet.
 
 QEMU has no PWM model. There Pip-OS uses RobCo-Core's trace backend: each change of sound prints one line on the UART instead of playing it.
@@ -137,7 +141,7 @@ QEMU has no PWM model. There Pip-OS uses RobCo-Core's trace backend: each change
 @RC stage=pipos ev=audio op=stop hz=0 vol=40 t_ms=508
 ```
 
-A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` marks the natural end. A stop or a replacement prints `op=stop` instead.
+A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` marks the natural end. A queued sample prints `op=pcm_next` with its `len` and `crc` when it takes over, and `op=pcm_end` comes once, after the last one. A stop or a replacement prints `op=stop` instead.
 
 ```
 @RC stage=pipos ev=audio op=pcm rate=8000 len=800 vol=70 crc=eb779ef4 t_ms=179
@@ -157,7 +161,7 @@ A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` 
 | `0x47` | `power` | `uint32 op` | 0 for ops 2 and 3. Ops 0 and 1 do not return. | `EINVAL` for `op` above 3, `EPERM` for a holotape |
 | `0x4A` | `set_time` | `uint32 unix_seconds` | 0 | `EPERM` for a holotape |
 
-The clock and sensor rules are in the spec's [Time, sensors and power](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#time-sensors-and-power) section.
+The clock and sensor rules are in the spec's [Time, sensors and power](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#time-sensors-and-power) section.
 
 - At boot the clock takes the time from the RTC chip when `ev=clock` says `rtc=present` and a time. See [HARDWARE.md](HARDWARE.md) for the chip. `set_time` never writes the chip, so a time it sets is lost at the next boot.
 - No sensor other than the clock and no battery monitor is supported.
@@ -182,7 +186,7 @@ The clock and sensor rules are in the spec's [Time, sensors and power](https://g
 | `0x56` | `file_close` | `int32 handle` | 0 | `EBADF` |
 | `0x57` | `dir_list` | `const char *path, pip_dirent_t *out, uint32 max, uint32 start` | Entries written, 0 past the end | `EINVAL`, `EFAULT`, `EPERM`, `ENOENT`, `EIO` |
 
-The name and path rules, the 64 KiB save limit and the read-only card rules are in the spec's [Save files](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#save-files) and [Files](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#files) sections. The work-file recovery is in RobCo-Core's [storage guide](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/guide/api/storage.md#whole-files).
+The name and path rules, the 64 KiB save limit and the read-only card rules are in the spec's [Save files](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#save-files) and [Files](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#files) sections. The work-file recovery is in RobCo-Core's [storage guide](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/guide/api/storage.md#whole-files).
 
 - Saves live in `/PIPBOY/SAVE`. `write_save` copies the data in first, then creates the folder when it is missing.
 - `/PIPBOY/SAVE` and everything in it return `-PIP_EPERM` to the file calls. A PC tool can give `PIPBOY` or `SAVE` an 8.3 alias such as `SAVE~1`, so Pip-OS also looks the first two components up on the card by long and short name. That costs one scan of the root for a path with two or more components, and one more scan of `/PIPBOY` when the first component is that folder. A path with one component costs no scan.
@@ -201,7 +205,7 @@ The name and path rules, the 64 KiB save limit and the read-only card rules are 
 | `0x62` | `holo_last_status` | none | What the ROM's last `holo_launch` returned | `ENOENT` before the first launch |
 | `0x63` | `holo_eject_event` | none | 0 | none |
 
-The listing, the launch steps, the name rules and what a holotape may touch are in the spec's [Holotapes](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#holotapes) and [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#sandbox) sections. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#writing-a-holotape) shows how to build one.
+The listing, the launch steps, the name rules and what a holotape may touch are in the spec's [Holotapes](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#holotapes) and [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#sandbox) sections. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#writing-a-holotape) shows how to build one.
 
 - `holo_enumerate` skips a file smaller than 288 bytes, the stub, header and META block it reads.
 - `holo_launch` copies both strings in before it checks anything else. A `NULL` `args` returns `-PIP_EFAULT`.

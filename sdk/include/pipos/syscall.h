@@ -71,6 +71,11 @@ int32_t pip_volume(uint32_t level);
 int32_t pip_audio_status(void);
 /* 1 to 256 notes. 0. */
 int32_t pip_play_seq(const pip_note_t *notes, uint32_t count);
+/*
+ * Like pip_sample, but plays right after a sample that plays, with no gap.
+ * One can wait: then -PIP_EBUSY. ABI 1.1: -PIP_ENOSYS on a 1.0 Pip-OS.
+ */
+int32_t pip_sample_queue(const uint8_t *data, uint32_t length);
 
 /* Time, sensors and power. */
 /* PIP_SENSOR_*. 0, or -PIP_ENODEV. */

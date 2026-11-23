@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.0: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.1: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010000  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010001  /* (major << 16) | minor */
 
 /* log: at most this many bytes, NUL included. */
 #define PIP_LOG_MAX         256
@@ -75,6 +75,7 @@
 #define PIP_SYS_VOLUME                  0x23
 #define PIP_SYS_AUDIO_STATUS            0x24
 #define PIP_SYS_PLAY_SEQ                0x25
+#define PIP_SYS_SAMPLE_QUEUE            0x26  /* ABI 1.1 */
 #define PIP_SYS_READ_SENSOR             0x30
 #define PIP_SYS_SENSOR_AVAILABLE        0x31
 #define PIP_SYS_GET_TIME                0x40
@@ -127,6 +128,7 @@
     X(VOLUME, volume) \
     X(AUDIO_STATUS, audio_status) \
     X(PLAY_SEQ, play_seq) \
+    X(SAMPLE_QUEUE, sample_queue) \
     X(READ_SENSOR, read_sensor) \
     X(SENSOR_AVAILABLE, sensor_available) \
     X(GET_TIME, get_time) \
@@ -154,7 +156,7 @@
     X(HOLO_EJECT_EVENT, holo_eject_event)
 
 /* Number of calls in the table. */
-#define PIP_SYSCALL_COUNT           50
+#define PIP_SYSCALL_COUNT           51
 /* Every number is below this. */
 #define PIP_SYS_NR_LIMIT            0x80
 
