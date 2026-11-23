@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `docs/API.md` is the full system-call reference. The `docs/pending/` fragments are gone.
+- RobCo-Core moved to `222f4e4` for queued PCM playback and the `sample_queue` spec (ABI 1.1).
 - RobCo-Core moved to `06316cd` for the updated Pip-OS ABI spec.
 - RobCo-Core moved to `891b3a2` for 8-bit PCM playback with `audio_play_pcm()`.
 - RobCo-Core moved to `78c9d9e` for nested user tasks, dial totals, a drop-oldest input queue, and a test harness that keeps QEMU awake and dumps guest state when a wait times out.
