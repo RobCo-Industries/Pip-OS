@@ -242,6 +242,8 @@ static void draw_page(int page, int pages)
     pip_draw_line(0, PIP_SCREEN_H - 19, PIP_SCREEN_W - 1, PIP_SCREEN_H - 19);
     text(0, PIP_SCREEN_H - PIP_FONT_H, dim,
          auto_mode ? "Automatic run" : "DOWN next  UP back  SELECT end", 1);
+    /* Drop stale presses before the page shows: a press after this is an answer. */
+    drain_events();
     pip_present();
     pip_printf("@RC stage=conform ev=page n=%d of=%d\n", page + 1, pages);
 }
@@ -261,7 +263,6 @@ static void show_pages(void)
             page++;
             continue;
         }
-        drain_events();
         b = wait_press(PAGE_WAIT_MS);
         if (b == PIP_BTN_SELECT) {
             break;
@@ -290,6 +291,7 @@ static void show_summary(void)
     }
     centered(192, fg, counts[R_FAIL] ? "RESULT: FAILED" : "RESULT: NO FAILURES", 1);
     centered(PIP_SCREEN_H - PIP_FONT_H, dim, "Press any button to end", 1);
+    drain_events();
     pip_present();
     pip_printf("@RC stage=conform ev=summary total=%d pass=%d fail=%d skip=%d absent=%d "
                "mode=%s\n", nresults, counts[R_PASS], counts[R_FAIL], counts[R_SKIP],
@@ -297,7 +299,6 @@ static void show_summary(void)
     if (auto_mode) {
         pip_sleep_ms(AUTO_SUMMARY_MS);
     } else {
-        drain_events();
         wait_press(SUMMARY_MS);
     }
 }

@@ -132,15 +132,20 @@ def steps(vm):
     return [m for m in conform(vm) if m["ev"] in ("prompt", "page", "summary")]
 
 
-def next_step(vm, done):
+# An answered step shows the next one within this. A lost answer waits for
+# the ROM's own timeout instead: 30 s for a prompt, 60 s for a page.
+STEP_S = 10
+
+
+def next_step(vm, done, timeout=TIMEOUT):
     """Waits for the prompt, page or summary marker number done + 1."""
-    deadline = time.monotonic() + TIMEOUT
+    deadline = time.monotonic() + timeout
     while True:
         found = steps(vm)
         if len(found) > done:
             return found[done]
-        assert time.monotonic() < deadline, f"no step {done + 1}\n{vm.serial}"
-        time.sleep(0.05)
+        assert time.monotonic() < deadline, f"no step {done + 1} within {timeout} s\n{vm.serial}"
+        time.sleep(0.005)
 
 
 def results(vm):
@@ -177,26 +182,30 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
     page1 = summary = None
     # booted() waits for ev=ready, which comes after the ROM ends.
     with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+        # Each answer goes out as soon as its marker shows, with no screenshot
+        # first except on page 1 and the summary, which have goldens. The ROM
+        # drops stale events before it shows a screen, never after its marker,
+        # so every answer counts and the next step comes within STEP_S.
         done = 0
+        timeout = TIMEOUT
         while True:
-            step = next_step(vm, done)
+            step = next_step(vm, done, timeout)
             done += 1
+            timeout = STEP_S
             if step["ev"] == "prompt":
                 answered.append(step["name"])
                 for line in ANSWERS[step["name"]]:
                     reply = vm.script(line, timeout=TIMEOUT)
                     assert reply.status == "ok", (line, reply)
             elif step["ev"] == "page":
-                img = screenshot(vm, tmp_path)
-                img.save(tmp_path / f"conf-page{step['n']}.png")
                 if step["n"] == "1":
-                    page1 = img
+                    page1 = screenshot(vm, tmp_path)
                 reply = vm.script("key down", timeout=TIMEOUT)
                 assert reply.status == "ok", reply
             else:
                 summary = screenshot(vm, tmp_path)
-                summary.save(tmp_path / "conf-summary.png")
-                vm.script("key select", timeout=TIMEOUT)
+                reply = vm.script("key select", timeout=TIMEOUT)
+                assert reply.status == "ok", reply
                 break
         vm.wait_for("@RC stage=pipos ev=rom_exit ", timeout=TIMEOUT)
         vm.wait_for("@RC stage=pipos ev=ready ", timeout=TIMEOUT)

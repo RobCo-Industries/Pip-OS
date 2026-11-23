@@ -4,8 +4,9 @@
  * is SKIP. A wrong answer is FAIL. In auto mode every check here is SKIP
  * without a prompt.
  *
- * Each prompt prints "@RC stage=conform ev=prompt name=<check>" once it
- * is on screen, so a test script knows when to answer.
+ * Each prompt drops stale events, shows its screen, then prints
+ * "@RC stage=conform ev=prompt name=<check>", so a test script knows when
+ * to answer. Nothing drains after the marker: an answer is never lost.
  */
 #include "conform.h"
 
@@ -62,8 +63,8 @@ static void prompt(const char *name, const char *l1, const char *l2, const char 
     pip_set_color(dim, PIP_COLOR_NONE);
     pip_draw_text(8, 184, hint, 1);
     pip_draw_text(8, 204, "No answer in 30 s: SKIP", 1);
-    pip_present();
     drain_events();
+    pip_present();
     pip_printf("@RC stage=conform ev=prompt name=%s\n", name);
 }
 
@@ -199,8 +200,8 @@ static void ask_picture(void)
     int b;
 
     draw_scene();
-    pip_present();
     drain_events();
+    pip_present();
     pip_printf("@RC stage=conform ev=prompt name=picture_right\n");
     for (;;) {
         b = wait_press(PROMPT_MS);
