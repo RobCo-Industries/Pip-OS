@@ -69,9 +69,8 @@ static int32_t dial_baseline(void)
     return d;   /* the dial never stopped; the position check may be off */
 }
 
-/* Shows a prompt. With d0 not NULL, *d0 is the dial baseline taken with the drain. */
-static void prompt_dial(const char *name, const char *l1, const char *l2, const char *hint,
-                        int32_t *d0)
+/* Draws a prompt screen: up to three lines and a hint. Presents nothing. */
+static void prompt_draw(const char *l1, const char *l2, const char *l3, const char *hint)
 {
     int32_t w;
 
@@ -79,13 +78,25 @@ static void prompt_dial(const char *name, const char *l1, const char *l2, const 
     pip_set_color(fg, PIP_COLOR_NONE);
     w = (int32_t)PIP_TM_WIDTH(pip_text_metrics("CHECK BY HAND", 2));
     pip_draw_text((PIP_SCREEN_W - w) / 2, 8, "CHECK BY HAND", 2);
-    pip_draw_text(8, 80, l1, 1);
+    if (l1 != NULL) {
+        pip_draw_text(8, 80, l1, 1);
+    }
     if (l2 != NULL) {
         pip_draw_text(8, 100, l2, 1);
+    }
+    if (l3 != NULL) {
+        pip_draw_text(8, 120, l3, 1);
     }
     pip_set_color(dim, PIP_COLOR_NONE);
     pip_draw_text(8, 184, hint, 1);
     pip_draw_text(8, 204, "No answer in 30 s: SKIP", 1);
+}
+
+/* Shows a prompt. With d0 not NULL, *d0 is the dial baseline taken with the drain. */
+static void prompt_full(const char *name, const char *l1, const char *l2, const char *l3,
+                        const char *hint, int32_t *d0)
+{
+    prompt_draw(l1, l2, l3, hint);
     if (d0 != NULL) {
         *d0 = dial_baseline();
     } else {
@@ -95,9 +106,15 @@ static void prompt_dial(const char *name, const char *l1, const char *l2, const 
     pip_printf("@RC stage=conform ev=prompt name=%s\n", name);
 }
 
+static void prompt_dial(const char *name, const char *l1, const char *l2, const char *hint,
+                        int32_t *d0)
+{
+    prompt_full(name, l1, l2, NULL, hint, d0);
+}
+
 static void prompt(const char *name, const char *l1, const char *l2, const char *hint)
 {
-    prompt_dial(name, l1, l2, hint, NULL);
+    prompt_full(name, l1, l2, NULL, hint, NULL);
 }
 
 static void skip(const char *name)
@@ -105,37 +122,132 @@ static void skip(const char *name)
     ck_res(name, R_SKIP, 0, 0, 0);
 }
 
+#define HOLD_READ_MS 200u   /* read_buttons may lag the press event by this much */
+
 static const struct {
     const char *name;
+    const char *state;
+    const char *clear;
     const char *label;
     int code;
 } buttons[] = {
-    { "btn_up", "Press UP", PIP_BTN_UP },
-    { "btn_down", "Press DOWN", PIP_BTN_DOWN },
-    { "btn_left", "Press LEFT", PIP_BTN_LEFT },
-    { "btn_right", "Press RIGHT", PIP_BTN_RIGHT },
-    { "btn_select", "Press SELECT", PIP_BTN_SELECT },
-    { "btn_dial_press", "Press the dial in", PIP_BTN_DIAL },
+    { "btn_up", "btn_up_state", "btn_up_clear", "Press and hold UP", PIP_BTN_UP },
+    { "btn_down", "btn_down_state", "btn_down_clear", "Press and hold DOWN", PIP_BTN_DOWN },
+    { "btn_left", "btn_left_state", "btn_left_clear", "Press and hold LEFT", PIP_BTN_LEFT },
+    { "btn_right", "btn_right_state", "btn_right_clear", "Press and hold RIGHT", PIP_BTN_RIGHT },
+    { "btn_select", "btn_select_state", "btn_select_clear", "Press and hold SELECT",
+      PIP_BTN_SELECT },
+    { "btn_dial_press", "btn_dial_state", "btn_dial_clear", "Press and hold the dial in",
+      PIP_BTN_DIAL },
 };
 
-/* PASS when the asked button comes, its stamp not after ticks_ms. Other buttons are ignored. */
+static int is_button(const pip_event_t *ev, int code, int32_t value)
+{
+    return ev->type == PIP_EV_BUTTON && (int)ev->code == code && ev->value == value;
+}
+
+/* 1 when the queue holds the release of code. Drops what it reads. */
+static int release_queued(int code)
+{
+    pip_event_t ev;
+    int i, found = 0;
+
+    for (i = 0; i < 64 && pip_poll_event(&ev) == 1; i++) {
+        found |= is_button(&ev, code, PIP_EV_RELEASE);
+    }
+    return found;
+}
+
+/*
+ * After the press event: 1 when read_buttons shows the button down, 0 when
+ * it never does while the button is held, -1 for a tap released before the
+ * read. read_buttons takes input in first, so a release that came before
+ * the read is in the queue after it.
+ */
+static int held_state(int code, int32_t *mask)
+{
+    int32_t start = pip_ticks_ms();
+
+    do {
+        *mask = pip_read_buttons();
+        if (*mask >= 0 && (*mask & PIP_BTN_BIT(code))) {
+            return 1;
+        }
+        if (release_queued(code)) {
+            return -1;
+        }
+    } while (elapsed_ms(start, pip_ticks_ms()) < (int32_t)HOLD_READ_MS);
+    return 0;
+}
+
+#define HOLD_L2 "until the screen says to let go."
+
+/* Shows one line of the button step, with no marker. */
+static void button_screen(int i, const char *l1)
+{
+    prompt_draw(l1, buttons[i].label, HOLD_L2, "Other buttons are ignored.");
+    pip_present();
+}
+
+/*
+ * Three checks. The press event comes, its stamp not after ticks_ms
+ * (wait_event). read_buttons shows the button down after the press
+ * (state), then up after the release (clear). A tap let go before the read
+ * proves nothing: the screen asks again, until PROMPT_MS passes with no
+ * hold, then state and clear are SKIP. Other buttons are ignored.
+ */
 static void ask_button(int i)
 {
     pip_event_t ev;
-    int32_t start;
+    int32_t start, mask = 0;
+    int code = buttons[i].code, pressed = 0, held = -1;
 
-    prompt(buttons[i].name, buttons[i].label, NULL, "Other buttons are ignored.");
+    prompt(buttons[i].name, buttons[i].label, HOLD_L2, "Other buttons are ignored.");
     start = pip_ticks_ms();
-    while (next_event(&ev, start, PROMPT_MS)) {
-        if (ev.type == PIP_EV_BUTTON && ev.value == PIP_EV_PRESS && (int)ev.code == buttons[i].code) {
+    while (held < 0 && next_event(&ev, start, PROMPT_MS)) {
+        if (!is_button(&ev, code, PIP_EV_PRESS)) {
+            continue;
+        }
+        if (!pressed) {
             int32_t late = elapsed_ms((int32_t)ev.time_ms, pip_ticks_ms());
 
             /* The stamp is never after the ticks_ms read after the event. */
             ck_res(buttons[i].name, late < 0x40000000 ? R_PASS : R_FAIL, 1, late, 0);
+            pressed = 1;
+        }
+        held = held_state(code, &mask);
+        if (held < 0) {
+            /* A tap: ask for a hold again, with a fresh wait. */
+            button_screen(i, "Too quick. Again:");
+            pip_printf("@RC stage=conform ev=retry name=%s\n", buttons[i].name);
+            start = pip_ticks_ms();
+        }
+    }
+    if (!pressed) {
+        skip(buttons[i].name);
+    }
+    cur_call = "read_buttons";
+    if (held < 0) {
+        skip(buttons[i].state);
+        skip(buttons[i].clear);
+        cur_call = "wait_event";
+        return;
+    }
+    ck_res(buttons[i].state, held ? R_PASS : R_FAIL, 1, mask, (int32_t)PIP_BTN_BIT(code));
+    prompt_draw("Now let go.", NULL, NULL, "Other buttons are ignored.");
+    pip_present();
+    start = pip_ticks_ms();
+    while (next_event(&ev, start, PROMPT_MS)) {
+        if (is_button(&ev, code, PIP_EV_RELEASE)) {
+            mask = pip_read_buttons();
+            ck_res(buttons[i].clear, mask >= 0 && !(mask & PIP_BTN_BIT(code)) ? R_PASS : R_FAIL,
+                   1, mask, 0);
+            cur_call = "wait_event";
             return;
         }
     }
-    skip(buttons[i].name);
+    skip(buttons[i].clear);
+    cur_call = "wait_event";
 }
 
 /* The dial position pos moved by detents, 0 to 359. */
@@ -256,7 +368,10 @@ void run_interactive(void)
     };
     static uint8_t pcm[8000];
     static const char *const names[] = {
-        "btn_up", "btn_down", "btn_left", "btn_right", "btn_select", "btn_dial_press",
+        "btn_up", "btn_up_state", "btn_up_clear", "btn_down", "btn_down_state",
+        "btn_down_clear", "btn_left", "btn_left_state", "btn_left_clear", "btn_right",
+        "btn_right_state", "btn_right_clear", "btn_select", "btn_select_state",
+        "btn_select_clear", "btn_dial_press", "btn_dial_state", "btn_dial_clear",
         "dial_clockwise", "dial_cw_position", "dial_counter", "dial_ccw_position",
         "heard_tone", "heard_tune", "heard_sample", "picture_right",
     };
@@ -265,8 +380,9 @@ void run_interactive(void)
 
     if (auto_mode) {
         for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
-            cur_call = i < 6 ? "wait_event" : i < 10 ? "read_dial" : i == 10 ? "tone" :
-                       i == 11 ? "play_seq" : i == 12 ? "sample" : "present";
+            cur_call = i < 18 ? (i % 3 ? "read_buttons" : "wait_event") :
+                       i < 22 ? "read_dial" : i == 22 ? "tone" :
+                       i == 23 ? "play_seq" : i == 24 ? "sample" : "present";
             skip(names[i]);
         }
         return;

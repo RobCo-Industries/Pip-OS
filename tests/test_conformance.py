@@ -20,6 +20,13 @@ from test_card import check_golden
 
 PART_OFFSET = 2048 * 512
 
+# (press check, short name) of each button prompt, in order.
+BUTTONS = [("btn_up", "btn_up"), ("btn_down", "btn_down"), ("btn_left", "btn_left"),
+           ("btn_right", "btn_right"), ("btn_select", "btn_select"), ("btn_dial_press", "btn_dial")]
+# The script name of each button.
+KEYS = {"btn_up": "up", "btn_down": "down", "btn_left": "left", "btn_right": "right",
+        "btn_select": "select", "btn_dial_press": "dial_push"}
+
 # (call, [check names]) in the order the ROM runs them. "none" holds the
 # checks of unknown numbers.
 CHECKS = [
@@ -79,7 +86,8 @@ CHECKS = [
     ("holo_last_status", ["last_before_launch", "last_status", "last_error"]),
     ("holo_eject_event", ["eject_none"]),
     ("none", ["unknown_number", "unknown_gap"]),
-    ("wait_event", ["btn_up", "btn_down", "btn_left", "btn_right", "btn_select", "btn_dial_press"]),
+    *[part for btn, short in BUTTONS
+      for part in (("wait_event", [btn]), ("read_buttons", [f"{short}_state", f"{short}_clear"]))],
     ("read_dial", ["dial_clockwise", "dial_cw_position", "dial_counter", "dial_ccw_position"]),
     ("tone", ["heard_tone"]),
     ("play_seq", ["heard_tune"]),
@@ -93,11 +101,13 @@ INTERACTIVE = NAMES[NAMES.index("btn_up"):]
 ABSENT = {"sensor_rtc", "sensor_battery", "sensor_geiger", "sensor_gps", "sensor_accel",
           "sensor_temp", "sensor_heart", "time_at_boot", "battery"}
 
-# The answer the script gives to each prompt. SELECT is yes.
+# The answer the script gives to each prompt. SELECT is yes. A button is
+# held until its _state check shows: a key goes down, then up, as two lines.
+# UP is tapped first: the ROM asks again.
 ANSWERS = {
-    "btn_up": ["key up"], "btn_down": ["key down"], "btn_left": ["key left"],
-    "btn_right": ["key right"], "btn_select": ["key select"],
-    "btn_dial_press": ["key dial_push"],
+    **{btn: [f"key {KEYS[btn]} 1", ("wait", f"{short}_state"), f"key {KEYS[btn]} 0"]
+       for btn, short in BUTTONS},
+    "btn_up": ["key up", ("retry", "btn_up"), "key up 1", ("wait", "btn_up_state"), "key up 0"],
     # A turn the wrong way first: the ROM ignores it but read_dial counts it.
     "dial_clockwise": ["dial -1", "dial 2"], "dial_counter": ["dial -3"],
     "heard_tone": ["key select"], "heard_tune": ["key select"], "heard_sample": ["key select"],
@@ -148,6 +158,18 @@ def next_step(vm, done, timeout=TIMEOUT):
         time.sleep(0.005)
 
 
+def wait_conform(vm, ev, name, timeout=STEP_S):
+    """Waits for the ev marker of name."""
+    deadline = time.monotonic() + timeout
+    while not [m for m in conform(vm, ev) if m["name"] == name]:
+        assert time.monotonic() < deadline, f"no {ev} {name} within {timeout} s\n{vm.serial}"
+        time.sleep(0.005)
+
+
+def wait_check(vm, name):
+    wait_conform(vm, "check", name)
+
+
 def results(vm):
     return [(m["call"], m["name"], m["result"]) for m in conform(vm, "check")]
 
@@ -195,6 +217,12 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
             if step["ev"] == "prompt":
                 answered.append(step["name"])
                 for line in ANSWERS[step["name"]]:
+                    if isinstance(line, tuple) and line[0] == "retry":
+                        wait_conform(vm, "retry", line[1])
+                        continue
+                    if isinstance(line, tuple) and line[0] == "wait":
+                        wait_check(vm, line[1])
+                        continue
                     reply = vm.script(line, timeout=TIMEOUT)
                     assert reply.status == "ok", (line, reply)
             elif step["ev"] == "page":
@@ -212,6 +240,7 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
         assert answered == list(ANSWERS), answered
         assert_results(vm, skip=set())
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        assert [m["name"] for m in conform(vm, "retry")] == ["btn_up"], vm.serial
         pages = int(conform(vm, "page")[0]["of"])
         assert [m["n"] for m in conform(vm, "page")] == [str(i) for i in range(1, pages + 1)]
         no_exception(vm)
