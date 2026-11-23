@@ -250,6 +250,16 @@ check-pins-test:
 build-dir-test:
 	tests/host/build_dir_test.sh
 
+# The panel model of tests/test_tft.py: RobCo-Core's ILI9341 model fed
+# with a test build's tftdump reply.
+PANEL_MODEL := $(BUILD)/host/panel_model
+.PHONY: panel-model
+panel-model: $(PANEL_MODEL)
+all: $(PANEL_MODEL)
+$(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.h
+	@mkdir -p $(dir $@)
+	$(HOST_CC) -std=c99 -O2 -Wall -Wextra -Werror -I$(ROBCO_CORE)/tests/host -o $@ $<
+
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
