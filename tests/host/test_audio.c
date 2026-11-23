@@ -17,6 +17,15 @@ TEST(tone_limits)
     CHECK_EQ(pipos_audio_check_tone(0xffffffffu, 0xffffffffu), -PIP_EINVAL);
 }
 
+TEST(sample_limits)
+{
+    CHECK_EQ(pipos_audio_check_sample(0), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_check_sample(1), 0);
+    CHECK_EQ(pipos_audio_check_sample(65536), 0);
+    CHECK_EQ(pipos_audio_check_sample(65537), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_check_sample(0xffffffffu), -PIP_EINVAL);
+}
+
 TEST(count_limits)
 {
     CHECK_EQ(pipos_audio_check_count(0), -PIP_EINVAL);
