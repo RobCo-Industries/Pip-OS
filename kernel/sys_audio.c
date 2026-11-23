@@ -16,6 +16,8 @@
 
 /* The level every call sees; the library has no getter. Set once by main.c at boot. */
 static unsigned level;
+/* 1 when audio_init() returned 0 at boot. Set once by main.c. */
+static int driver_ok;
 /* 1 after the image started a tone or a sequence, until it stops or ends. */
 static int owned;
 /* The notes the tick plays. Rewritten only with IRQs masked. */
@@ -240,6 +242,16 @@ static const pipos_sys_entry_t audio_calls[] = {
 };
 
 const pipos_sys_table_t pipos_audio_table = PIPOS_SYS_TABLE(AUDIO, "audio", audio_calls);
+
+void pipos_audio_driver_result(int rc)
+{
+    driver_ok = rc == 0;
+}
+
+int pipos_audio_driver_ok(void)
+{
+    return driver_ok;
+}
 
 void pipos_audio_start_volume(unsigned start)
 {

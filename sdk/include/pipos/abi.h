@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.2: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.3: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010002  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010003  /* (major << 16) | minor */
 
 /* log: at most this many bytes, NUL included. */
 #define PIP_LOG_MAX         256
@@ -421,8 +421,17 @@ typedef struct __attribute__((packed)) pip_sys_info {
     uint32_t board_rev;      /* firmware board revision code */
     uint32_t soc;            /* 0x2835, 0x2836, 0x2837, or 0 if unknown */
     uint32_t mem_size;       /* RAM in bytes */
-    uint32_t reserved[2];    /* 0 */
+    /*
+     * PIP_HW_* flags, since ABI 1.3. A Pip-OS before 1.3 writes 0 here, so
+     * a ROM checks abi_version >= 0x00010003 before it reads this field.
+     */
+    uint32_t hw_flags;
+    uint32_t reserved;       /* 0 */
 } pip_sys_info_t;
+
+/* sys_info hw_flags bits. Bit 1 and bits 3 to 31 are 0. */
+#define PIP_HW_RTC          (1u << 0)  /* a clock chip answered at boot */
+#define PIP_HW_AUDIO        (1u << 2)  /* the audio driver started at boot */
 
 PIP_ABI_SIZE(pip_sys_info_t, 32);
 PIP_ABI_AT(pip_sys_info_t, size, 0x00);
@@ -431,7 +440,8 @@ PIP_ABI_AT(pip_sys_info_t, pipos_version, 0x08);
 PIP_ABI_AT(pip_sys_info_t, board_rev, 0x0C);
 PIP_ABI_AT(pip_sys_info_t, soc, 0x10);
 PIP_ABI_AT(pip_sys_info_t, mem_size, 0x14);
-PIP_ABI_AT(pip_sys_info_t, reserved, 0x18);
+PIP_ABI_AT(pip_sys_info_t, hw_flags, 0x18);
+PIP_ABI_AT(pip_sys_info_t, reserved, 0x1C);
 
 /* mem_info */
 typedef struct __attribute__((packed)) pip_mem_info {

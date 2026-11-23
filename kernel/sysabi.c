@@ -29,7 +29,7 @@ void pipos_mem_info_rom(pip_mem_info_t *m)
 }
 
 void pipos_sys_info_fill(pip_sys_info_t *s, uint32_t pipos_version, uint32_t board_rev,
-                         uint32_t soc, uint32_t mem_size)
+                         uint32_t soc, uint32_t mem_size, uint32_t hw_flags)
 {
     k_memset(s, 0, sizeof(*s));
     s->size = sizeof(*s);
@@ -38,6 +38,12 @@ void pipos_sys_info_fill(pip_sys_info_t *s, uint32_t pipos_version, uint32_t boa
     s->board_rev = board_rev;
     s->soc = soc;
     s->mem_size = mem_size;
+    s->hw_flags = hw_flags;
+}
+
+uint32_t pipos_hw_flags(int rtc_present, int audio_ok)
+{
+    return (rtc_present ? PIP_HW_RTC : 0u) | (audio_ok ? PIP_HW_AUDIO : 0u);
 }
 
 char pipos_log_char(char c)

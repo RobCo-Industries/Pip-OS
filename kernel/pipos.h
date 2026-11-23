@@ -37,6 +37,9 @@ void pipos_poll(void);
 
 /* sys_audio.c: the level main.c gave audio_set_volume() at boot; the volume call starts from it. */
 void pipos_audio_start_volume(unsigned level);
+/* sys_audio.c: main.c reports audio_init()'s result at boot; sys_info's PIP_HW_AUDIO reads it. */
+void pipos_audio_driver_result(int rc);
+int pipos_audio_driver_ok(void);
 
 /* sys_input.c: every RobCo-Core event main.c takes; empties the image's event queue. */
 void pipos_input_event(const input_event_t *ev);

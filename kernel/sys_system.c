@@ -4,6 +4,7 @@
  */
 #include <robco/board.h>
 #include <robco/rng.h>
+#include <robco/rtc.h>
 #include <robco/tick.h>
 #include <robco/timer.h>
 #include <robco/uart.h>
@@ -62,7 +63,8 @@ static int32_t sys_sys_info(const pipos_sys_ctx_t *ctx, uint32_t out, uint32_t a
     pipos_sys_info_fill(&info,
                         pipos_version_pack(PIPOS_VERSION_MAJOR, PIPOS_VERSION_MINOR,
                                            PIPOS_VERSION_PATCH),
-                        b->board_rev, (uint32_t)b->soc, b->mem_size);
+                        b->board_rev, (uint32_t)b->soc, b->mem_size,
+                        pipos_hw_flags(rtc_present(), pipos_audio_driver_ok()));
     return pipos_user_copy_out(ctx, out, &info, sizeof(info));
 }
 

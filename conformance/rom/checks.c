@@ -401,7 +401,7 @@ void check_sys_info(void)
 
     ck_eq("sysinfo_rc", rc, 0);
     ck("sysinfo_fields", rc == 0 && si.size == 32 && si.abi_version == PIP_ABI_VERSION &&
-       si.mem_size != 0 && si.reserved[0] == 0 && si.reserved[1] == 0);
+       si.mem_size != 0 && si.reserved == 0);
     ck_eq("sysinfo_bad_ptr", pip_sys_info(PTR(BAD_KERNEL)), -PIP_EFAULT);
     if (rc == 0) {
         pip_printf("conform: board_rev 0x%08x soc 0x%x mem %u pipos 0x%06x\n",

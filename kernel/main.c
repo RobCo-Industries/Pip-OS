@@ -202,6 +202,8 @@ static void start_audio(void)
 {
     int rc = audio_init();
 
+    pipos_audio_driver_result(rc);
+
     k_printf("@RC stage=" PIPOS_STAGE " ev=audio_init rc=%d backend=%s probe=%s\n", rc,
              audio_backend(), audio_probe_name(audio_probe_result()));
 }
