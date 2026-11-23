@@ -98,4 +98,20 @@ uint32_t gfx_scale_factor(uint32_t w, uint32_t h, uint32_t dw, uint32_t dh);
 uint32_t gfx_scale_copy(const uint32_t *src, uint32_t w, uint32_t h, uint8_t *dst, uint32_t dw,
                         uint32_t dh, uint32_t pitch, int swap_rb);
 
+/* A rectangle of the surface, in pixels. */
+typedef struct gfx_rect {
+    uint32_t x, y, w, h;
+} gfx_rect_t;
+
+/*
+ * The smallest rectangle that holds every pixel where cur and last
+ * differ, both w x h with no padding. Returns 1 and fills *r, or 0 when
+ * the two are the same.
+ */
+int gfx_dirty_rect(const uint32_t *cur, const uint32_t *last, uint32_t w, uint32_t h,
+                   gfx_rect_t *r);
+
+/* Copies rectangle r of src into dst, both w pixels wide. */
+void gfx_copy_rect(const uint32_t *src, uint32_t *dst, uint32_t w, const gfx_rect_t *r);
+
 #endif
