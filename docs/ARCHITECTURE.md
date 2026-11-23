@@ -38,7 +38,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 7. `start_clock()`: `i2c_init()` and `rtc_init()`.
 8. `pipos_card_mount()` in `card.c`: `sd_init()`, then `fs_mount_boot()`.
 9. `pipos_config_load()` reads `/PIPBOY/PIPOS.CFG` through `pipos_settings_parse()`.
-10. `apply_settings()`: scheme, volume, line delay, power-on beep.
+10. `apply_settings()`: scheme, volume, line delay, power-on beep. Then `pipos_display_start()` in `display.c` starts the SPI panel when `[display] backend` asks for it.
 11. `pipos_sys_init()` in `syscall.c`: builds the call index, runs every group's `init`, installs the `svc` handler.
 12. `boot_screen()`: the head lines, `pipos_holo_count()`, `pipos_rom_load()`, the ROM line, the tail lines.
 13. `pipos_rom_run()` in `rom.c` when the ROM passed the check.
@@ -61,7 +61,10 @@ The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://git
 | `0x00008000`-`0x003FFFFF` | Kernel image, stacks, MMU table, kernel heap | `LINK_ADDR`, `SLOT_END` in `Makefile`, `ROBCO_SLOT_END` in `kernel/robco_config.h` |
 | `0x00400000`-`0x007FFFFF` | ROM slot | `PIP_ROM_BASE`, `PIP_ROM_SIZE` in `sdk/include/pipos/abi.h` |
 | `0x00800000`-`0x00BFFFFF` | Holotape slot | `PIPOS_HOLO_BASE`, `PIPOS_HOLO_SIZE` in `kernel/holo.h` |
-| `0x00C00000`-`0x00FFFFFF` | Graphics back buffer, kernel only | `GFX_BB_BASE` in `kernel/sys_gfx.c` |
+| `0x00C00000`-`0x00C4AFFF` | Graphics back buffer, kernel only | `GFX_BB_BASE` in `kernel/display.h` |
+| `0x00C80000`-`0x00CCAFFF` | The last frame sent to the panel, kernel only | `GFX_SHADOW_BASE` |
+| `0x00D00000`-`0x00D4AFFF` | The panel console frame, kernel only | `GFX_CONSOLE_BASE` |
+| `0x00D80000`-`0x00FFFFFF` | Test builds: the panel transcript | `GFX_TAP_BASE`, `GFX_TAP_END` |
 | `0x01000000`-`0x017FFFFF` | ROM heap, 64 KiB ROM stack at the top | `PIP_ROM_HEAP_BASE`, `PIP_ROM_STACK_TOP` |
 | `0x01800000`-`0x01FFFFFF` | Holotape heap, 64 KiB holotape stack at the top | `PIPOS_HOLO_HEAP_BASE`, `PIPOS_HOLO_STACK_TOP` |
 
@@ -69,7 +72,7 @@ The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://git
 0x00008000 | kernel                 | privileged
 0x00400000 | ROM slot               | ROM rw, holotape ro
 0x00800000 | holotape slot          | holotape rw
-0x00C00000 | back buffer            | privileged
+0x00C00000 | back buffer, panel     | privileged
 0x01000000 | ROM heap + stack       | ROM rw
 0x01800000 | holotape heap + stack  | holotape rw
 0x02000000 | unused
@@ -147,6 +150,29 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 `sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
 
+### Display path
+
+`kernel/display.c` drives the backends. `[display] backend` picks them, see [CONFIG.md](CONFIG.md#spi-panel).
+
+- HDMI: `present` scales the back buffer by 2 into the framebuffer, as before.
+- Panel: `present` compares the back buffer with the shadow, a copy of the last frame sent at `0x00C80000`. `gfx_dirty_rect()` in `gfx_draw.c` finds the smallest rectangle that holds every changed pixel. It skips equal rows from the top and the bottom, then looks for the leftmost and rightmost change in the rows between. RobCo-Core's `tft_present_px32_rect()` sends that rectangle in RGB565, and `gfx_copy_rect()` copies it into the shadow. An unchanged frame sends nothing.
+- The whole frame goes out after `tft_init()`, after `power` wakes the screen, after a holotape returns and after a failed send.
+
+Cost on the wire: a rectangle of w by h pixels takes 11 bytes of window commands and `2 * w * h` bytes of pixels. At 9.62 MHz, the rate set for the default 10 MHz:
+
+| Change | Bytes | Time |
+|---|---|---|
+| Whole frame, 320x240 | 153611 | 128 ms |
+| One line of text, 320x16 | 10251 | 8.5 ms |
+| A 16x16 icon | 523 | 0.43 ms |
+| One pixel | 13 | 11 us |
+
+`present` sends in the system call. It is bounded by the whole frame: 128 ms at the default rate, 1.23 s at the 1 MHz minimum. The SPI driver polls with interrupts on. The tick, input sampling and PCM, one timer interrupt per sample, keep running. Trace lines and script commands wait for the next `pipos_poll()`. So a ROM that streams sound only needs chunks longer than one `present`. A 64000-byte chunk lasts 8 s. `test_stream_while_redrawing` in `tests/test_tft.py` redraws the whole screen in every frame while it streams 3 such chunks, and checks the trace has no gap. Sending in strips over several ticks would bound the call lower but adds state, so the kernel does not.
+
+The panel console: with the panel in use, boot text and panic text also reach the panel. `display.c` keeps the last 15 lines, cut at 40 characters, and draws them with the 8x16 font into the console frame at `0x00D00000`. It sends that frame the same way, against the shadow. Lines before `pipos_display_start()` and a panic before it never reach the panel. With `backend = tft` HDMI keeps the boot console and shows no frame.
+
+A panel call that fails after boot is counted. The first prints `ev=display_error`. The kernel keeps running and sends the whole frame next time.
+
 ### input
 
 `sys_input.c`: `read_buttons`, `read_dial`, `poll_event`, `wait_event`. `main.c` hands every RobCo-Core input event to `pipos_input_event()`. The group keeps a 32-event queue and drops the oldest event when full. Events reach the queue only while an image runs. `image_start` and `image_end` empty the queue, so a holotape and the ROM never see each other's events. `read_buttons` reads RobCo-Core's held-key state and `read_dial` its dial total, 15 degrees per detent. Pure code in `input_events.c`, tested by `tests/host/test_input_events.c`.
@@ -218,8 +244,7 @@ To test a new call:
 - No CPU-time limit. A ROM that never makes a blocking call keeps the main loop from running, so no script command works, `kill` included. `test_scripts_stop_while_rom_spins` in `tests/test_rom.py` asserts this.
 - A ROM runs once per boot. After it ends, the kernel stays in its main loop.
 - One ROM file, `/PIPBOY/ROM1.ROM`. One holotape at a time, launched only by the ROM.
-- `sample` plays one buffer of at most 64 KiB at 8000 Hz. There is no streaming.
-- Display is the HDMI framebuffer only, at 640 by 480. No SPI display.
+- The SPI panel is not validated on hardware. QEMU has no panel model, so the tests check the bytes sent, not a picture on glass.
 - Sensors 1 to 6 and the battery report nothing. `holo_eject_event` always returns 0.
 - `set_time` does not write the RTC chip, so the time set is lost at the next boot.
 - Pi 4 is not supported.

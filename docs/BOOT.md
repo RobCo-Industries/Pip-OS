@@ -19,11 +19,35 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 9 | SD card and its boot volume, see [The card](#the-card) | `ev=card`, `ev=mount` |
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
+| 11a | The SPI panel when `[display] backend` asks for it, see [The display backend](#the-display-backend) | `ev=display` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
 | 13 | The ROM, if it passed the check, see [Running the ROM](#running-the-rom) | `ev=jump`, then `ev=rom_exit` or `ev=rom_kill` |
 | 14 | Main loop | `ev=ready` |
 
 A failed card, file or configuration step never stops the boot. A failure in steps 2 to 5 calls `pipos_panic()`.
+
+## The display backend
+
+With `backend = tft` or `both` in `PIPOS.CFG`, the kernel calls RobCo-Core's `tft_init()` with the panel keys after the settings. Then it reads the panel id with `tft_read_id()`. It prints one marker:
+
+```
+@RC stage=pipos ev=display backend=both tft=absent rc=0 hz=9722222 asked=tft bad=0
+```
+
+That line is from QEMU, where nothing answers and the core clock gives 9.72 MHz.
+
+| Key | Meaning |
+|---|---|
+| `backend` | What is in use: `hdmi`, `tft` or `both` |
+| `tft` | `ok`: the panel answered. `absent`: `tft_init()` worked but no id came back. `err`: `tft_init()` failed. |
+| `rc` | What `tft_init()` returned, `0` or a negative `TFT_ERR_*` |
+| `hz` | The SPI rate set, `0` when `tft_init()` failed |
+| `asked` | The `backend` key of `PIPOS.CFG` |
+| `bad` | How many `backend` and `tft_*` values the kernel refused |
+
+When `tft_init()` fails, the kernel uses HDMI only and shows `SPI DISPLAY FAILED, USING HDMI` on the boot console and the PL011. A panel that gives no id may still work: a module without its MISO line wired reads the same. So the panel stays in use. With `backend = tft` HDMI then also takes the frames, as with `both`, so a device with a dead panel stays usable on HDMI.
+
+With the default `backend = hdmi` the kernel prints no `ev=display` marker and does not touch SPI0.
 
 ## The card
 
@@ -172,6 +196,9 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `error` | `code path` | The ROM failed. `code` is a `rimg` error name. |
 | `rom` | `rc name version size crc` | ROM result. `rc` is `ok` or a `rimg` error name. `name` and `version` are `-` on failure. |
 | `gfx` | `bb size user heap_end` | The back buffer. `user=0` when no image can reach it. |
+| `display` | `backend tft rc hz asked bad` | The SPI panel at boot, `backend = tft` or `both` only. See [The display backend](#the-display-backend). |
+| `display_error` | `op rc` | The first panel call that failed after boot. `op` is `present`, `blank` or `wake`. |
+| `tft_send` | `why x y w h bytes crc` | Test builds only, one per send to the panel. See [TESTING.md](TESTING.md#spi-panel). |
 | `audio` | `op hz vol t_ms`, or `op rate len vol crc t_ms` and `op n last t_ms` for a sample | One sound change, trace backend only. Printed by RobCo-Core. See [API.md](API.md#audio). |
 | `audio_drop` | `n` | Trace records the audio driver dropped. Printed by RobCo-Core. |
 | `jump` | `entry` | The kernel enters the ROM |
@@ -211,7 +238,7 @@ The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https:/
 | `0x00008000`-`0x003FFFFF` | Pip-OS | Kernel image, stacks, MMU table and heap. The link fails if the image and stacks pass `0x00400000`. |
 | `0x00400000`-`0x007FFFFF` | ROM slot | `ROM1.ROM` after a successful check. The ROM can write it. |
 | `0x00800000`-`0x00BFFFFF` | Holotape slot | The running holotape, loaded by `holo_launch`. It can write it. |
-| `0x00C00000`-`0x00FFFFFF` | Pip-OS | The 320x240 back buffer at `0x00C00000`, kernel-only |
+| `0x00C00000`-`0x00FFFFFF` | Pip-OS | Kernel-only. The 320x240 back buffer at `0x00C00000`, the panel's last frame at `0x00C80000`, the panel console frame at `0x00D00000`. Test builds keep the panel transcript from `0x00D80000` to the end. |
 | `0x01000000`-`0x017FFFFF` | ROM | ROM heap and stack. The startup block and the return stub sit at `0x017F0000`. |
 | `0x01800000`-`0x01FFFFFF` | Holotape | Holotape heap and stack. Its startup block and return stub sit at `0x01FF0000`. |
 

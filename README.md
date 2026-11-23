@@ -25,8 +25,8 @@ What works now:
 What does not work yet:
 
 - Real hardware. Every test runs in QEMU.
-- The SPI display, battery monitoring and sensors other than the clock.
-- PCM streaming. `sample` plays one buffer of at most 64 KiB.
+- Battery monitoring and sensors other than the clock.
+- The SPI panel on real hardware. It runs only in QEMU, where no panel answers.
 
 ## Build
 

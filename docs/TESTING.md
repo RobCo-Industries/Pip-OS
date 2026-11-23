@@ -42,6 +42,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_gfx.py` | The graphics calls: results, errors, limits, the screen goldens `gfx_*.png`, and who owns the screen before, during and after a ROM |
 | `tests/test_input_calls.py` | The input calls with events injected on the script channel and the console |
 | `tests/test_audio.py`, `tests/test_audio_sample.py` | The audio calls and `sample` through the trace backend |
+| `tests/test_tft.py` | The SPI panel in a test build: the panel picture against HDMI, the dirty rectangle, full frames, fallback to HDMI, refused pins, streaming while redrawing. See [SPI panel](#spi-panel). |
 | `tests/test_time.py` | The time, sensor, battery and power calls, with and without QEMU's RTC model |
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
@@ -55,6 +56,26 @@ While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms
 The helpers live in the SDK, in `sdk/testing/pipos_testing/`, so a ROM project can use them too. `tests/pipos_helpers.py` re-exports them. Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
 A test that runs a subprocess builds its environment with `minimal_env()` from RobCo-Core's `harness.env`, and passes the variables it needs as arguments. Never copy `os.environ`: pytest prints locals when a test fails, so a copy puts every host secret in the log. `tests/test_env_hygiene.py` fails on such a copy.
+
+## SPI panel
+
+QEMU models the SPI0 controller but no panel. Writes go out and every byte read is 0, so `tft_read_id()` reports no panel.
+
+`tests/test_tft.py` builds a second kernel into `<build-dir>/tft` with `EXTRA_CFLAGS=-DPIPOS_TFT_TEST`. That build:
+
+- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full` or `diff`. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
+- keeps every byte since `tft_init()` from `0x00D80000`, up to 2.5 MiB.
+- answers the `tftdump` script command with that transcript. `C` lines hold command bytes. `D` lines hold data as 16-bit words in hex, with `*<count>` for repeats. An `end bytes=<n> full=<0|1>` line closes it.
+- waits after each send until the bytes would have left the wire at the rate set, so timing is not shorter than on a panel.
+- accepts `[display] tft_test = panel` to treat the panel as present, and `tft_test = fail` to give `tft_init()` a config it refuses.
+
+`test_shipped_image_has_no_hook` checks that `build/pipos.img` holds none of this and answers `tftdump` with an error.
+
+`build/host/panel_model`, from `tests/host/panel_model.c`, feeds the transcript to RobCo-Core's ILI9341 model, `external/robco-core/tests/host/ili9341_model.h`, and prints the picture as the panel shows it. The test compares it with the HDMI screenshot of the same frame: every pixel, after scaling down by 2 and conversion to RGB565.
+
+A whole frame is about 150 KiB on the wire. The repeat counts shrink flat colours. After a boot with `backend = both`, the transcript holds 189861 bytes, the boot console frames, and the dump is about 85 KB of text. It takes about 0.4 s in QEMU, whose serial ports have no baud rate. At 115200 baud it would take about 7.4 s. A frame with no repeats would be about 300 KB of hex, about 27 s.
+
+QEMU's SPI model is slower than the wire. A full-frame `present` takes about 230 ms on `raspi2b` and up to 3.4 s on `raspi3b`, against 128 ms on a panel at 9.62 MHz. So the streaming test uses 8 s chunks.
 
 ## Test ROMs
 
