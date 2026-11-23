@@ -16,6 +16,11 @@ int32_t pipos_audio_check_tone(uint32_t hz, uint32_t ms)
     return hz_ok(hz) && ms_ok(ms) ? 0 : -PIP_EINVAL;
 }
 
+int32_t pipos_audio_check_sample(uint32_t len)
+{
+    return len >= 1 && len <= PIP_SAMPLE_MAX ? 0 : -PIP_EINVAL;
+}
+
 int32_t pipos_audio_check_count(uint32_t count)
 {
     return count >= PIP_SEQ_MIN && count <= PIP_SEQ_MAX ? 0 : -PIP_EINVAL;

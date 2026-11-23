@@ -1,7 +1,6 @@
 /*
- * The audio group: tone, audio_stop, volume, audio_status and play_seq.
- * sample (0x21) has no handler and returns -PIP_ENOSYS: RobCo-Core plays
- * square waves only, it has no PCM path. See docs/API.md.
+ * The audio group: tone, sample, audio_stop, volume, audio_status and
+ * play_seq.
  *
  * One voice. RobCo-Core's audio driver plays in the background from the
  * tick interrupt; a new sound replaces the one that plays. The library
@@ -21,6 +20,8 @@ static unsigned level;
 static int owned;
 /* The notes the tick plays. Rewritten only with IRQs masked. */
 static audio_note_t seq_buf[PIP_SEQ_MAX];
+/* sample's copy of the caller's data. The PCM IRQ reads it while it plays. */
+static uint8_t pcm_buf[PIP_SAMPLE_MAX];
 /* play_seq's copy of the caller's notes. Main context only. */
 static pip_note_t user_notes[PIP_SEQ_MAX];
 
@@ -42,6 +43,38 @@ static int32_t sys_tone(const pipos_sys_ctx_t *ctx, uint32_t hz, uint32_t ms, ui
         return rc;
     }
     if (audio_tone(hz, ms) != 0) {
+        return -PIP_EIO;
+    }
+    owned = 1;
+    return 0;
+}
+
+/*
+ * The library does not copy PCM data. audio_stop() stops the PCM IRQ from
+ * reading pcm_buf before it returns, so the copy that follows never races
+ * the old play, and the new play starts only after the copy is complete.
+ * Argument errors return before the stop: the current sound plays on.
+ */
+static int32_t sys_sample(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len, uint32_t a2,
+                          uint32_t a3)
+{
+    int32_t rc = pipos_audio_check_sample(len);
+
+    (void)a2, (void)a3;
+    if (rc != 0) {
+        return rc;
+    }
+    rc = pipos_user_check_in(ctx, data, len);
+    if (rc != 0) {
+        return rc;
+    }
+    audio_stop();
+    owned = 0;
+    rc = pipos_user_copy_in(ctx, pcm_buf, data, len);
+    if (rc != 0) {
+        return rc;
+    }
+    if (audio_play_pcm(pcm_buf, len, PIP_SAMPLE_RATE, AUDIO_PRIORITY) != 0) {
         return -PIP_EIO;
     }
     owned = 1;
@@ -118,6 +151,7 @@ static int32_t sys_play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t
 /* PIPOS_SYS_ENTRY(AUDIO, <NAME>, <handler>), one line per served call, in number order. */
 static const pipos_sys_entry_t audio_calls[] = {
     PIPOS_SYS_ENTRY(AUDIO, TONE, sys_tone),
+    PIPOS_SYS_ENTRY(AUDIO, SAMPLE, sys_sample),
     PIPOS_SYS_ENTRY(AUDIO, AUDIO_STOP, sys_audio_stop),
     PIPOS_SYS_ENTRY(AUDIO, VOLUME, sys_volume),
     PIPOS_SYS_ENTRY(AUDIO, AUDIO_STATUS, sys_audio_status),

@@ -2,7 +2,7 @@
 
 A ROM is the program Pip-OS runs after boot. It is one file, `/PIPBOY/ROM1.ROM` on the SD card. Pip-OS loads it at `0x00400000`, checks it and runs it in user mode. The ROM talks to the kernel only through system calls.
 
-The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
+The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
 
 ## A first ROM
 
@@ -76,7 +76,7 @@ To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending i
 
 `crt0.S` puts the branch, the `rimg` header and an empty META block at the start of the image. On entry it saves r0 to r3, sp and lr in `pip_entry_regs`, clears BSS and calls `int pip_main(const pipos_startup_t *startup)`. The return value of `pip_main` goes to `exit`.
 
-The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/PIPOS_ABI.md#entry-state).
+The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/PIPOS_ABI.md#entry-state).
 
 ## System calls
 
