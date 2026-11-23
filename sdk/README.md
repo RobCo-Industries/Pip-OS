@@ -7,5 +7,6 @@ This folder builds ROMs and holotapes for Pip-OS.
 - `crt0.S`, `rom.ld`, `holotape.ld`: start-up code and link scripts.
 - `pipos-app.mk`: the make fragment a ROM project includes.
 - `examples/hello/`: a first ROM to copy.
+- `examples/tape/`: a first holotape to copy.
 
 Read the guide: [docs/ROM_DEVELOPMENT.md](../docs/ROM_DEVELOPMENT.md).

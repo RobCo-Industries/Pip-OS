@@ -2,7 +2,7 @@
  * The graphics group: system calls 0x01-0x0F. The handlers check the
  * arguments and the caller's pointers, then call the pure drawing code in
  * gfx_draw.c on the back buffer. present copies the back buffer to the
- * framebuffer. See docs/pending/gfx.md.
+ * framebuffer. See docs/API.md.
  */
 #include <robco/alloc.h>
 #include <robco/console.h>
