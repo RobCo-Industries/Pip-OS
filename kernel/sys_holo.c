@@ -1,6 +1,6 @@
 /*
  * The holotapes group: holo_enumerate, holo_launch, holo_last_status and
- * holo_eject_event (0x60-0x63). See docs/pending/holo.md.
+ * holo_eject_event (0x60-0x63). See docs/API.md.
  *
  * holo_launch runs the holotape as an inner user task (umode.h depth 2)
  * inside the ROM's system call, through the same pipos_image_run() as

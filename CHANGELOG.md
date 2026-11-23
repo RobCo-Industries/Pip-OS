@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `docs/API.md` is the full system-call reference. The `docs/pending/` fragments are gone.
+- RobCo-Core moved to `06316cd` for the updated Pip-OS ABI spec.
 - RobCo-Core moved to `891b3a2` for 8-bit PCM playback with `audio_play_pcm()`.
 - RobCo-Core moved to `78c9d9e` for nested user tasks, dial totals, a drop-oldest input queue, and a test harness that keeps QEMU awake and dumps guest state when a wait times out.
 - The kernel serves system calls from one table per group, in `kernel/sys_<group>.c`. `kernel/syscall.c` keeps the dispatcher. A number listed twice or by the wrong group stops the boot.
@@ -25,6 +27,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- Graphics calls `0x01` to `0x0F`: lines, points, text, rectangles, polylines, arcs, 1-bit and RGB blits, clip, colours, font and `present`. They draw on a 320x240 back buffer in kernel-only memory at `0x00C00000`, and `present` scales it by 2 onto the 640x480 framebuffer.
+- The console redraws the boot screen when a ROM ends, so the ROM's last frame never stays on screen.
+- Input calls `read_buttons`, `read_dial`, `poll_event` and `wait_event`. Events come from a 32-event queue that drops the oldest event when full. Input that happens before a ROM starts never reaches it.
+- `wait_event` waits with a timeout or forever, and the kernel keeps answering script commands meanwhile.
+- Audio calls `tone`, `sample`, `audio_stop`, `volume`, `audio_status` and `play_seq` (`0x20` to `0x25`). One voice plays in the background, and a new sound replaces the old one. Pip-OS copies notes and samples before it returns.
+- `sample` plays up to 65536 bytes of 8-bit unsigned mono PCM at 8000 Hz. Not yet tried on real hardware.
+- The volume starts at the `PIPOS.CFG` setting and stays until the next power-on. Pip-OS stops an image's sound when the image starts and when it ends.
+- Time and sensor calls `read_sensor`, `sensor_available`, `get_time`, `get_battery` and `set_time`. The clock starts from the RTC chip when one answers. `set_time` sets the software clock only and never writes the chip.
+- `power`: reboot through the watchdog, halt, screen off and screen on, with the `ev=reboot` and `ev=halt` markers.
+- Saves: `read_save`, `write_save`, `save_info` and `save_delete` keep up to 64 KiB per save in `/PIPBOY/SAVE` with RobCo-Core's atomic write, and recover after a power cut.
+- Files: `file_open`, `file_read`, `file_close` and `dir_list` read the card with strict 8.3 paths and 8 handles per image. No spelling of a path reaches the save folder, which returns `-PIP_EPERM`.
+- Holotape calls `holo_enumerate`, `holo_launch`, `holo_last_status` and `holo_eject_event` (`0x60` to `0x63`). `holo_launch` runs a holotape from `/PIPBOY/HOLO` inside the ROM's call, in the holotape sandbox. A fault ends the holotape only.
+- A holotape gets its own file handles, event queue, sound and drawing state. The ROM gets its own back when the holotape ends.
+- The `kill` script command ends the running holotape, or the ROM when none runs. `state` reports `files=` and `holo=`.
+- `make check-pins` also fails when a doc links to RobCo-Core at another commit than the submodule's.
 - A conformance ROM in `conformance/` that runs every system call and shows a PASS/FAIL table on the screen and the serial port. `make conformance-card` builds its card. `docs/HARDWARE_VALIDATION.md` explains how to run it on a real board.
 - A sample holotape in `sdk/examples/tape`. The default card carries it as `/PIPBOY/HOLO/BEACON.HTP`, and the hello example lists the holotapes, runs the one you pick and shows its exit status. `TAPE=<file>` and `TAPE=none` change the card's holotape.
 - `abi.h` has every struct, constant and limit of the ABI, with build-time size and offset checks, and the `PIP_SYSCALLS` table.
@@ -51,6 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A panic path, `pipos_panic()`.
 - Host unit tests and QEMU target tests with the RobCo-Core harness.
 - `make sdimage`, `make run` and `make bootdir`.
+
+### Fixed
+- After a holotape, the ROM keeps its open files and its input events.
+- `mem_info` reports the caller's own heap.
+- `read_buttons` stays right when RobCo-Core's input queue overflows, and an event's `time_ms` is the time it came in.
 
 ### Removed
 - The old kernel sources in `src/` and `include/`, the old build in `build/` and the old test scripts.

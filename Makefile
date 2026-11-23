@@ -5,8 +5,8 @@
 #   make test BOARD=raspi0    target tests on one board
 #   make test-host            host unit tests and the pin check
 #   make test-target          QEMU target tests
-#   make check-pins           CI workflow pins match the submodule
-#   make check-pins-test      the pin check works without git
+#   make check-pins           CI workflow pins and doc links match the submodule
+#   make check-pins-test      the pin and link checks work without git
 #   make sdimage              build/sd.img with the kernel, a sample config,
 #                             the hello example as ROM1.ROM (ROM=<file> picks
 #                             another image, ROM=none leaves it out) and the
@@ -187,9 +187,11 @@ test-target: all venv
 
 check-pins:
 	$(ROBCO_CORE)/tools/check_pins.sh .github/workflows/ci.yml
+	ROBCO_CORE=$(ROBCO_CORE) tools/check_doc_links.sh
 
 check-pins-test:
 	tests/host/check_pins_test.sh
+	tests/host/check_doc_links_test.sh
 
 build-dir-test:
 	tests/host/build_dir_test.sh

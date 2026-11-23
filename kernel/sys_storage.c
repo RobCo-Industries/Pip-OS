@@ -1,6 +1,6 @@
 /*
  * The saves and files group: system calls 0x50-0x57. See
- * docs/pending/storage.md and storage.h for the rules.
+ * docs/API.md and storage.h for the rules.
  *
  * Saves go through RobCo-Core's atomic whole-file calls. The kernel copies
  * a save through one static 64 KiB buffer, which file_read also uses for
