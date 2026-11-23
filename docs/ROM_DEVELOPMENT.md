@@ -70,7 +70,7 @@ What differs from a ROM:
 - The return value of `pip_main`, or the value given to `pip_exit()`, is the exit status, 0 to 255. The ROM gets it back from `pip_holo_launch()`. A fault ends the tape and the ROM gets `-PIP_EFAULT`.
 - Pip-OS stops the sound, empties the event queue and resets the drawing state before and after the tape. The ROM redraws its screen when the tape ends.
 
-To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/PIPOS_ABI.md#holotapes).
+To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/PIPOS_ABI.md#holotapes).
 
 ## Start-up and entry state
 
