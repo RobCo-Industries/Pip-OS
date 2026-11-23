@@ -137,7 +137,7 @@ The automatic part needs no person. Each call runs on its main path and on the e
 
 `power` runs only `op` 2 and 3. Reboot and halt would end the run. `exit` is checked through the tape: the ROM's own exit ends the run.
 
-The interactive part starts with an intro screen. It says what comes next and waits 10 minutes for SELECT, which starts the part, or LEFT, which skips it. LEFT or no answer makes every interactive check SKIP. The interactive part asks a person to press and hold each button, turn the dial both ways, say whether a tone, a tune and a sample were heard and whether a test picture is right. SELECT is yes, LEFT is no. Each prompt waits 30 s, then the check is SKIP. While a button is held, `read_buttons` must show it down, and after the release up. A tap released before the ROM reads asks again: it proves nothing. A sound starts once its prompt shows, and UP plays it again.
+The interactive part starts with an intro screen. It says what comes next and waits 10 minutes for SELECT, which starts the part, or LEFT, which skips it. LEFT or no answer makes every interactive check SKIP. The interactive part asks a person to press and hold each button, turn the dial both ways, say whether a tone, a tune, a sample and a sample in two chained halves were heard and whether a test picture is right. SELECT is yes, LEFT is no. Each prompt waits 30 s, then the check is SKIP. While a button is held, `read_buttons` must show it down, and after the release up. A tap released before the ROM reads asks again: it proves nothing. A sound starts once its prompt shows, and UP plays it again.
 
 ### Mode
 

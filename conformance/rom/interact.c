@@ -380,6 +380,7 @@ static const pip_note_t tune[] = {
     { PIP_NOTE_REST, 200 }, { 392, 200 }, { 523, 200 }, { 659, 200 }, { 784, 400 },
 };
 static uint8_t pcm[8000];
+static uint8_t chain[8000];
 
 static void play_tone(void)
 {
@@ -396,6 +397,13 @@ static void play_sample(void)
     pip_sample(pcm, sizeof(pcm));
 }
 
+/* One sound in two halves: the second waits in the queue and follows with no gap. */
+static void play_chain(void)
+{
+    pip_sample(chain, sizeof(chain) / 2);
+    pip_sample_queue(chain + sizeof(chain) / 2, sizeof(chain) / 2);
+}
+
 #define INTRO_MS 600000u   /* the intro waits 10 minutes, then the part is SKIP */
 
 /*
@@ -408,7 +416,7 @@ static int intro(void)
     int b;
 
     prompt_draw("Next: press buttons, turn the dial,",
-                "hear three sounds, judge a picture.",
+                "hear four sounds, judge a picture.",
                 "Each step waits 30 s, then is SKIP.", NULL);
     pip_set_color(fg, PIP_COLOR_NONE);
     pip_draw_text(8, 160, "SELECT: start   LEFT: skip this part", 1);
@@ -432,7 +440,7 @@ void run_interactive(void)
         "btn_right_state", "btn_right_clear", "btn_select", "btn_select_state",
         "btn_select_clear", "btn_dial_press", "btn_dial_state", "btn_dial_clear",
         "dial_clockwise", "dial_cw_position", "dial_counter", "dial_ccw_position",
-        "heard_tone", "heard_tune", "heard_sample", "picture_right",
+        "heard_tone", "heard_tune", "heard_sample", "heard_chain", "picture_right",
     };
     pip_gfx_info_t gi;
     unsigned i;
@@ -445,7 +453,8 @@ void run_interactive(void)
         for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
             cur_call = i < 18 ? (i % 3 ? "read_buttons" : "wait_event") :
                        i < 22 ? "read_dial" : i == 22 ? "tone" :
-                       i == 23 ? "play_seq" : i == 24 ? "sample" : "present";
+                       i == 23 ? "play_seq" : i == 24 ? "sample" :
+                       i == 25 ? "sample_queue" : "present";
             skip(names[i]);
         }
         return;
@@ -468,6 +477,12 @@ void run_interactive(void)
         pcm[i] = (uint8_t)(((i / (i < 4000 ? 16u : 8u)) & 1) ? 176 : 80);
     }
     ask_heard("heard_sample", "A low buzz, then a higher one, plays.", play_sample);
+    cur_call = "sample_queue";
+    for (i = 0; i < sizeof(chain); i++) {
+        /* A 250 Hz square wave for 1 s: 32 bytes a period, so the halves meet on an edge. */
+        chain[i] = (uint8_t)(((i / 16u) & 1) ? 176 : 80);
+    }
+    ask_heard("heard_chain", "One buzz in two halves, no click.", play_chain);
     cur_call = "present";
     ask_picture();
 }

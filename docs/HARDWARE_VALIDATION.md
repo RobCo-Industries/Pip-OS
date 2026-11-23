@@ -32,7 +32,7 @@ For a run with no prompts, also write a file `PIPBOY/CONFORM.CFG` that holds the
 5. Answer the prompts. Each one waits 30 s, then moves on and marks its check SKIP.
    - "Press and hold UP" and the other buttons: press that button and keep it down until the screen says "Now let go", then let go. Other buttons are ignored. A tap that ends too soon shows "Too quick" and asks again.
    - "Turn the dial clockwise" and "counter-clockwise": turn it a few clicks that way.
-   - "Did you hear it?" for a tone, a tune and a buzz: the sound starts once the prompt shows. UP plays it again. SELECT for yes, LEFT for no.
+   - "Did you hear it?" for a tone, a tune, a buzz and a buzz in two halves with no click between: the sound starts once the prompt shows. UP plays it again. SELECT for yes, LEFT for no.
    - "Is the picture right?": SELECT for yes, LEFT for no. You should see a frame around the screen, a circle on the left, a filled square in the middle, a triangle on the right, and a line under them.
    - The serial terminal works as buttons too: arrow keys for UP, DOWN, LEFT and RIGHT, Enter for SELECT. It has no dial. Its keys cannot be held, so the hold checks of the buttons stay SKIP with it.
 6. Read the results pages. If a check failed, the pages open on the first page with a FAIL. DOWN or RIGHT turns the page, UP or LEFT goes back, SELECT jumps to the summary. A page waits for a button, at most 10 minutes.

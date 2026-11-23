@@ -57,6 +57,10 @@ CHECKS = [
     ("audio_status", ["status_idle", "status_ends"]),
     ("play_seq", ["seq_ok", "seq_playing", "seq_count0", "seq_bad_note", "seq_bad_plays_none",
                  "seq_null"]),
+    ("sample_queue", ["squeue_starts", "squeue_playing", "squeue_chained", "squeue_busy",
+                      "squeue_len0", "squeue_len65537", "squeue_bad_ptr", "squeue_still_busy",
+                      "squeue_stop", "squeue_stop_silent", "squeue_restarts",
+                      "squeue_restart_chains", "squeue_restart_busy"]),
     ("read_sensor", ["sensor_rtc", "sensor_battery", "sensor_geiger", "sensor_gps", "sensor_accel",
                     "sensor_temp", "sensor_heart", "sensor_7", "sensor_bad_ptr"]),
     ("sensor_available", ["available_rtc", "available_7"]),
@@ -93,6 +97,7 @@ CHECKS = [
     ("tone", ["heard_tone"]),
     ("play_seq", ["heard_tune"]),
     ("sample", ["heard_sample"]),
+    ("sample_queue", ["heard_chain"]),
     ("present", ["picture_right"]),
 ]
 NAMES = [n for _, names in CHECKS for n in names]
@@ -115,6 +120,7 @@ ANSWERS = {
     "dial_clockwise": ["dial -1", "dial 2"], "dial_counter": ["dial -3"],
     "heard_tone": ["key select"], "heard_tune": ["key select"],
     "heard_sample": ["key up", ("pcm", 2), "key select"],
+    "heard_chain": ["key select"],
     "picture_right": ["key select"],
 }
 

@@ -276,6 +276,36 @@ void check_play_seq(void)
     ck_eq("seq_null", pip_play_seq(PTR(0), 2), -PIP_EFAULT);
 }
 
+/*
+ * The first sample lasts 2 s, so the calls after it run while it plays even
+ * on a stalled host. The kernel checks the arguments before the queue
+ * state: errors win over -PIP_EBUSY.
+ */
+void check_sample_queue(void)
+{
+    uint32_t i;
+
+    for (i = 0; i < 16000; i++) {
+        big[i] = (uint8_t)((i / 10) % 2 ? 160 : 96);   /* 400 Hz square, half volume */
+    }
+    pip_audio_stop();
+    ck_eq("squeue_starts", pip_sample_queue(big, 16000), 0);
+    ck_eq("squeue_playing", pip_audio_status(), 1);
+    ck_eq("squeue_chained", pip_sample_queue(big, 800), 0);
+    ck_eq("squeue_busy", pip_sample_queue(big, 800), -PIP_EBUSY);
+    ck_eq("squeue_len0", pip_sample_queue(big, 0), -PIP_EINVAL);
+    ck_eq("squeue_len65537", pip_sample_queue(big, PIP_SAMPLE_MAX + 1), -PIP_EINVAL);
+    ck_eq("squeue_bad_ptr", pip_sample_queue(PTR(BAD_KERNEL), 100), -PIP_EFAULT);
+    ck_eq("squeue_still_busy", pip_sample_queue(big, 800), -PIP_EBUSY);
+    /* audio_stop drops the playing and the waiting sample. */
+    ck_eq("squeue_stop", pip_audio_stop(), 0);
+    ck_eq("squeue_stop_silent", pip_audio_status(), 0);
+    ck_eq("squeue_restarts", pip_sample_queue(big, 16000), 0);
+    ck_eq("squeue_restart_chains", pip_sample_queue(big, 800), 0);
+    ck_eq("squeue_restart_busy", pip_sample_queue(big, 800), -PIP_EBUSY);
+    pip_audio_stop();
+}
+
 /* ---- sensors, time, system --------------------------------------------- */
 
 static const char *const sensor_names[PIP_SENSOR_COUNT] = {
