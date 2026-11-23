@@ -1,12 +1,13 @@
 #!/bin/sh
 # Builds sdk/examples/hello the way a ROM author does: from its own folder,
 # and from a copy outside the tree with an absolute and a relative
-# PIPOS_SDK. Also builds it as a holotape. Every result must pass
-# rimg.py verify with the right magic, subtype and load address.
+# PIPOS_SDK. Also builds it as a holotape, and builds sdk/examples/tape
+# in the tree and from a copy. Every result must pass rimg.py verify with
+# the right magic, subtype and load address.
 set -eu
 # Build settings from the caller's environment or an outer make
 # (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
-unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE
 root=$(cd "$(dirname "$0")/../.." && pwd)
 rimg="$root/external/robco-core/tools/rimg.py"
 tmp=$(cd "$(mktemp -d)" && pwd -P)
@@ -53,4 +54,20 @@ fi
 if make -s -C "$tmp/proj" PIPOS_SDK="$root/sdk" KIND=tape BUILD=bad >/dev/null 2>&1; then
     fail "KIND=tape did not fail"
 fi
+# 6. The tape example: a holotape with a title and an icon, in its own
+#    folder and from a copy outside the tree.
+tape() {
+    python3 "$rimg" verify "$1" --magic ROBCO78 >/dev/null || fail "$1 does not verify as ROBCO78"
+    info=$(python3 "$rimg" info "$1")
+    for want in magic=ROBCO78 load_addr=0x800000 subtype=0x0 name=BEACON \
+                image_version=0x10000 "title=Beacon sample tape" icon=set crc_ok=1; do
+        printf '%s\n' "$info" | grep -qx "$want" || fail "$1: no $want in: $info"
+    done
+}
+make -s -C "$root/sdk/examples/tape" BUILD="$tmp/tape" >/dev/null
+tape "$tmp/tape/BEACON.HTP"
+cp -R "$root/sdk/examples/tape" "$tmp/tapeproj"
+rm -rf "$tmp/tapeproj/build"
+make -s -C "$tmp/tapeproj" PIPOS_SDK="$root/sdk" >/dev/null
+tape "$tmp/tapeproj/build/BEACON.HTP"
 echo "sdk_example_test: passed"

@@ -4,11 +4,15 @@ import os
 import pathlib
 import shutil
 import subprocess
+import time
 
 import pytest
+from PIL import Image
 
-from pipos_helpers import (SCHEME_BG, booted, config, config_issues, config_summary,
-                           corrupt, dump, make_big_rom, make_card,
+from harness.boot import boot
+
+from pipos_helpers import (READY, SCHEME_BG, TIMEOUT, booted, config, config_issues,
+                           config_summary, corrupt, dump, make_big_rom, make_card,
                            make_rom_without_meta, make_multi_card, make_rom,
                            make_superfloppy_card, no_exception,
                            one, pipos_markers, rom_crc, screenshot)
@@ -16,6 +20,7 @@ from pipos_helpers import (SCHEME_BG, booted, config, config_issues, config_summ
 FAT16_LBA = 0x0E
 ROM = "PIPBOY/ROM1.ROM"
 CFG = "PIPBOY/PIPOS.CFG"
+GOLDEN_DIR = pathlib.Path(__file__).resolve().parent / "golden"
 
 
 def test_valid_rom(board, kernel_image, tmp_path, need_mtools):
@@ -200,24 +205,78 @@ def default_card(tmp_path_factory):
     build = tmp_path_factory.mktemp("default_card") / "build"
     root = pathlib.Path(__file__).resolve().parent.parent
     # A plain build: ROM, CI or flags from the caller or an outer make do not apply.
-    drop = {"MAKEFLAGS", "MFLAGS", "MAKELEVEL", "CI", "ROM", "CFLAGS_EXTRA", "WINDOW"}
+    drop = {"MAKEFLAGS", "MFLAGS", "MAKELEVEL", "CI", "ROM", "TAPE", "CFLAGS_EXTRA", "WINDOW"}
     env = {k: v for k, v in os.environ.items() if k not in drop}
     subprocess.run(["make", "-s", "sdimage", f"BUILD={build}"], cwd=root, check=True,
                    stdout=subprocess.DEVNULL, env=env)
     return build / "sd.img"
 
 
-def test_default_card_runs_hello_example(board, kernel_image, need_mtools, default_card, tmp_path):
-    """`make sdimage` puts sdk/examples/hello on the card as ROM1.ROM, and it runs."""
+def serial_count(vm, text, count, timeout=TIMEOUT):
+    """Waits until `text` shows up `count` times on the serial console."""
+    deadline = time.monotonic() + timeout
+    while vm.serial.count(text) < count:
+        assert time.monotonic() < deadline, f"wanted {count}x {text!r}\n{vm.serial}"
+        time.sleep(0.05)
+
+
+def check_golden(img, name):
+    """Compares the screen with tests/golden/<name>.png. PIPOS_UPDATE_GOLDEN=1 rewrites it."""
+    golden = GOLDEN_DIR / f"{name}.png"
+    if os.environ.get("PIPOS_UPDATE_GOLDEN"):
+        img.save(golden)
+    with Image.open(golden) as g:
+        assert g.convert("RGB").tobytes() == img.tobytes(), f"screen differs from {golden}"
+
+
+MENU = "hello: menu, 1 tapes, tape 1 selected\n"
+
+
+def test_default_card_runs_hello_and_tape(board, kernel_image, need_mtools, default_card, tmp_path):
+    """`make sdimage` puts sdk/examples/hello on the card as ROM1.ROM and
+    sdk/examples/tape as HOLO/BEACON.HTP. The ROM lists the tape, runs it
+    on SELECT, shows its exit status and ends on LEFT."""
     sd = tmp_path / "sd.img"
     shutil.copyfile(default_card, sd)
-    with booted(kernel_image, board, sd=sd) as vm:
+    with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+        serial_count(vm, MENU, 1)
         m = one(vm, "rom")
         assert (m["rc"], m["name"], m["version"]) == ("ok", "HELLO", "1.0.0"), vm.serial
-        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        assert one(vm, "holo")["count"] == "1", vm.serial
         assert "hello: Pip-OS ROM running, ABI 0x00010000\n" in vm.serial
         assert "hello: heap 0x01000000, 8128 KiB, stack top 0x01800000\n" in vm.serial
-        assert "hello: War. War never changes.\n" in vm.serial
-        assert "hello: slept " in vm.serial and ", bye\n" in vm.serial
+        assert "hello: This line came from the heap.\n" in vm.serial
+        assert "hello: slept " in vm.serial
+        assert "hello: 1 holotapes on the card\n" in vm.serial
+        check_golden(screenshot(vm, tmp_path), "card_hello_list")
+
+        assert vm.script("key select", timeout=TIMEOUT).status == "ok"
+        serial_count(vm, "beacon: ready\n", 1)
+        assert one(vm, "holo_start")["name"] == "BEACON.HTP", vm.serial
+        assert 'beacon: started, args "from hello, run 1"\n' in vm.serial
+        check_golden(screenshot(vm, tmp_path), "card_beacon")
+        # Status 3 by default: up twice, down once gives 4.
+        for line in ("key up", "key up", "key down", "key select"):
+            assert vm.script(line, timeout=TIMEOUT).status == "ok"
+        serial_count(vm, MENU, 2)
+        assert one(vm, "holo_exit")["status"] == "4", vm.serial
+        assert "beacon: exit status 4\n" in vm.serial
+        assert "hello: BEACON.HTP: exit status 4\n" in vm.serial
+
+        # The ROM still reacts: a dial turn redraws, a second run counts, LEFT ends it.
+        assert vm.script("dial 1", timeout=TIMEOUT).status == "ok"
+        serial_count(vm, MENU, 3)
+        assert vm.script("key select", timeout=TIMEOUT).status == "ok"
+        serial_count(vm, "beacon: ready\n", 2)
+        assert 'beacon: started, args "from hello, run 2"\n' in vm.serial
+        assert vm.script("key select", timeout=TIMEOUT).status == "ok"
+        serial_count(vm, "hello: BEACON.HTP: exit status 3\n", 1)
+        serial_count(vm, MENU, 4)
+        assert not pipos_markers(vm, "ready")
+        assert vm.script("key left", timeout=TIMEOUT).status == "ok"
+        vm.wait_for(READY, timeout=TIMEOUT)
+        assert "hello: bye\n" in vm.serial
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
         assert one(vm, "ready")["rom"] == "1"
+        assert [m["status"] for m in pipos_markers(vm, "holo_exit")] == ["4", "3"], vm.serial
         no_exception(vm)

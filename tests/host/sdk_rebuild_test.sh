@@ -1,12 +1,13 @@
 #!/bin/sh
 # Rebuilds a small ROM project after each kind of change and checks that
 # sdk/pipos-app.mk notices it: a source removed from SRCS, a header edit,
-# a new TITLE, new library flags. Also checks that src/start.c and src/start.S both link, and
+# a new TITLE, new library flags, a switch to KIND=holotape and an icon
+# edit. Also checks that src/start.c and src/start.S both link, and
 # that objects of sources outside the project stay inside BUILD.
 set -eu
 # Build settings from the caller's environment or an outer make
 # (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
-unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE ICON TITLE SRCS
 root=$(cd "$(dirname "$0")/../.." && pwd)
 rimg="$root/external/robco-core/tools/rimg.py"
 nm=${CROSS:-arm-none-eabi-}nm
@@ -104,4 +105,28 @@ if build NAME=NAME_LONGER_THAN_16_BYTES >/dev/null 2>&1; then
 fi
 [ ! -e "$b/APP.ROM" ] || fail "a failed seal left APP.ROM behind"
 [ ! -e "$b/APP.ROM.tmp" ] || fail "a failed seal left APP.ROM.tmp behind"
+
+# 7. KIND=holotape in the same BUILD relinks at the holotape slot.
+build KIND=holotape IMAGE=APP.HTP
+info=$(python3 "$rimg" info "$b/APP.HTP")
+for want in magic=ROBCO78 load_addr=0x800000 subtype=0x0; do
+    printf '%s\n' "$info" | grep -qx "$want" || fail "KIND=holotape: no $want in: $info"
+done
+"$nm" "$b/APP.elf" | grep -q '^00800000 .* _start$' || fail "KIND=holotape: _start is not at 0x00800000"
+
+# 8. An edited ICON file reseals the holotape. The META icon is at 0xA0.
+icon_bytes() {
+    python3 -c 'import sys; print(open(sys.argv[1], "rb").read()[0xA0:0x120].hex())' "$b/APP.HTP"
+}
+icon() {
+    { printf 'P1\n32 32\n'; i=0; while [ $i -lt 32 ]; do printf "%s\n" "$1"; i=$((i + 1)); done; } >"$p/icon.pbm"
+}
+icon 10000000000000000000000000000000
+build KIND=holotape IMAGE=APP.HTP ICON=icon.pbm
+first=$(icon_bytes)
+sleep 1
+icon 01000000000000000000000000000000
+build KIND=holotape IMAGE=APP.HTP ICON=icon.pbm
+second=$(icon_bytes)
+[ "$first" != "$second" ] && [ "${first#80}" != "$first" ] || fail "editing icon.pbm did not reseal APP.HTP: $first / $second"
 echo "sdk_rebuild_test: passed"
