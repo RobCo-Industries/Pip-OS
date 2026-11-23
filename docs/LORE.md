@@ -18,4 +18,4 @@ RobCo-Core's MEMORY_MAP.md says the boot screen shows real addresses divided by 
 
 ## What is original
 
-The kernel, the SDK, the boot text layout, the example ROM and the sample holotape are original work for this project. Names from the games, such as Pip-Boy, Pip-OS, RobCo and holotape, are used as references only. The project uses no art, logos, music or dialogue from the games.
+The boot lines in `kernel/bootlines.c` reproduce the wording of the boot screen in the games, as a reference to them. The code that prints them is original. The kernel, the SDK, the example ROM and the sample holotape are also original work for this project. Names from the games, such as Pip-Boy, Pip-OS, RobCo and holotape, are used as references only. The project uses no art, logos, music or dialogue from the games.
