@@ -40,3 +40,15 @@ def test_rom(request, kernel_image):
             return f.read()
 
     return get
+
+
+@pytest.fixture(scope="session")
+def test_holo(request, kernel_image):
+    """test_holo(name) returns the bytes of <build>/holotapes/<name>/<name>.htp, built with the kernel."""
+    tapes = os.path.join(ROOT, request.config.getoption("--build-dir"), "holotapes")
+
+    def get(name):
+        with open(os.path.join(tapes, name, f"{name}.htp"), "rb") as f:
+            return f.read()
+
+    return get

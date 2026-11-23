@@ -52,4 +52,7 @@ void pipos_screen_line(const char *text);
  */
 void pipos_gfx_blank(int on);
 
+/* sys_holo.c: 1 while a holotape runs. */
+int pipos_holo_running(void);
+
 #endif

@@ -22,6 +22,7 @@
 #include <robco/tick.h>
 #include <robco/uart.h>
 #include <robco/uart_mini.h>
+#include <robco/umode.h>
 
 #include "bootlines.h"
 #include "pipos.h"
@@ -101,7 +102,10 @@ static void dump_char(char c)
     dump_reply->write(s);
 }
 
-/* Project commands on the script channel: dump, state, panic <reason>. */
+/* The umode_request_kill() reason of the kill script command. */
+#define PIPOS_KILL_SCRIPT 1
+
+/* Project commands on the script channel: dump, state, kill, panic <reason>. */
 static int script_command(int argc, char *argv[], input_script_reply_t *reply, void *ctx)
 {
     static char why[PIPOS_LINE_MAX];
@@ -118,9 +122,15 @@ static int script_command(int argc, char *argv[], input_script_reply_t *reply, v
     }
     if (k_strcmp(argv[0], "state") == 0 && argc == 1) {
         k_heap_stats(&heap);
-        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u files=%u\n", ready_flag,
-                   rom_loaded, (unsigned)heap.free, pipos_storage_open_count());
+        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u files=%u holo=%d\n",
+                   ready_flag, rom_loaded, (unsigned)heap.free, pipos_storage_open_count(),
+                   pipos_holo_running());
         reply->write(line);
+        return 0;
+    }
+    /* Ends the innermost running image, as a watchdog would. */
+    if (k_strcmp(argv[0], "kill") == 0 && argc == 1) {
+        umode_request_kill(PIPOS_KILL_SCRIPT);
         return 0;
     }
     if (k_strcmp(argv[0], "panic") == 0 && argc >= 2) {
