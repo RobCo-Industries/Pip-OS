@@ -185,6 +185,8 @@ A ROM can halt the system. The screen then shows `PIP-OS HALTED. SAFE TO POWER O
 | The time is unset or wrong | No RTC module, or its time is not valid | Fit an RTC module and set it |
 | The buttons do nothing | Wrong pins, or the button does not connect the pin to ground | Check the pins above |
 
+To check that your Pi runs every system call right, run the conformance ROM. [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) gives the steps.
+
 The serial console shows the full boot log. Each `@RC stage=pipos` line is one step. [BOOT.md](BOOT.md#markers) lists them.
 
 ## Report a problem

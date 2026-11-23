@@ -39,6 +39,7 @@ In an existing clone, run `git submodule update --init` first. `CI=1` turns warn
 | `build/roms/<name>/<name>.rom` | The test ROMs, see [TESTING.md](TESTING.md#test-roms) |
 | `build/examples/hello/ROM1.ROM` | The SDK's hello example, see [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md) |
 | `build/examples/tape/BEACON.HTP` | The SDK's tape example |
+| `build/conformance/`, `build/conformance.img` | The conformance ROM, its tapes and its card from `make conformance` and `make conformance-card`, see [TESTING.md](TESTING.md#conformance-rom) |
 
 The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. The link fails when the image and its stacks pass `0x00400000`, the end of the Pip-OS slot. `python3 external/robco-core/tools/rimg.py info build/pipos.img` prints its header.
 
@@ -55,6 +56,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
 | `tools/check_doc_links.sh` | The doc link check of `make check-pins` |
+| `conformance/` | The conformance ROM and its tapes, built with the SDK only, see [TESTING.md](TESTING.md#conformance-rom) |
 | `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py`, test ROMs in `tests/roms/` |
 | `pytest.ini` | The boards the QEMU tests run on by default |
 | `external/robco-core/` | The library |
