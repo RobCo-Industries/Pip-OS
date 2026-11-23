@@ -10,9 +10,9 @@ import struct
 
 from harness.boot import boot
 
-from pipos_helpers import (TIMEOUT, assert_rom_checks, booted, corrupt, make_card,
-                           make_rom, no_exception, one, pipos_markers, reseal, rom_markers,
-                           rom_one, screenshot)
+from pipos_helpers import (TIMEOUT, _mtools, assert_rom_checks, booted, corrupt,
+                           make_card, make_rom, no_exception, one, pipos_markers, reseal,
+                           rom_markers, rom_one, screenshot)
 from test_rom import ARM1176_BOARDS, first_privileged_pc
 
 ROM = "PIPBOY/ROM1.ROM"
@@ -289,3 +289,34 @@ def test_state_handover(board, kernel_image, test_rom, test_holo, tmp_path, need
     # The ROM's clip (100,100)-(149,149) and colour came back.
     assert pixel(rom_img, 120, 120) == RED, pixel(rom_img, 120, 120)
     assert pixel(rom_img, 99, 99) == fill and pixel(rom_img, 150, 150) == fill
+
+
+# ---- card errors -----------------------------------------------------------
+
+def test_card_read_error(board, kernel_image, test_rom, test_holo, tmp_path, need_mtools):
+    """A card that fails a read gives -PIP_EIO from enumerate and launch.
+
+    FAR.HTP is copied after a 17 MiB pad, so its clusters lie past 16 MiB.
+    The test cuts the 32 MiB image to 16 MiB and shrinks the partition to
+    match, so RobCo-Core still mounts it. The FAT volume keeps its old size,
+    so a read of FAR.HTP's data goes past the end of the device and the
+    block layer fails it, as it fails any card read. NEAR.HTP stays readable.
+    """
+    tape = test_holo("tape")
+    sd = make_card(tmp_path / "sd.img", {
+        ROM: test_rom("holo_eio"),
+        HOLO + "NEAR.HTP": tape,
+        "ZPAD.BIN": bytes(17 << 20),
+    }, size_mib=32)
+    far = tmp_path / "far.htp"
+    far.write_bytes(tape)
+    _mtools("mcopy", "-i", f"{sd}@@{PART_OFFSET}", str(far), "::" + HOLO + "FAR.HTP")
+    with open(sd, "r+b") as f:
+        f.truncate(16 << 20)
+        f.seek(0x1BE + 12)
+        f.write(struct.pack("<I", (16 << 20) // 512 - PART_OFFSET // 512))
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert_rom_checks(vm, ["near", "enum", "far", "last_far", "near_again"])
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        no_exception(vm)
+    assert [e["code"] for e in pipos_markers(vm, "holo_error")] == ["io"], vm.serial

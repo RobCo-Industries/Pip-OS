@@ -66,17 +66,22 @@ static int listed_entry(char *listed)
     return k_strcmp(listed, n) == 0;
 }
 
-/* Reads the first PIPOS_HOLO_HEAD bytes of `name`. 1 when all were read. */
+/*
+ * Reads the first PIPOS_HOLO_HEAD bytes of `name`. 1 when all were read,
+ * 0 when the file ends first, or the FS error of the open or a read.
+ */
 static int read_head(const char *name)
 {
     char path[PATH_SIZE];
     size_t got = 0;
-    int n = 1;
+    int n;
 
     holo_path(path, name);
-    if (fs_open(&file, path, FS_READ) != FS_OK) {
-        return 0;
+    n = fs_open(&file, path, FS_READ);
+    if (n != FS_OK) {
+        return n;
     }
+    n = 1;
     while (got < sizeof(head) && n > 0) {
         n = fs_read(&file, head + got, sizeof(head) - got);
         if (n > 0) {
@@ -84,7 +89,7 @@ static int read_head(const char *name)
         }
     }
     fs_close(&file);
-    return got == sizeof(head);
+    return n < 0 ? n : got == sizeof(head);
 }
 
 static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint32_t max,
@@ -111,10 +116,18 @@ static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint
         return pipos_storage_errno(frc);
     }
     while (count < max && (frc = fs_readdir(&dir, &st)) == 1) {
+        int hrc;
+
         if (!listed_entry(listed) || st.size < PIPOS_HOLO_HEAD) {
             continue;
         }
-        if (read_head(listed) && pipos_holo_listed(head, sizeof(head), st.size)) {
+        /* A card error ends the listing. A short file is only skipped. */
+        hrc = read_head(listed);
+        if (hrc < 0) {
+            frc = hrc;
+            break;
+        }
+        if (hrc == 1 && pipos_holo_listed(head, sizeof(head), st.size)) {
             pipos_holo_info_fill(&infos[count++], listed, st.size, head);
         }
         pipos_poll();
@@ -156,8 +169,11 @@ static int32_t find_tape(const char *want)
     return frc < 0 ? pipos_storage_errno(frc) : rc;
 }
 
-/* Loads, runs and reports one holotape. Returns holo_launch's result. */
-static int32_t run_tape(const char *name, const char *args)
+/*
+ * Loads, runs and reports one holotape of `size` bytes, the folder entry's
+ * size. Returns holo_launch's result.
+ */
+static int32_t run_tape(const char *name, const char *args, uint32_t size)
 {
     static const loader_slot_t slot = { PIPOS_HOLO_BASE, PIPOS_HOLO_SIZE, NULL };
     static const rimg_expect_t expect = { .magic = RIMG_MAGIC_ROBCO78,
@@ -175,7 +191,7 @@ static int32_t run_tape(const char *name, const char *args)
     if (rc != RIMG_OK) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=holo_error code=%s name=%s\n",
                  rimg_strerror(rc), name);
-        return pipos_holo_load_errno(rc);
+        return pipos_holo_load_errno(rc, size);
     }
     pipos_startup_holo((pipos_startup_t *)(uintptr_t)PIPOS_HOLO_STARTUP, args);
     k_snprintf(start, sizeof(start), "ev=holo_start name=%s", name);
@@ -226,7 +242,7 @@ static int32_t launch(const pipos_sys_ctx_t *ctx, uint32_t uname, uint32_t uargs
     if (rc == 0) {
         rc = find_tape(name);
     }
-    return rc != 0 ? rc : run_tape(name, args);
+    return rc != 0 ? rc : run_tape(name, args, st.size);
 }
 
 static int32_t sys_holo_launch(const pipos_sys_ctx_t *ctx, uint32_t uname, uint32_t uargs,

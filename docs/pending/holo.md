@@ -14,6 +14,7 @@ The rules come from the spec's [Holotapes](https://github.com/RobCo-Industries/R
 - `holo_enumerate` reads `/PIPBOY/HOLO` in directory order. A missing folder gives 0 entries.
 - `max` is 1 to 32. Other values return `-PIP_EINVAL`. Pip-OS checks the whole `max` entries of `out` before it reads the card, so a bad pointer returns `-PIP_EFAULT` and writes nothing.
 - A file is listed when its 8.3 name is `NAME.HTP` and its header passes the magic, version and size checks. The CRC is not checked, so a damaged holotape is listed and fails at launch.
+- A card error while Pip-OS reads the folder or a header returns `-PIP_EIO`. The entries in `out` are then undefined. A file too short to hold a header is skipped, like any file that is not a holotape.
 - `file` is the 8.3 name. A file with a long name is listed under its 8.3 alias, such as `LONGNA~1.HTP`.
 - `name`, `title` and `icon` are copied from the header and the META block as they are.
 
@@ -24,7 +25,7 @@ The rules come from the spec's [Holotapes](https://github.com/RobCo-Industries/R
 - `args` must end with a NUL within 100 bytes, so 0 to 99 characters. A longer string returns `-PIP_EINVAL`. A `NULL` pointer returns `-PIP_EFAULT`.
 - Pip-OS copies both strings in before it checks anything else.
 - The name must be the one `holo_enumerate` lists. Pip-OS finds the entry the card would open for that name, by long name or alias. If that entry is a folder, a work file, or a file listed under another name, the launch returns `-PIP_ENOENT`.
-- A missing file returns `-PIP_ENOENT`. Any failed load step, a read error included, returns `-PIP_ENOEXEC`. A data holotape, subtype 2, fails the bounds step.
+- A missing file returns `-PIP_ENOENT`. A card error while Pip-OS loads the file returns `-PIP_EIO`. Any other failed load step returns `-PIP_ENOEXEC`, a file shorter than 0x60 bytes included. A data holotape, subtype 2, fails the bounds step.
 - The holotape runs inside the ROM's call. `exit` and a return from `pip_main` end the holotape only. A fault or a kill ends it with `-PIP_EFAULT`, and the ROM goes on.
 
 ## While a holotape runs

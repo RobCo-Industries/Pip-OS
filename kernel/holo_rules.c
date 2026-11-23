@@ -143,7 +143,13 @@ int32_t pipos_holo_result(unsigned reason, int code)
     return -PIP_EFAULT;
 }
 
-int32_t pipos_holo_load_errno(int rimg_err)
+int32_t pipos_holo_load_errno(int rimg_err, uint32_t fat_size)
 {
-    return rimg_err == RIMG_E_NOFILE ? -PIP_ENOENT : -PIP_ENOEXEC;
+    if (rimg_err == RIMG_E_NOFILE) {
+        return -PIP_ENOENT;
+    }
+    if (rimg_err == RIMG_E_IO && fat_size >= RIMG_HDR_OFFSET + RIMG_HDR_SIZE) {
+        return -PIP_EIO;
+    }
+    return -PIP_ENOEXEC;
 }

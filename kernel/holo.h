@@ -72,7 +72,13 @@ void pipos_mem_info_holo(pip_mem_info_t *m);
  */
 int32_t pipos_holo_result(unsigned reason, int code);
 
-/* A rimg_err_t from the loader as holo_launch's error: -PIP_ENOENT or -PIP_ENOEXEC. */
-int32_t pipos_holo_load_errno(int rimg_err);
+/*
+ * A rimg_err_t from the loader as holo_launch's error: -PIP_ENOENT,
+ * -PIP_EIO or -PIP_ENOEXEC. `fat_size` is the size the folder entry gives.
+ * The loader returns RIMG_E_IO for a card error and for a file shorter than
+ * the loader's head. A file that holds the head turns RIMG_E_IO into
+ * -PIP_EIO: its reads stay inside the file, so only the card can fail them.
+ */
+int32_t pipos_holo_load_errno(int rimg_err, uint32_t fat_size);
 
 #endif

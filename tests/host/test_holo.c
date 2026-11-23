@@ -202,10 +202,19 @@ TEST(results)
     CHECK_EQ(pipos_holo_result(UMODE_RETURNED, 0x1234), 0x34);
     CHECK_EQ(pipos_holo_result(UMODE_FAULT, 0), -PIP_EFAULT);
     CHECK_EQ(pipos_holo_result(UMODE_KILLED, 1), -PIP_EFAULT);
-    CHECK_EQ(pipos_holo_load_errno(RIMG_E_NOFILE), -PIP_ENOENT);
-    CHECK_EQ(pipos_holo_load_errno(RIMG_E_IO), -PIP_ENOEXEC);
-    CHECK_EQ(pipos_holo_load_errno(RIMG_E_MAGIC), -PIP_ENOEXEC);
-    CHECK_EQ(pipos_holo_load_errno(RIMG_E_SIZE), -PIP_ENOEXEC);
-    CHECK_EQ(pipos_holo_load_errno(RIMG_E_BOUNDS), -PIP_ENOEXEC);
-    CHECK_EQ(pipos_holo_load_errno(RIMG_E_CRC), -PIP_ENOEXEC);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_NOFILE, 0), -PIP_ENOENT);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_NOFILE, 0x1000), -PIP_ENOENT);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_MAGIC, 0x1000), -PIP_ENOEXEC);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_SIZE, 0x1000), -PIP_ENOEXEC);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_BOUNDS, 0x1000), -PIP_ENOEXEC);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_CRC, 0x1000), -PIP_ENOEXEC);
+}
+
+/* RIMG_E_IO is a card error only when the file holds the loader's 0x60-byte head. */
+TEST(load_io_error)
+{
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_IO, 0), -PIP_ENOEXEC);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_IO, 0x5F), -PIP_ENOEXEC);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_IO, 0x60), -PIP_EIO);
+    CHECK_EQ(pipos_holo_load_errno(RIMG_E_IO, 0x1000), -PIP_EIO);
 }
