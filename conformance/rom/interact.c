@@ -4,9 +4,10 @@
  * is SKIP. A wrong answer is FAIL. In auto mode every check here is SKIP
  * without a prompt.
  *
- * Each prompt drops stale events, shows its screen, then prints
- * "@RC stage=conform ev=prompt name=<check>", so a test script knows when
- * to answer. Nothing drains after the marker: an answer is never lost.
+ * Each prompt drops stale events, shows its screen, starts its sound if it
+ * has one, then prints "@RC stage=conform ev=prompt name=<check>", so a
+ * test script knows when to answer. Nothing drains after the marker: an
+ * answer is never lost.
  */
 #include "conform.h"
 
@@ -92,9 +93,13 @@ static void prompt_draw(const char *l1, const char *l2, const char *l3, const ch
     pip_draw_text(8, 204, "No answer in 30 s: SKIP", 1);
 }
 
-/* Shows a prompt. With d0 not NULL, *d0 is the dial baseline taken with the drain. */
+/*
+ * Shows a prompt: drain, present, then play (a sound, may be NULL), then
+ * the marker. With d0 not NULL, *d0 is the dial baseline taken with the
+ * drain.
+ */
 static void prompt_full(const char *name, const char *l1, const char *l2, const char *l3,
-                        const char *hint, int32_t *d0)
+                        const char *hint, int32_t *d0, void (*play)(void))
 {
     prompt_draw(l1, l2, l3, hint);
     if (d0 != NULL) {
@@ -103,18 +108,21 @@ static void prompt_full(const char *name, const char *l1, const char *l2, const 
         drain_events();
     }
     pip_present();
+    if (play != NULL) {
+        play();
+    }
     pip_printf("@RC stage=conform ev=prompt name=%s\n", name);
 }
 
 static void prompt_dial(const char *name, const char *l1, const char *l2, const char *hint,
                         int32_t *d0)
 {
-    prompt_full(name, l1, l2, NULL, hint, d0);
+    prompt_full(name, l1, l2, NULL, hint, d0, NULL);
 }
 
 static void prompt(const char *name, const char *l1, const char *l2, const char *hint)
 {
-    prompt_full(name, l1, l2, NULL, hint, NULL);
+    prompt_full(name, l1, l2, NULL, hint, NULL, NULL);
 }
 
 static void skip(const char *name)
@@ -293,26 +301,29 @@ static void ask_dial(const char *name, const char *pos_name, const char *label, 
     ck_eq(pos_name, d1, want);
 }
 
-/* A yes or no question. SELECT is yes, LEFT is no. */
-static void ask_yes_no(const char *name, const char *l1, const char *l2)
+/*
+ * A yes or no question about a sound. The prompt shows first, then the
+ * sound starts. SELECT is yes, LEFT is no. UP plays the sound again and
+ * starts the wait over; it is not an answer.
+ */
+static void ask_heard(const char *name, const char *l1, void (*play)(void))
 {
     int32_t start;
     pip_event_t ev;
 
-    prompt(name, l1, l2, "SELECT = yes    LEFT = no");
+    prompt_full(name, l1, "Did you hear it?", "UP: play again", "SELECT = yes    LEFT = no",
+                NULL, play);
     start = pip_ticks_ms();
     while (next_event(&ev, start, PROMPT_MS)) {
         if (ev.type != PIP_EV_BUTTON || ev.value != PIP_EV_PRESS) {
             continue;
         }
-        if (ev.code == PIP_BTN_SELECT) {
-            ck(name, 1);
+        if (ev.code == PIP_BTN_UP) {
+            play();
+            start = pip_ticks_ms();
+        } else if (ev.code == PIP_BTN_SELECT || ev.code == PIP_BTN_LEFT) {
             pip_audio_stop();
-            return;
-        }
-        if (ev.code == PIP_BTN_LEFT) {
-            ck(name, 0);
-            pip_audio_stop();
+            ck(name, ev.code == PIP_BTN_SELECT);
             return;
         }
     }
@@ -360,13 +371,29 @@ static void ask_picture(void)
     }
 }
 
+static const pip_note_t tune[] = {
+    { 392, 200 }, { 523, 200 }, { 659, 200 }, { 784, 400 },
+    { PIP_NOTE_REST, 200 }, { 392, 200 }, { 523, 200 }, { 659, 200 }, { 784, 400 },
+};
+static uint8_t pcm[8000];
+
+static void play_tone(void)
+{
+    pip_tone(440, 3000);
+}
+
+static void play_tune(void)
+{
+    pip_play_seq(tune, sizeof(tune) / sizeof(tune[0]));
+}
+
+static void play_sample(void)
+{
+    pip_sample(pcm, sizeof(pcm));
+}
+
 void run_interactive(void)
 {
-    static const pip_note_t tune[] = {
-        { 392, 200 }, { 523, 200 }, { 659, 200 }, { 784, 400 },
-        { PIP_NOTE_REST, 200 }, { 392, 200 }, { 523, 200 }, { 659, 200 }, { 784, 400 },
-    };
-    static uint8_t pcm[8000];
     static const char *const names[] = {
         "btn_up", "btn_up_state", "btn_up_clear", "btn_down", "btn_down_state",
         "btn_down_clear", "btn_left", "btn_left_state", "btn_left_clear", "btn_right",
@@ -400,18 +427,15 @@ void run_interactive(void)
     ask_dial("dial_counter", "dial_ccw_position", "Turn the dial counter-clockwise", -1);
 
     cur_call = "tone";
-    pip_tone(440, 3000);
-    ask_yes_no("heard_tone", "A 440 Hz tone plays for 3 s.", "Did you hear it?");
+    ask_heard("heard_tone", "A 440 Hz tone plays for 3 s.", play_tone);
     cur_call = "play_seq";
-    pip_play_seq(tune, sizeof(tune) / sizeof(tune[0]));
-    ask_yes_no("heard_tune", "A short rising tune plays twice.", "Did you hear it?");
+    ask_heard("heard_tune", "A short rising tune plays twice.", play_tune);
     cur_call = "sample";
     for (i = 0; i < sizeof(pcm); i++) {
         /* A 250 Hz square wave for 1 s, then the same at 500 Hz below. */
         pcm[i] = (uint8_t)(((i / (i < 4000 ? 16u : 8u)) & 1) ? 176 : 80);
     }
-    pip_sample(pcm, sizeof(pcm));
-    ask_yes_no("heard_sample", "A low buzz, then a higher one, plays.", "Did you hear it?");
+    ask_heard("heard_sample", "A low buzz, then a higher one, plays.", play_sample);
     cur_call = "present";
     ask_picture();
 }

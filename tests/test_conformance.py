@@ -15,7 +15,8 @@ import pytest
 from harness.boot import boot
 
 from conftest import ROOT
-from pipos_helpers import TIMEOUT, _mtools, abi_syscalls, booted, no_exception, one, screenshot
+from pipos_helpers import (TIMEOUT, _mtools, abi_syscalls, booted, no_exception, one,
+                           pipos_markers, screenshot, wait_markers)
 from test_card import check_golden
 
 PART_OFFSET = 2048 * 512
@@ -103,14 +104,17 @@ ABSENT = {"sensor_rtc", "sensor_battery", "sensor_geiger", "sensor_gps", "sensor
 
 # The answer the script gives to each prompt. SELECT is yes. A button is
 # held until its _state check shows: a key goes down, then up, as two lines.
-# UP is tapped first: the ROM asks again.
+# UP is tapped first: the ROM asks again. UP replays the sample once; the
+# answer waits until the trace shows the second start, as a stop before
+# then would cancel it.
 ANSWERS = {
     **{btn: [f"key {KEYS[btn]} 1", ("wait", f"{short}_state"), f"key {KEYS[btn]} 0"]
        for btn, short in BUTTONS},
     "btn_up": ["key up", ("retry", "btn_up"), "key up 1", ("wait", "btn_up_state"), "key up 0"],
     # A turn the wrong way first: the ROM ignores it but read_dial counts it.
     "dial_clockwise": ["dial -1", "dial 2"], "dial_counter": ["dial -3"],
-    "heard_tone": ["key select"], "heard_tune": ["key select"], "heard_sample": ["key select"],
+    "heard_tone": ["key select"], "heard_tune": ["key select"],
+    "heard_sample": ["key up", ("pcm", 2), "key select"],
     "picture_right": ["key select"],
 }
 
@@ -223,6 +227,10 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
                     if isinstance(line, tuple) and line[0] == "wait":
                         wait_check(vm, line[1])
                         continue
+                    if isinstance(line, tuple):
+                        wait_markers(vm, "audio", count=line[1], timeout=STEP_S, op="pcm",
+                                     len="8000")
+                        continue
                     reply = vm.script(line, timeout=TIMEOUT)
                     assert reply.status == "ok", (line, reply)
             elif step["ev"] == "page":
@@ -241,6 +249,9 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
         assert_results(vm, skip=set())
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
         assert [m["name"] for m in conform(vm, "retry")] == ["btn_up"], vm.serial
+        # The 1 s sample: once with its prompt, once more for UP.
+        assert len([m for m in pipos_markers(vm, "audio")
+                    if m.get("op") == "pcm" and m.get("len") == "8000"]) == 2, vm.serial
         pages = int(conform(vm, "page")[0]["of"])
         assert [m["n"] for m in conform(vm, "page")] == [str(i) for i in range(1, pages + 1)]
         no_exception(vm)
