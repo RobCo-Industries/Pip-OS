@@ -9,6 +9,7 @@
 #include <robco/uart.h>
 #include <robco/umode.h>
 
+#include "holo.h"
 #include "pipos.h"
 #include "sys.h"
 #include "sysabi.h"
@@ -71,7 +72,11 @@ static int32_t sys_mem_info(const pipos_sys_ctx_t *ctx, uint32_t out, uint32_t a
     pip_mem_info_t info;
 
     (void)a1, (void)a2, (void)a3;
-    pipos_mem_info_rom(&info);
+    if (ctx->kind == PIP_KIND_HOLOTAPE) {
+        pipos_mem_info_holo(&info);
+    } else {
+        pipos_mem_info_rom(&info);
+    }
     return pipos_user_copy_out(ctx, out, &info, sizeof(info));
 }
 

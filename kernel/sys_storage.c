@@ -19,13 +19,24 @@
 #define PATH_SIZE       (sizeof(VOL) + PIP_PATH_MAX + 1u)
 
 static uint8_t buf[PIP_SAVE_MAX];
-static fs_file_t files[PIPOS_STORAGE_HANDLES];
-static uint32_t used;
+/*
+ * One handle table per image level: the ROM's files stay open, and out of
+ * reach, while a holotape runs with its own 8 handles.
+ */
+#define LEVELS          2
+static fs_file_t files[LEVELS][PIPOS_STORAGE_HANDLES];
+static uint32_t used[LEVELS];
 static pip_dirent_t ents[PIP_DIR_LIST_MAX];
 
 unsigned pipos_storage_open_count(void)
 {
-    return pipos_handle_count(used);
+    return pipos_handle_count(used[0]) + pipos_handle_count(used[1]);
+}
+
+/* The handle table of an image of `kind`. */
+static unsigned level(int kind)
+{
+    return kind == PIP_KIND_HOLOTAPE ? 1u : 0u;
 }
 
 /* Copies and checks the caller's save name, then builds the save's path. */
@@ -266,13 +277,13 @@ static int32_t sys_file_open(const pipos_sys_ctx_t *ctx, uint32_t upath, uint32_
     if (st.is_dir) {
         return -PIP_EINVAL;
     }
-    h = pipos_handle_alloc(&used);
+    h = pipos_handle_alloc(&used[level(ctx->kind)]);
     if (h < 0) {
         return h;
     }
-    frc = fs_open(&files[h], path, FS_READ);
+    frc = fs_open(&files[level(ctx->kind)][h], path, FS_READ);
     if (frc != FS_OK) {
-        pipos_handle_free(&used, h);
+        pipos_handle_free(&used[level(ctx->kind)], h);
         return pipos_storage_errno(frc);
     }
     return h;
@@ -282,7 +293,7 @@ static int32_t sys_file_read(const pipos_sys_ctx_t *ctx, uint32_t handle, uint32
                              uint32_t size, uint32_t a3)
 {
     int32_t h = (int32_t)handle;
-    int32_t rc = pipos_handle_check(used, h);
+    int32_t rc = pipos_handle_check(used[level(ctx->kind)], h);
     uint32_t done = 0;
 
     (void)a3;
@@ -297,7 +308,7 @@ static int32_t sys_file_read(const pipos_sys_ctx_t *ctx, uint32_t handle, uint32
     }
     while (done < size) {
         uint32_t want = size - done < CHUNK ? size - done : CHUNK;
-        int n = fs_read(&files[h], buf, want);
+        int n = fs_read(&files[level(ctx->kind)][h], buf, want);
 
         if (n < 0) {
             return done > 0 ? (int32_t)done : pipos_storage_errno(n);
@@ -319,14 +330,14 @@ static int32_t sys_file_close(const pipos_sys_ctx_t *ctx, uint32_t handle, uint3
                               uint32_t a2, uint32_t a3)
 {
     int32_t h = (int32_t)handle;
-    int32_t rc = pipos_handle_check(used, h);
+    int32_t rc = pipos_handle_check(used[level(ctx->kind)], h);
 
-    (void)ctx, (void)a1, (void)a2, (void)a3;
+    (void)a1, (void)a2, (void)a3;
     if (rc != 0) {
         return rc;
     }
-    fs_close(&files[h]); /* a read handle has nothing to write back */
-    pipos_handle_free(&used, h);
+    fs_close(&files[level(ctx->kind)][h]); /* a read handle has nothing to write back */
+    pipos_handle_free(&used[level(ctx->kind)], h);
     return 0;
 }
 
@@ -398,33 +409,32 @@ static const pipos_sys_entry_t storage_calls[] = {
 
 const pipos_sys_table_t pipos_storage_table = PIPOS_SYS_TABLE(STORAGE, "storage", storage_calls);
 
-static void close_all(void)
+static void close_all(unsigned lv)
 {
     int32_t h;
 
     for (h = 0; h < (int32_t)PIPOS_STORAGE_HANDLES; h++) {
-        if (pipos_handle_check(used, h) == 0) {
-            fs_close(&files[h]);
+        if (pipos_handle_check(used[lv], h) == 0) {
+            fs_close(&files[lv][h]);
         }
     }
-    used = 0;
+    used[lv] = 0;
 }
 
 void pipos_storage_init(void)
 {
-    used = 0;
+    used[0] = used[1] = 0;
 }
 
+/* A holotape starts with no files and leaves the ROM's open. */
 void pipos_storage_image_start(int kind)
 {
-    (void)kind;
-    close_all();
+    close_all(level(kind));
 }
 
 void pipos_storage_image_end(int kind)
 {
-    (void)kind;
-    close_all();
+    close_all(level(kind));
 }
 
 void pipos_storage_poll(void)

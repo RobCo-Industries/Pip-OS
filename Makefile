@@ -30,6 +30,7 @@ PURE_SRCS  := \
               kernel/audio_rules.c \
               kernel/bootlines.c \
               kernel/gfx_draw.c \
+              kernel/holo_rules.c \
               kernel/input_events.c \
               kernel/settings.c \
               kernel/storage_rules.c \
@@ -101,6 +102,19 @@ $(addprefix rom-fault_,$(FAULT_CASES)): rom-fault_%:
 $(addprefix rom-,$(TEST_ROMS)): rom-%:
 	$(PIP_APP) BUILD=$(ROM_BUILD)/$* IMAGE=$*.rom NAME=$* TITLE="Pip-OS test ROM $*" \
 	    SRCS="tests/roms/$*.c tests/roms/rt.c $(if $(filter calls,$*),tests/roms/regs.S)" \
+	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
+
+# Test holotapes: tests/roms/holo_tapes/<name>.c with rt.c, into
+# $(HOLO_BUILD)/<name>/<name>.htp. test_holo.py copies them to /PIPBOY/HOLO.
+HOLO_BUILD   := $(BUILD)/holotapes
+TEST_HOLOS   := $(basename $(notdir $(wildcard tests/roms/holo_tapes/*.c)))
+HOLO_TARGETS := $(addprefix holo-,$(TEST_HOLOS))
+.PHONY: $(HOLO_TARGETS)
+test-roms: $(HOLO_TARGETS)
+
+$(HOLO_TARGETS): holo-%:
+	$(PIP_APP) KIND=holotape BUILD=$(HOLO_BUILD)/$* IMAGE=$*.htp NAME=$* \
+	    TITLE="Holotape_$*" SRCS="tests/roms/holo_tapes/$*.c tests/roms/rt.c" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
 $(addprefix rom-,$(ROM_PROJECTS)): rom-%:

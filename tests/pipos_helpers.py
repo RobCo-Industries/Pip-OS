@@ -245,7 +245,7 @@ def assert_rom_checks(vm, names):
     checks = rom_checks(vm)
     assert [c["name"] for c in checks] == list(names), vm.serial
     failed = [c for c in checks if not c["ok"]]
-    assert not failed, f"failed checks: {failed}"
+    assert not failed, f"failed checks: {failed}\n{vm.serial}"
     assert rom_one(vm, "checks") == {"stage": "testrom", "ev": "checks",
                                      "total": str(len(names)), "failed": "0"}, vm.serial
 

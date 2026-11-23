@@ -126,10 +126,10 @@ void pipos_input_image_start(int kind)
     image_running = 1;
 }
 
+/* After a holotape the ROM still runs and keeps getting events. */
 void pipos_input_image_end(int kind)
 {
-    (void)kind;
-    image_running = 0;
+    image_running = kind == PIP_KIND_HOLOTAPE;
     pipos_input_flush();
 }
 
