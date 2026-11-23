@@ -18,6 +18,10 @@ from conftest import ROOT
 from pipos_helpers import (TIMEOUT, _mtools, abi_syscalls, booted, no_exception, one,
                            pipos_markers, screenshot, wait_markers)
 from test_card import check_golden
+from test_time import RTC_DEVICE
+
+HW_RTC = 1 << 0     # sys_info hw_flags bits, ABI 1.3
+HW_AUDIO = 1 << 2
 
 PART_OFFSET = 2048 * 512
 
@@ -70,7 +74,8 @@ CHECKS = [
     ("ticks_ms", ["ticks_range", "ticks_advance"]),
     ("sleep_ms", ["sleep_rc", "sleep_50", "sleep_range"]),
     ("exit", ["exit_low8", "exit_zero"]),
-    ("sys_info", ["sysinfo_rc", "sysinfo_fields", "sysinfo_bad_ptr"]),
+    ("sys_info", ["sysinfo_rc", "sysinfo_fields", "sysinfo_bad_ptr", "sysinfo_hw_rtc",
+                  "sysinfo_hw_audio", "sysinfo_hw_reserved"]),
     ("mem_info", ["meminfo_rom", "meminfo_straddle"]),
     ("power", ["power_screen_off", "power_screen_on", "power_bad_op"]),
     ("log", ["log_ok", "log_no_nul", "log_bad_ptr"]),
@@ -205,13 +210,20 @@ def results(vm):
     return [(m["call"], m["name"], m["result"]) for m in conform(vm, "check")]
 
 
-def assert_results(vm, skip):
+def hw_flags(vm):
+    """sys_info's hw_flags, from the ROM's "conform: board_rev" line."""
+    lines = [ln for ln in vm.serial.splitlines() if ln.startswith("conform: board_rev ")]
+    assert len(lines) == 1, vm.serial
+    return int(lines[0].rsplit(" hw_flags ", 1)[1], 16)
+
+
+def assert_results(vm, skip, absent=ABSENT):
     got = results(vm)
     assert [n for _, n, _ in got] == NAMES, vm.serial
     assert [(c, n) for c, n, _ in got] == [(c, n) for c, names in CHECKS for n in names]
     assert not [g for g in got if g[2] == "FAIL"], \
         f"failed: {[m for m in conform(vm, 'check') if m['result'] == 'FAIL']}\n{vm.serial}"
-    assert {n for _, n, r in got if r == "ABSENT"} == ABSENT, got
+    assert {n for _, n, r in got if r == "ABSENT"} == absent, got
     assert {n for _, n, r in got if r == "SKIP"} == skip, got
     # Every call of abi.h has checks of its own.
     assert {c for c, _, _ in got} - {"none"} == set(abi_syscalls().values())
@@ -223,7 +235,7 @@ def assert_results(vm, skip):
     assert found and all(m == found[0] for m in found), found
     summary = found[0]
     assert (summary["total"], summary["fail"], summary["skip"], summary["absent"]) == \
-        (str(len(NAMES)), "0", str(len(skip)), str(len(ABSENT))), summary
+        (str(len(NAMES)), "0", str(len(skip)), str(len(absent))), summary
     assert_pages_show_all(vm, summary)
 
 
@@ -331,6 +343,19 @@ def test_conformance_auto(board, kernel_image, conformance_card, tmp_path, need_
         assert not conform(vm, "prompt"), vm.serial
         assert one_conform(vm, "start")["mode"] == "auto"
         assert_results(vm, skip=set(INTERACTIVE))
+        assert hw_flags(vm) == HW_AUDIO, vm.serial
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        no_exception(vm)
+
+
+def test_conformance_auto_rtc(board, kernel_image, conformance_card, tmp_path, need_mtools):
+    """Auto mode with QEMU's clock chip: sys_info sets PIP_HW_RTC and get_time
+    returns a time at boot, so the clock checks pass instead of ABSENT."""
+    sd = card_copy(conformance_card, tmp_path, auto=True)
+    with booted(kernel_image, board, sd=sd, extra_args=RTC_DEVICE) as vm:
+        assert one(vm, "clock")["rtc"] == "present", vm.serial
+        assert_results(vm, skip=set(INTERACTIVE), absent=ABSENT - {"sensor_rtc", "time_at_boot"})
+        assert hw_flags(vm) == HW_RTC | HW_AUDIO, vm.serial
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
         no_exception(vm)
 

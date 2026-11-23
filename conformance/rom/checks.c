@@ -348,11 +348,15 @@ void check_sensor_available(void)
     ck_eq("available_7", pip_sensor_available(PIP_SENSOR_COUNT), -PIP_EINVAL);
 }
 
+/* get_time's result in check_get_time, for sys_info's PIP_HW_RTC check. */
+static int32_t time_rc = 1;
+
 void check_get_time(void)
 {
     uint32_t t = 0;
     int32_t rc = pip_get_time(&t);
 
+    time_rc = rc;
     ck_res("time_at_boot", rc == 0 ? R_PASS : rc == -PIP_ENODEV ? R_ABSENT : R_FAIL, 1, rc, 0);
     ck_eq("time_bad_ptr", pip_get_time(PTR(BAD_KERNEL)), -PIP_EFAULT);
 }
@@ -394,6 +398,32 @@ void check_exit(void)
     ck_eq("exit_zero", pip_holo_launch(TAPE_FILE, "exit 0"), 0);
 }
 
+/*
+ * hw_flags, ABI 1.3. PIP_HW_RTC: a chip seeded the clock at boot, so
+ * get_time worked in check_get_time. Without the bit get_time fails, or
+ * returns a time an earlier image set. PIP_HW_AUDIO: a tone starts and
+ * audio_status reads 1; without it the tone returns -PIP_EIO.
+ */
+static void check_hw_flags(const pip_sys_info_t *si)
+{
+    uint32_t f = si != NULL ? si->hw_flags : 0;
+    int32_t tone, status;
+
+    ck_res("sysinfo_hw_rtc", si == NULL ? R_FAIL :
+           (f & PIP_HW_RTC) ? (time_rc == 0 ? R_PASS : R_FAIL) :
+           (time_rc == -PIP_ENODEV || time_rc == 0 ? R_PASS : R_FAIL), 1, time_rc,
+           (f & PIP_HW_RTC) ? 0 : -PIP_ENODEV);
+    tone = pip_tone(1000, 20);
+    status = pip_audio_status();
+    pip_audio_stop();
+    ck_res("sysinfo_hw_audio", si == NULL ? R_FAIL :
+           (f & PIP_HW_AUDIO) ? (tone == 0 && status == 1 ? R_PASS : R_FAIL) :
+           (tone == -PIP_EIO && status == 0 ? R_PASS : R_FAIL), 1, tone,
+           (f & PIP_HW_AUDIO) ? 0 : -PIP_EIO);
+    ck_res("sysinfo_hw_reserved", si != NULL && (f & ~(PIP_HW_RTC | PIP_HW_AUDIO)) == 0 ?
+           R_PASS : R_FAIL, 1, (int32_t)f, (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO)));
+}
+
 void check_sys_info(void)
 {
     pip_sys_info_t si;
@@ -403,10 +433,11 @@ void check_sys_info(void)
     ck("sysinfo_fields", rc == 0 && si.size == 32 && si.abi_version == PIP_ABI_VERSION &&
        si.mem_size != 0 && si.reserved == 0);
     ck_eq("sysinfo_bad_ptr", pip_sys_info(PTR(BAD_KERNEL)), -PIP_EFAULT);
+    check_hw_flags(rc == 0 ? &si : NULL);
     if (rc == 0) {
-        pip_printf("conform: board_rev 0x%08x soc 0x%x mem %u pipos 0x%06x\n",
+        pip_printf("conform: board_rev 0x%08x soc 0x%x mem %u pipos 0x%06x hw_flags 0x%x\n",
                    (unsigned)si.board_rev, (unsigned)si.soc, (unsigned)si.mem_size,
-                   (unsigned)si.pipos_version);
+                   (unsigned)si.pipos_version, (unsigned)si.hw_flags);
     }
 }
 

@@ -12,8 +12,10 @@
 int pip_main(const pipos_startup_t *startup)
 {
     uint32_t v = 0, r = 0;
+    pip_sys_info_t si;
 
     (void)startup;
+    CK("hw_rtc", pip_sys_info(&si) == 0 && (si.hw_flags & PIP_HW_RTC) != 0, 1);
     CK("avail0", pip_sensor_available(0), 1);
     CK("get", pip_get_time(&v), 0);
     CK("read0", pip_read_sensor(0, &r), 0);
