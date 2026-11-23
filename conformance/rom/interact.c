@@ -48,7 +48,30 @@ int wait_press(uint32_t ms)
     return -1;
 }
 
-static void prompt(const char *name, const char *l1, const char *l2, const char *hint)
+/*
+ * Drain, read the dial, then poll: input comes in at each call, so an empty
+ * queue after the read means no turn is both in the result and queued. An
+ * event means a turn came in around the read: start again.
+ */
+static int32_t dial_baseline(void)
+{
+    pip_event_t ev;
+    int32_t d;
+    int i;
+
+    for (i = 0; i < 64; i++) {
+        drain_events();
+        d = pip_read_dial();
+        if (pip_poll_event(&ev) != 1) {
+            return d;
+        }
+    }
+    return d;   /* the dial never stopped; the position check may be off */
+}
+
+/* Shows a prompt. With d0 not NULL, *d0 is the dial baseline taken with the drain. */
+static void prompt_dial(const char *name, const char *l1, const char *l2, const char *hint,
+                        int32_t *d0)
 {
     int32_t w;
 
@@ -63,9 +86,18 @@ static void prompt(const char *name, const char *l1, const char *l2, const char 
     pip_set_color(dim, PIP_COLOR_NONE);
     pip_draw_text(8, 184, hint, 1);
     pip_draw_text(8, 204, "No answer in 30 s: SKIP", 1);
-    drain_events();
+    if (d0 != NULL) {
+        *d0 = dial_baseline();
+    } else {
+        drain_events();
+    }
     pip_present();
     pip_printf("@RC stage=conform ev=prompt name=%s\n", name);
+}
+
+static void prompt(const char *name, const char *l1, const char *l2, const char *hint)
+{
+    prompt_dial(name, l1, l2, hint, NULL);
 }
 
 static void skip(const char *name)
@@ -122,8 +154,8 @@ static void ask_dial(const char *name, const char *pos_name, const char *label, 
     int32_t start, d0, d1, sum = 0, want;
     int got = 0;
 
-    prompt(name, label, "by a few clicks.", "Turning the other way is ignored.");
-    d0 = pip_read_dial();
+    /* The baseline comes before the screen: a turn after it is a queued event. */
+    prompt_dial(name, label, "by a few clicks.", "Turning the other way is ignored.", &d0);
     start = pip_ticks_ms();
     while (!got && next_event(&ev, start, PROMPT_MS)) {
         if (ev.type == PIP_EV_DIAL && ev.value * dir > 0) {
