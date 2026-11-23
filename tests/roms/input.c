@@ -319,14 +319,20 @@ static void stamp(void)
 }
 
 /*
- * The test holds down until the ROM saw REPEATS_SEEN repeats. Stamps move
- * in tick steps, so the lower bounds allow one step.
+ * The test holds down until the ROM saw REPEATS_SEEN repeats.
+ *
+ * RobCo-Core schedules repeat k (from 0) at press + REPEAT_DELAY_MS +
+ * k * REPEAT_RATE_MS and stamps it when its tick really runs. A late tick
+ * gives a late stamp, so the next gap can be shorter than the rate. The
+ * guarantee is that no repeat comes before its place in the schedule.
+ * Stamps move in tick steps, so the lower bound allows one step.
+ * `margin` is the smallest lead of a repeat over its scheduled time.
  */
 static void repeat(void)
 {
     pip_event_t ev;
-    int32_t t_press, t_last, gap, repeats = 0, codes = 1, early = 0, late = 0;
-    int32_t first = -1, min_gap = 0x7fffffff, max_gap = 0;
+    int32_t t_press, t_last, gap, due, repeats = 0, codes = 1, early = 0, late = 0;
+    int32_t first = -1, min_gap = 0x7fffffff, max_gap = 0, margin = 0x7fffffff;
 
     phase("ph_repeat");
     rt_check_eq("repeat_press_rc", wait_one(&ev), 1);
@@ -342,6 +348,10 @@ static void repeat(void)
             break;
         }
         gap = (int32_t)ev.time_ms - t_last;
+        due = REPEAT_DELAY_MS + repeats * REPEAT_RATE_MS;
+        if ((int32_t)ev.time_ms - t_press - due < margin) {
+            margin = (int32_t)ev.time_ms - t_press - due;
+        }
         if (repeats == 0) {
             first = gap;
         } else {
@@ -353,7 +363,7 @@ static void repeat(void)
             phase("ph_repeat_release");
         }
     }
-    early = first < REPEAT_DELAY_MS - TICK_STEP_MS || min_gap < REPEAT_RATE_MS - TICK_STEP_MS;
+    early = margin < -TICK_STEP_MS;
     late = first >= REPEAT_DELAY_MS + REPEAT_SLACK_MS || max_gap >= REPEAT_RATE_MS + REPEAT_SLACK_MS;
     rt_check("repeat_codes", codes);
     rt_check("repeat_count", repeats >= REPEATS_SEEN);
@@ -366,6 +376,7 @@ static void repeat(void)
     rt_dec("first", first);
     rt_dec("min_gap", min_gap);
     rt_dec("max_gap", max_gap);
+    rt_dec("margin", margin);
     rt_dec("count", repeats);
     rt_end();
 }
