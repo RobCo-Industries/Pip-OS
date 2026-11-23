@@ -1,6 +1,6 @@
 # Holotapes
 
-The rules come from the spec's [Holotapes](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/PIPOS_ABI.md#holotapes) and [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/PIPOS_ABI.md#sandbox) sections. This page lists what Pip-OS does on top of them.
+The rules come from the spec's [Holotapes](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/PIPOS_ABI.md#holotapes) and [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/PIPOS_ABI.md#sandbox) sections. This page lists what Pip-OS does on top of them.
 
 | Number | Name | Arguments | Result | Errors |
 |---|---|---|---|---|
