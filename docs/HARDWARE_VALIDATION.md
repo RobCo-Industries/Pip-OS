@@ -23,6 +23,8 @@ make conformance-bootdir DIR=card
 
 For a run with no prompts, also write a file `PIPBOY/CONFORM.CFG` that holds the word `auto`.
 
+The `set_time` check writes the real-time clock chip. If the chip held a valid time, the ROM puts it back within about a second. If it held none, the chip keeps the test date 2023-11-14: set the time again after the run.
+
 ## Run it
 
 1. If you use the serial adapter, open a terminal on it at 115200 baud and start logging to a file.
