@@ -35,7 +35,7 @@ cd Pip-OS
 make bootdir DIR=card
 ```
 
-`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the example ROM as `PIPBOY/ROM1.ROM` and the example holotape `PIPBOY/HOLO/BEACON.HTP`. Format the card as FAT32 and copy everything in `card/` to it. For another ROM, see [Your own ROM and holotapes](#your-own-rom-and-holotapes), or pass `ROM=<file>` to `make bootdir`. Run it again into the same folder with other settings and it may stop and list old files. Use a new folder, or see [Running bootdir again](BUILD.md#running-bootdir-again).
+`card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the example ROM as `PIPBOY/ROM1.ROM` and the example holotape `PIPBOY/HOLO/BEACON.HTP`. Format the card as FAT32 and copy everything in `card/` to it. On a card with several FAT partitions, Pip-OS uses the first one that holds `PIPBOY/PIPOS.CFG` or `PIPBOY/ROM1.ROM`. For another ROM, see [Your own ROM and holotapes](#your-own-rom-and-holotapes), or pass `ROM=<file>` to `make bootdir`. Run it again into the same folder with other settings and it may stop and list old files. Use a new folder, or see [Running bootdir again](BUILD.md#running-bootdir-again).
 
 ## Try it in QEMU
 
@@ -84,7 +84,7 @@ The ROM line says whether `PIPBOY/ROM1.ROM` passed its checks:
 | Line | Meaning |
 |---|---|
 | `LOAD ROM(1): <NAME> <version>` | The ROM is good. It starts after the last line. |
-| `ROM(1) NOT LOADED: NO SD CARD` | No card, or no FAT partition on it |
+| `ROM(1) NOT LOADED: NO SD CARD` | No card, or no volume on it mounts as FAT |
 | `ROM(1) NOT LOADED: NO FILE /PIPBOY/ROM1.ROM` | The file is missing |
 | `ROM(1) NOT LOADED: READ ERROR` | The card failed during the read, or the file is too short |
 | `ROM(1) NOT LOADED: NOT A ROM IMAGE` | The file is not a ROM, for example a holotape |
@@ -174,7 +174,7 @@ A ROM can halt the system. The screen then shows `PIP-OS HALTED. SAFE TO POWER O
 |---|---|---|
 | Nothing on the screen | Firmware, `PIPOS.IMG` or `config.txt` missing from the card | Check the card has every file from `make bootdir` |
 | `KERNEL PANIC: <reason>` and `SYSTEM HALTED` | The kernel could not start the MMU, the display, the heap or the tick | Note the reason and report it |
-| `ROM(1) NOT LOADED: NO SD CARD` | No card, or no partition mounts as FAT | Reformat the card as FAT32 |
+| `ROM(1) NOT LOADED: NO SD CARD` | No card, or no volume mounts as FAT | Reformat the card as FAT32 |
 | `ROM(1) NOT LOADED: NO FILE /PIPBOY/ROM1.ROM` | The ROM is missing or misnamed | Copy the ROM as `PIPBOY/ROM1.ROM` |
 | `ROM(1) NOT LOADED: CHECKSUM MISMATCH` or `FILE SIZE MISMATCH` | The copy is damaged | Copy the ROM again |
 | `ROM(1) NOT LOADED: WRONG ABI VERSION` | The ROM targets another Pip-OS | Rebuild it with this SDK |

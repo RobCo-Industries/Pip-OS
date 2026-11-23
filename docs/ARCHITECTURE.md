@@ -36,7 +36,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 5. `start_input()`: mini UART, the six GPIO buttons and the dial, the serial console, the script channel with `script_command()` as handler.
 6. `start_audio()`: `audio_init()`, PWM or the trace backend.
 7. `start_clock()`: `i2c_init()` and `rtc_init()`.
-8. `pipos_card_mount()` in `card.c`: `sd_init()`, `part_scan()`, `fs_mount()`.
+8. `pipos_card_mount()` in `card.c`: `sd_init()`, then `fs_mount_boot()`.
 9. `pipos_config_load()` reads `/PIPBOY/PIPOS.CFG` through `pipos_settings_parse()`.
 10. `apply_settings()`: scheme, volume, line delay, power-on beep.
 11. `pipos_sys_init()` in `syscall.c`: builds the call index, runs every group's `init`, installs the `svc` handler.
