@@ -74,7 +74,17 @@ make sdimage
 make run BOARD=raspi2b
 ```
 
-`make sdimage` writes `build/sd.img`: a 64 MiB FAT32 card with `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` from `boot/PIPOS.CFG`, `PIPBOY/ROM1.ROM` and an empty `PIPBOY/HOLO/`. The ROM is the SDK's hello example. `ROM=<file>` puts another image there, and `ROM=none` leaves the card without a ROM. It downloads no firmware. The `Makefile` lists the configuration in `SDIMAGE_FILES`, and its `sdimage-stage::` rule adds the kernel, `config.txt` and the holotape directory. `make run` builds the card again, with the same `ROM` rule, and boots it with RobCo-Core's runner, `python3 -m harness.run`, the way the firmware does, with the serial console on the terminal. `BOARD` is `raspi0`, `raspi1ap`, `raspi2b` or `raspi3b`. `WINDOW=1` also opens the QEMU display window. Press Ctrl-A, then X, to quit.
+`make sdimage` writes `build/sd.img`: a 64 MiB FAT32 card with `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` from `boot/PIPOS.CFG`, `PIPBOY/ROM1.ROM` and `PIPBOY/HOLO/BEACON.HTP`. The ROM is the SDK's hello example and the holotape is the SDK's tape example. `ROM=<file>` puts another image there, and `ROM=none` leaves the card without a ROM. The holotape does not depend on `ROM`: `TAPE=<file>` puts another holotape in `PIPBOY/HOLO/` under its own name, and `TAPE=none` leaves the folder empty. It downloads no firmware. The `Makefile` lists the configuration in `SDIMAGE_FILES`, and its `sdimage-stage::` rule adds the kernel, `config.txt` and the holotape directory. `make run` builds the card again, with the same `ROM` rule, and boots it with RobCo-Core's runner, `python3 -m harness.run`, the way the firmware does, with the serial console on the terminal. `BOARD` is `raspi0`, `raspi1ap`, `raspi2b` or `raspi3b`. `WINDOW=1` also opens the QEMU display window. Press Ctrl-A, then X, to quit.
+
+The buttons come from the serial console, so type in the terminal that runs `make run`, not in the QEMU window:
+
+| Key | Button |
+|---|---|
+| Up arrow, Down arrow | UP, DOWN |
+| Left arrow, Right arrow | LEFT, RIGHT |
+| Enter | SELECT |
+
+The console has no key for the dial. On the default card, the hello example lists `BEACON.HTP`. Press Enter to run it, Up or Down to change its exit status, and Enter again to go back. The ROM then shows `Last run: exit status 3`, or the status you picked. Left ends the ROM.
 
 ## A real card
 

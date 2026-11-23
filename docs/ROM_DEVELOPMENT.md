@@ -6,7 +6,7 @@ The file uses the `rimg` format with the `ROM1` magic and a META block for the t
 
 ## A first ROM
 
-Start from [`sdk/examples/hello`](../sdk/examples/hello). It prints a few lines, shows `sys_info` and `mem_info`, sleeps half a second and exits 0.
+Start from [`sdk/examples/hello`](../sdk/examples/hello). It prints a few lines, shows `sys_info` and `mem_info` and sleeps half a second. Then it lists the holotapes on the card and runs the one you pick, see [Writing a holotape](#writing-a-holotape). LEFT ends it with status 0.
 
 1. Copy the folder somewhere: `cp -R sdk/examples/hello ~/myrom`.
 2. Build it, pointing `PIPOS_SDK` at the `sdk/` folder of a Pip-OS checkout with its submodule:
@@ -54,7 +54,23 @@ Targets are `all` and `clean`. The fragment compiles with the kernel's CPU flags
 
 `make` rebuilds what a change affects: an edited source or header, a new setting, a source added to or removed from `SRCS`. Every object lands under `$(BUILD)/obj` with its source extension, so `start.c` and `start.S` can sit side by side. If sealing or verifying fails, no image is left behind. Paths with spaces are not supported.
 
-A holotape builds the same way with `KIND=holotape`. It links at `0x00800000`. Pip-OS cannot launch holotapes yet.
+A holotape builds the same way with `KIND=holotape`. It links at `0x00800000`.
+
+## Writing a holotape
+
+A holotape is a small program the ROM starts. Start from [`sdk/examples/tape`](../sdk/examples/tape), a tape named `BEACON`. It shows its title and argument string, draws a few shapes, plays a short tune and waits. UP and DOWN change the exit status it shows, SELECT ends it with that status.
+
+What differs from a ROM:
+
+- `KIND=holotape` in the Makefile. The image gets the `ROBCO78` magic, subtype 0 (game), and links at `0x00800000` in the 4 MiB holotape slot.
+- It starts with sp at `0x02000000` and its own heap from `0x01800000`. `pip_mem_info()` reports them.
+- It can read the ROM slot but not write it. The ROM's heap, stack and file handles are out of reach.
+- `holo_launch`, `power` and `set_time` return `-PIP_EPERM`.
+- Its arguments are the string the ROM passed to `holo_launch`, at most 99 bytes, in `startup->args`.
+- The return value of `pip_main`, or the value given to `pip_exit()`, is the exit status, 0 to 255. The ROM gets it back from `pip_holo_launch()`. A fault ends the tape and the ROM gets `-PIP_EFAULT`.
+- Pip-OS stops the sound, empties the event queue and resets the drawing state before and after the tape. The ROM redraws its screen when the tape ends.
+
+To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/PIPOS_ABI.md#holotapes).
 
 ## Start-up and entry state
 
@@ -139,7 +155,7 @@ Do not include `<robco/...>` headers. The `pipos/` headers are the whole interfa
 
 ## Put the ROM on a card
 
-`make sdimage` writes `build/sd.img` with the hello example as `/PIPBOY/ROM1.ROM`. `ROM=<file>` puts another image there, and `ROM=none` leaves it out. `make run` builds the card and boots it in QEMU. `BOARD` picks the board, `WINDOW=1` opens the screen.
+`make sdimage` writes `build/sd.img` with the hello example as `/PIPBOY/ROM1.ROM` and the tape example as `/PIPBOY/HOLO/BEACON.HTP`. `ROM=<file>` puts another image there, and `ROM=none` leaves it out. The tape stays on the card in both cases. `TAPE=<file>` puts another holotape there under its own name, and `TAPE=none` leaves it out. `make run` builds the card and boots it in QEMU. `BOARD` picks the board, `WINDOW=1` opens the screen. The keys are in [BUILD.md](BUILD.md#sd-card-image-for-qemu).
 
 ```sh
 make run ROM=$HOME/myrom/build/ROM1.ROM BOARD=raspi3b WINDOW=1
@@ -154,7 +170,6 @@ If the ROM touches memory it does not own or runs an undefined or privileged ins
 ## Limits today
 
 - No graphics, input, audio, time, sensors, saves, files or holotapes yet. These calls return `-PIP_ENOSYS`.
-- Holotapes build but Pip-OS cannot launch them.
 - A ROM that never calls `sleep_ms` keeps the kernel from its main-loop work, so script commands stop.
 - `sleep_ms` never ends early, but it can run up to 10 ms long: the 100 Hz tick wakes it.
 - `ticks_ms` moves in steps of 10 ms.

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- A sample holotape in `sdk/examples/tape`. The default card carries it as `/PIPBOY/HOLO/BEACON.HTP`, and the hello example lists the holotapes, runs the one you pick and shows its exit status. `TAPE=<file>` and `TAPE=none` change the card's holotape.
 - `abi.h` has every struct, constant and limit of the ABI, with build-time size and offset checks, and the `PIP_SYSCALLS` table.
 - `libpip.a` has a `pip_<name>()` wrapper for every call, plus `pip_rect_xywh()` and `pip_set_clip_xywh()`.
 - The `ev=syscalls` marker lists the calls the kernel serves.

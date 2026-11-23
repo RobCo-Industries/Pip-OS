@@ -56,7 +56,9 @@ make test BOARD=raspi0
 make run BOARD=raspi2b
 ```
 
-This builds `build/sd.img` with the kernel, a sample configuration and the SDK's hello example as the ROM, and boots it with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit. `make run WINDOW=1` also opens the QEMU display window.
+This builds `build/sd.img` with the kernel, a sample configuration, the SDK's hello example as the ROM and its tape example as a holotape. It boots the card with RobCo-Core's runner, with the serial console on the terminal. Press Ctrl-A, then X, to quit. `make run WINDOW=1` also opens the QEMU display window.
+
+Type the keys in the terminal: Up and Down pick a holotape, Enter runs it, Left ends the ROM. In the tape, Up and Down change its exit status and Enter goes back. See [docs/BUILD.md](docs/BUILD.md#sd-card-image-for-qemu).
 
 ## Prepare a card
 
