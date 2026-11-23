@@ -21,6 +21,13 @@ from harness.env import minimal_env
 from harness.sdimage import make_sd_image
 
 TIMEOUT = 60
+
+# A ROM's ticks_ms mark and the audio trace's t_ms are two clocks. ticks_ms
+# is whole 10 ms ticks, so it is at or behind the system timer. audio_init()
+# seeds the audio clock with tick_ms() right after a tick and then adds timer
+# time, so it stays behind the timer by a constant: how late that tick read
+# was, under one tick. So audio t_ms >= mark + real time - 10 ms.
+AUDIO_CLOCK_LAG_MS = 10
 READY = re.compile(r"@RC stage=pipos ev=ready rom=\d\n")
 
 ROM_BASE = 0x00400000

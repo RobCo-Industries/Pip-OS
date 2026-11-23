@@ -9,8 +9,8 @@ is applied by the next 100 Hz tick, and t_ms is the time that tick ran.
 So a sound the ROM cuts after a pip_sleep_ms() is bounded by cut().
 """
 
-from pipos_helpers import (assert_rom_checks, booted, config, dump, make_card, no_exception,
-                           one, pipos_markers, rom_one, wait_markers)
+from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, config, dump, make_card,
+                           no_exception, one, pipos_markers, rom_one, wait_markers)
 
 ROM = "PIPBOY/ROM1.ROM"
 CFG = "PIPBOY/PIPOS.CFG"
@@ -72,8 +72,10 @@ def cut_from_mark(tr, i, t0, ms, slack):
     The tick that starts the sound can run late on a loaded host, so marker
     i to the cut can be shorter than ms. The ROM printed t0, the kernel's
     time, before the call, and the cut comes at least ms after the call.
+    t0 is on the kernel's tick clock and the cut on the audio clock: see
+    AUDIO_CLOCK_LAG_MS.
     """
-    assert tr[i + 1][-1] - t0 >= ms, (i, t0, ms, tr)
+    assert tr[i + 1][-1] - t0 >= ms - AUDIO_CLOCK_LAG_MS, (i, t0, ms, tr)
     assert tr[i + 1][-1] - tr[i][-1] <= ms + slack, (i, ms, tr)
 
 
