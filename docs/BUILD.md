@@ -63,7 +63,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `BUILD` | `build` | Output folder. From another repository, pass an absolute path. |
 | `ROM` | The hello example | The card's `PIPBOY/ROM1.ROM`, or `none` |
 | `TAPE` | The tape example | Holotapes for `PIPBOY/HOLO/`, separated by spaces, or `none`. Each name must end in `.HTP`, and two names may not differ only in case. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#using-pip-os-from-another-repository). |
-| `CARD_DIR` | unset | A folder tree copied onto the card after the standard files. A file at the path of a standard file stops the build. |
+| `CARD_DIR` | unset | A folder tree copied onto the card after the standard files. A file at the path of a standard file, or two paths that differ only in case, stop the build. A name longer than 8.3 gets a warning. |
 | `BOARD` | `all` | QEMU board for `test` and `run`. `run` takes `raspi2b` for `all`. |
 | `WINDOW` | unset | `WINDOW=1` makes `run` open the display window |
 | `DIR` | unset | The folder for `bootdir` and `conformance-bootdir` |
@@ -108,7 +108,7 @@ make sdimage
 make run BOARD=raspi2b
 ```
 
-`make sdimage` writes `build/sd.img`: a 64 MiB FAT32 card with `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` from `boot/PIPOS.CFG`, `PIPBOY/ROM1.ROM` and `PIPBOY/HOLO/BEACON.HTP`. The ROM is the SDK's hello example and the holotape is the SDK's tape example. `ROM=<file>` puts another image there, and `ROM=none` leaves the card without a ROM. The holotape does not depend on `ROM`: `TAPE=<files>` puts other holotapes in `PIPBOY/HOLO/` under their own names, and `TAPE=none` leaves the folder empty. `CARD_DIR=<dir>` copies a folder tree onto the card root after the standard files. The build stops when one of its files has the path of a standard file. Each example builds only when the card uses it. It downloads no firmware. The `Makefile` lists the configuration in `SDIMAGE_FILES`, and its `sdimage-stage::` rule adds the kernel, `config.txt`, the holotape directory and `CARD_DIR` through `tools/card_dir.sh`. RobCo-Core's `SDIMAGE_DIR` is refused: use `CARD_DIR`. `make run` builds the card again, with the same `ROM` rule, and boots it with RobCo-Core's runner, `python3 -m harness.run`, the way the firmware does, with the serial console on the terminal. `BOARD` is `raspi0`, `raspi1ap`, `raspi2b` or `raspi3b`. `WINDOW=1` also opens the QEMU display window. Press Ctrl-A, then X, to quit.
+`make sdimage` writes `build/sd.img`: a 64 MiB FAT32 card with `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` from `boot/PIPOS.CFG`, `PIPBOY/ROM1.ROM` and `PIPBOY/HOLO/BEACON.HTP`. The ROM is the SDK's hello example and the holotape is the SDK's tape example. `ROM=<file>` puts another image there, and `ROM=none` leaves the card without a ROM. The holotape does not depend on `ROM`: `TAPE=<files>` puts other holotapes in `PIPBOY/HOLO/` under their own names, and `TAPE=none` leaves the folder empty. `CARD_DIR=<dir>` copies a folder tree onto the card root after the standard files. The build stops when one of its files has the path of a standard file. Then `tools/check_stage.sh` checks the whole staged card, the same check as `make bootdir`: two paths that differ only in case, such as `NAME.TXT` and `name.txt` or a file `Data` and a folder `DATA`, stop the build, because FAT would keep only one. A case-sensitive host can hold both; a case-insensitive one cannot. A `CARD_DIR` path with a name longer than 8.3 gets a warning: see [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#using-pip-os-from-another-repository). Each example builds only when the card uses it. It downloads no firmware. The `Makefile` lists the configuration in `SDIMAGE_FILES`, and its `sdimage-stage::` rule adds the kernel, `config.txt`, the holotape directory and `CARD_DIR` through `tools/card_dir.sh`. RobCo-Core's `SDIMAGE_DIR` is refused: use `CARD_DIR`. `make run` builds the card again, with the same `ROM` rule, and boots it with RobCo-Core's runner, `python3 -m harness.run`, the way the firmware does, with the serial console on the terminal. `BOARD` is `raspi0`, `raspi1ap`, `raspi2b` or `raspi3b`. `WINDOW=1` also opens the QEMU display window. Press Ctrl-A, then X, to quit.
 
 The buttons come from the serial console, so type in the terminal that runs `make run`, not in the QEMU window:
 
@@ -135,13 +135,15 @@ This writes the files of `make sdimage` into `DIR`, plus the firmware files from
 
 Use a new, empty folder and it is one command. `bootdir` never deletes a file in `DIR` unless you ask. It writes `BOOTDIR.LST` in `DIR`, the list of files it wrote. It does not list `PIPBOY/PIPOS.CFG`. The card does not need `BOOTDIR.LST`, but it does no harm there.
 
-Before it changes anything, `bootdir` looks at each file in `DIR` that this run would not write. Names compare as on FAT, ignoring case.
+`bootdir` first makes a plan: the folders to create, the files to write and, with `CLEAN=1`, the stale files to remove. It checks the whole plan against `DIR` and changes nothing if any check fails. It lists every problem it finds, not only the first. Names compare as on FAT, ignoring case. For each file in `DIR` that this run would not write:
 
 - A file that `BOOTDIR.LST` names is stale, for example the ROM after `ROM=none` or a tape no longer in `TAPE`. `bootdir` stops, lists the files, and changes nothing. Use an empty folder, or run again with `CLEAN=1` to remove them.
 - A file that `BOOTDIR.LST` does not name, at a path `bootdir` writes, also stops it, even with `CLEAN=1`. These paths are the firmware files, `PIPOS.IMG`, `config.txt`, `PIPBOY/ROM1.ROM` and `PIPBOY/HOLO/*.HTP`. This happens with a folder from before `BOOTDIR.LST` existed. `bootdir` cannot tell whether the file is stale, so delete or move it yourself, or use an empty folder.
 - Any other file is yours. `bootdir` leaves it and names it once.
 
-A file or folder in `DIR` whose name differs only in case from one `bootdir` writes, such as `pipos.img` or `pipboy/`, also stops it, even with `CLEAN=1`. Rename or remove it yourself, or use an empty folder.
+A file or folder in `DIR` whose name differs only in case from one `bootdir` writes, such as `pipos.img` or `pipboy/`, also stops it, even with `CLEAN=1`. So does a file where the plan needs a folder, such as a file `DATA` when `CARD_DIR` holds `DATA/README.TXT`, or a folder where it writes a file, at any depth. A stale file that `CLEAN=1` removes is not in the way. A file it must overwrite or remove, or a folder it must write into, that is not writable stops it too. Fix these yourself, or use an empty folder.
+
+"Nothing changed" holds for every stop above: the checks only read `DIR`. They cannot foresee a full disk or another program changing `DIR` at the same time. If a copy fails after the checks passed, `bootdir` says so and that `DIR` is partly updated. Fix the cause and run it again.
 
 `CLEAN=1` removes only files that `BOOTDIR.LST` names and this run does not write. It never removes `PIPBOY/PIPOS.CFG`. `conformance-bootdir` follows the same rules.
 

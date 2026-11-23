@@ -228,6 +228,8 @@ Pass absolute paths. `make -C` runs in the Pip-OS folder, so a relative path wou
 
 The standard files are `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, `PIPBOY/ROM1.ROM`, the `TAPE` files and, for `bootdir`, the firmware. When a file in `CARD_DIR` has the path of a standard file, the build stops and writes nothing. FAT ignores case, so `pipboy/rom1.rom` counts as `PIPBOY/ROM1.ROM`. A folder in `CARD_DIR` that differs from a standard folder only in case also stops the build. Folders with the same name merge, so `CARD_DIR` can add tapes to `PIPBOY/HOLO/`. Use `TAPE` for the tapes you build and `CARD_DIR` for files you keep in the repository.
 
+After staging, the build checks the whole card at once, for `sdimage`, `run` and `bootdir` alike. Two paths that differ only in case, such as `NAME.TXT` and `name.txt`, or a file and a folder such as `Data` and `DATA/`, stop it: FAT would keep only one. A ROM opens these files with `file_open`, which takes 8.3 names and upper-cases the path. So case does not matter: `content/data/level1.bin` opens as `/DATA/LEVEL1.BIN`. A longer name, such as `LongLevelName.bin`, is stored under a FAT alias such as `LONGLE~1.BIN`. A ROM can open it only by that alias, which it finds with `dir_list`, so the build warns and names the file. Use 8.3 names for files a ROM reads.
+
 `bootdir` keeps a `PIPBOY/PIPOS.CFG` that is already in `DIR`, because it holds the user's settings.
 
 A complete Makefile for such a project:
