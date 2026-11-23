@@ -111,13 +111,13 @@ The ROM can touch two regions, both read-write: its slot, `0x00400000` to `0x007
 
 Limits:
 
-- While the ROM runs, the kernel does its main-loop work, such as script commands and input, only inside `sleep_ms`. A ROM that never calls `sleep_ms` blocks the maintenance commands.
+- While the ROM runs, the kernel does its main-loop work, such as script commands and input, only inside `sleep_ms`, the input calls, `file_read` and `holo_enumerate`. A ROM that calls none of them blocks every maintenance command, `kill` included.
 - A ROM that never ends never reaches the main loop, so `ev=ready` does not appear.
 - On the ARM1176 boards in QEMU, `raspi0` and `raspi1ap`, a jump into kernel memory does not fault. The ROM runs the kernel code in USR mode until its first privileged instruction, which faults as `undef`. Data accesses to kernel memory do fault. QEMU 10.1 does not check execute permission on ARMv6 CPUs. Real hardware is not verified yet. The `jmpkern` test asserts this `undef` outcome on these boards.
 
 ## Main loop
 
-The main loop waits for input events with `wfi` between ticks. It prints one `ev=key` marker per event and prints queued audio trace records. Every byte on the serial console is input, control characters included.
+The main loop waits for input events with `wfi` between ticks. It prints one `ev=key` marker per event and prints queued audio trace records. The same work runs inside the blocking calls listed in [Running the ROM](#running-the-rom). Every byte on the serial console is input, control characters included.
 
 ## Maintenance commands
 
@@ -126,7 +126,8 @@ The kernel answers its own commands on the mini UART script channel, next to the
 | Command | Reply |
 |---|---|
 | `dump` | The screen as text: an `ev=screen` line, one `\|`-prefixed line per row, an `ev=screen_end` line, then `ok` |
-| `state` | One line, `ready=<0\|1> rom=<0\|1> heap_free=<bytes>`, then `ok`. `ready=1` once the main loop runs. |
+| `state` | One line, `ready=<0\|1> rom=<0\|1> heap_free=<bytes> files=<n> holo=<0\|1>`, then `ok`. `ready=1` once the main loop runs. `files` counts the open file handles of the ROM and the holotape. `holo=1` while a holotape runs. |
+| `kill` | Ends the innermost running image: the holotape if one runs, else the ROM. It prints `ev=holo_kill` or `ev=rom_kill` with `reason=killed code=1`. |
 | `panic <reason>` | Takes the panic path with `<reason>` as the message. No status line follows. |
 
 Any other line that is not a RobCo-Core command gets `err unknown command`.
@@ -145,7 +146,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `mmu` | `on` | MMU state |
 | `heap` | `base size` | Kernel heap |
 | `tick` | `hz` | Tick rate |
-| `input` | `gpio serial mini script` | Return codes of the input backends, `0` for success |
+| `input` | `gpio serial mini script repeat` | Return codes of the input backends, `0` for success |
 | `audio_init` | `rc backend probe` | Audio backend, `pwm` or `trace` |
 | `clock` | `rtc time` | `rtc=present` or `absent`. `time` in ISO form, or `unset`. |
 | `card` | `rc` | `ok`, `nocard`, `nopart` or `nomount` |
@@ -156,15 +157,24 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `load` | `path size crc addr name` | The ROM passed every check |
 | `error` | `code path` | The ROM failed. `code` is a `rimg` error name. |
 | `rom` | `rc name version size crc` | ROM result. `rc` is `ok` or a `rimg` error name. `name` and `version` are `-` on failure. |
-| `audio` | `op hz vol t_ms` | One tone change, trace backend only |
+| `gfx` | `bb size user heap_end` | The back buffer. `user=0` when no image can reach it. |
+| `audio` | `op hz vol t_ms`, or `op rate len vol crc t_ms` and `op n last t_ms` for a sample | One sound change, trace backend only. Printed by RobCo-Core. See [API.md](API.md#audio). |
+| `audio_drop` | `n` | Trace records the audio driver dropped. Printed by RobCo-Core. |
 | `jump` | `entry` | The kernel enters the ROM |
 | `rom_exit` | `status` | The ROM called `exit` or returned |
-| `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr` | The ROM faulted and was stopped |
-| `error` | `code=umode rc` | `umode_run()` refused the ROM task |
+| `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr`, or `reason=killed code pc` | The ROM faulted, or the `kill` command ended it |
+| `holo_start` | `name` | The kernel enters a holotape |
+| `holo_exit` | `status` | The holotape called `exit` or returned. `status` is 0 to 255. |
+| `holo_kill` | As `rom_kill` | The holotape faulted, or the `kill` command ended it. Not shown on the screen. |
+| `holo_error` | `code name` | The holotape failed to load. `code` is a `rimg` error name. |
+| `reboot` | none | `power(0)`, right before the watchdog reset |
+| `halt` | none | `power(1)`, right before the halt |
+| `error` | `code=umode rc` | `umode_run()` refused the ROM or holotape task |
 | `ready` | `rom` | The kernel is in its main loop. `rom=1` when the ROM passed the check. |
-| `key` | `type src code value` | One input event. `type` is `key`, `dial` or `char`. `src` is `gpio`, `serial` or `script`. |
+| `key` | `type src code value` | One input event, also while an image runs. `type` is `key`, `dial` or `char`. `src` is `gpio`, `serial` or `script`. |
 | `screen`, `screen_end` | `cols rows cx cy scheme` | Screen dump |
 | `panic` | `msg` | Fatal kernel error |
+| `exception` | `type pc lr spsr ...` | A CPU exception in the kernel. Printed by RobCo-Core. |
 
 A boot without a card:
 
@@ -186,13 +196,13 @@ The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https:/
 | `0x00000000`-`0x00007FFF` | Firmware | ATAGS and firmware data |
 | `0x00008000`-`0x003FFFFF` | Pip-OS | Kernel image, stacks, MMU table and heap. The link fails if the image and stacks pass `0x00400000`. |
 | `0x00400000`-`0x007FFFFF` | ROM slot | `ROM1.ROM` after a successful check. The ROM can write it. |
-| `0x00800000`-`0x00BFFFFF` | Holotape slot | Unused yet |
-| `0x00C00000`-`0x00FFFFFF` | Pip-OS | Back buffers, unused yet |
+| `0x00800000`-`0x00BFFFFF` | Holotape slot | The running holotape, loaded by `holo_launch`. It can write it. |
+| `0x00C00000`-`0x00FFFFFF` | Pip-OS | The 320x240 back buffer at `0x00C00000`, kernel-only |
 | `0x01000000`-`0x017FFFFF` | ROM | ROM heap and stack. The startup block and the return stub sit at `0x017F0000`. |
-| `0x01800000`-`0x01FFFFFF` | Holotape | Holotape heap and stack, unused yet |
+| `0x01800000`-`0x01FFFFFF` | Holotape | Holotape heap and stack. Its startup block and return stub sit at `0x01FF0000`. |
 
 The framebuffer lives in GPU memory, mapped non-cacheable.
 
 ## Lore numbers
 
-`64K RAM SYSTEM` and `38911 BYTES FREE` come from the games. They are presentation only, and no code uses them. The memory map spec scales real addresses down by 64 to match the in-game numbers: the 4 MiB Pip-OS region `0x00000000`-`0x003FFFFF` gives `0x00400000 >> 6`, 64 KiB. `38911 BYTES FREE` has no real counterpart.
+`64K RAM SYSTEM` and `38911 BYTES FREE` come from the games. They are presentation only, and no code uses them.

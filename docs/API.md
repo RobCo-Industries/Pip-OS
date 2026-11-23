@@ -159,7 +159,7 @@ A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` 
 
 The clock and sensor rules are in the spec's [Time, sensors and power](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/PIPOS_ABI.md#time-sensors-and-power) section.
 
-- At boot the clock takes the time from the RTC chip when `ev=clock` says `rtc=present` and a time. See [HARDWARE.md](HARDWARE.md) for the chip.
+- At boot the clock takes the time from the RTC chip when `ev=clock` says `rtc=present` and a time. See [HARDWARE.md](HARDWARE.md) for the chip. `set_time` never writes the chip, so a time it sets is lost at the next boot.
 - No sensor other than the clock and no battery monitor is supported.
 
 | `op` | What Pip-OS does |

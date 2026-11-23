@@ -38,6 +38,7 @@ In an existing clone, run `git submodule update --init` first. `CI=1` turns warn
 | `build/pipos.map` | The linker map |
 | `build/roms/<name>/<name>.rom` | The test ROMs, see [TESTING.md](TESTING.md#test-roms) |
 | `build/examples/hello/ROM1.ROM` | The SDK's hello example, see [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md) |
+| `build/examples/tape/BEACON.HTP` | The SDK's tape example |
 
 The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. The link fails when the image and its stacks pass `0x00400000`, the end of the Pip-OS slot. `python3 external/robco-core/tools/rimg.py info build/pipos.img` prints its header.
 
@@ -49,10 +50,11 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `kernel/` | Kernel sources and `robco_config.h` |
 | `kernel/syscall.c`, `kernel/sys.h` | The system-call dispatcher and the interface of the call groups |
 | `kernel/sys_<group>.c` | One group of system calls each: `system`, `gfx`, `input`, `audio`, `time`, `storage`, `holo` |
-| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: `kernel/bootlines.c`, `kernel/settings.c`, `kernel/sysabi.c`, `kernel/sysdispatch.c` |
-| `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk` and `examples/hello` |
+| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: the `*_rules.c` files, `gfx_draw.c`, `input_events.c`, `time_clock.c`, `bootlines.c`, `settings.c`, `sysabi.c` and `sysdispatch.c` in `kernel/` |
+| `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk`, and the examples `examples/hello` and `examples/tape` |
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
+| `tools/check_doc_links.sh` | The doc link check of `make check-pins` |
 | `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py`, test ROMs in `tests/roms/` |
 | `pytest.ini` | The boards the QEMU tests run on by default |
 | `external/robco-core/` | The library |
@@ -83,6 +85,7 @@ The buttons come from the serial console, so type in the terminal that runs `mak
 | Up arrow, Down arrow | UP, DOWN |
 | Left arrow, Right arrow | LEFT, RIGHT |
 | Enter | SELECT |
+| Backspace, Escape | BACK, seen only by the kernel |
 
 The console has no key for the dial. On the default card, the hello example lists `BEACON.HTP`. Press Enter to run it, Up or Down to change its exit status, and Enter again to go back. The ROM then shows `Last run: exit status 3`, or the status you picked. Left ends the ROM.
 
@@ -92,6 +95,6 @@ The console has no key for the dial. On the default card, the hello example list
 make bootdir DIR=/path/to/dir
 ```
 
-This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself. The kernel has not been tested on hardware yet.
+This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself, such as `build/examples/hello/ROM1.ROM`, and holotapes in `PIPBOY/HOLO/`, such as `build/examples/tape/BEACON.HTP`. `make sdk-example` builds both. The kernel has not been tested on hardware yet.
 
 `config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/BOARD_SUPPORT.md#configtxt).
