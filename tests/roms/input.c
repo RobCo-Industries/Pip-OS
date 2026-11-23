@@ -12,7 +12,7 @@
 #define KERNEL_ADDR     0x00008000u
 #define PERIPH_BCM2835  0x20000000u
 #define PERIPH_BCM2836  0x3F000000u
-#define SEQ_EVENTS      14
+#define SEQ_EVENTS      16
 #define BUSY_MS         2000    /* the test's bytes reach the UARTs meanwhile */
 #define HELD_MS         250     /* the test holds the event back 300 ms */
 #define TICK_STEP_MS    10      /* ticks_ms moves in steps of this size */
@@ -173,6 +173,38 @@ static void hold(void)
     phase("ph_release2");
     rt_check_eq("release2_rc", wait_change(&ev), 1);
     rt_check_eq("buttons_released", pip_read_buttons(), 0);
+}
+
+/* Back, button 6 since ABI 1.2: from the script channel, held with
+ * SELECT, then from the console's Backspace, a press and a release. */
+static void back(void)
+{
+    pip_event_t ev;
+
+    phase("ph_back");
+    rt_check_eq("back_rc", wait_change(&ev), 1);
+    rt_check_eq("back_code", (int32_t)ev.code, PIP_BTN_BACK);
+    rt_check_eq("back_value", ev.value, 1);
+    rt_check_eq("buttons_back", pip_read_buttons(), (int32_t)PIP_BTN_BACK_BIT);
+    phase("ph_back_select");
+    rt_check_eq("back_select_rc", wait_change(&ev), 1);
+    rt_check_eq("buttons_back_select", pip_read_buttons(),
+                (int32_t)(PIP_BTN_BACK_BIT | PIP_BTN_SELECT_BIT));
+    phase("ph_back_release");
+    rt_check_eq("back_release_rc", wait_change(&ev), 1);
+    rt_check_eq("back_release_code", (int32_t)ev.code, PIP_BTN_BACK);
+    rt_check_eq("back_release_value", ev.value, 0);
+    rt_check_eq("buttons_select_only", pip_read_buttons(), (int32_t)PIP_BTN_SELECT_BIT);
+    phase("ph_back_release2");
+    rt_check_eq("back_release2_rc", wait_change(&ev), 1);
+    rt_check_eq("buttons_none", pip_read_buttons(), 0);
+    phase("ph_back_console");
+    rt_check_eq("console_back_rc", wait_one(&ev), 1);
+    rt_check("console_back_press", ev.type == PIP_EV_BUTTON && ev.code == PIP_BTN_BACK &&
+             ev.value == 1);
+    rt_check_eq("console_back_rc2", wait_one(&ev), 1);
+    rt_check("console_back_release", ev.type == PIP_EV_BUTTON && ev.code == PIP_BTN_BACK &&
+             ev.value == 0);
 }
 
 static void dial(void)
@@ -388,6 +420,7 @@ int pip_main(const pipos_startup_t *startup)
     faults();
     sequence();
     hold();
+    back();
     dial();
     timed();
     overflow();

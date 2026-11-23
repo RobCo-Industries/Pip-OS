@@ -14,12 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `booted(..., wait="jump")` waits for the jump into the ROM, for a ROM that never exits. `check_golden`, `script` and `press` helpers.
 - `pipos/selftest.h` in `libpip.a`: `pip_check`, `pip_check_eq`, `pip_checks_done` and the marker functions the test ROMs used from `rt.c`.
 - `pipos/ini.h` and `pipos/crc32.h` in `libpip.a`: RobCo-Core's INI parser as `pip_ini_*` and CRC-32/ISO-HDLC as `pip_crc32` and `pip_crc32_update`.
+- ABI 1.2: Back is button 6. Images get its press, release and repeat events with `code` 6 and bit 6 of `read_buttons`, `PIP_BTN_BACK` and `PIP_BTN_BACK_BIT` in `abi.h`. The hello example ends on Back, and the conformance ROM asks for it.
 - The `rtc` script command prints the time the RTC chip holds, and `ev=rtc_set` reports each chip write.
 - `sample_queue` (0x26) plays a sample right after the one that plays, with no gap. One sample can wait; a second call returns `-PIP_EBUSY`. With no sample playing it acts as `sample`.
 - `pip_sample_queue()` in `libpip.a` and `PIP_SYS_SAMPLE_QUEUE` in `abi.h`.
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
 
 ### Changed
+- `PIP_ABI_VERSION` is `0x00010002`. Images sealed for 1.0 and 1.1 still run.
 - RobCo-Core moved to `00d9a2d` for the Back button in the ABI 1.2 spec and `check_doc_links.sh --repo`.
 - `make bootdir` writes the same files as `make sdimage`, the example ROM and tape included, plus the firmware. It builds only the kernel and the files it copies, not `all`.
 - With `ROM=<file>`, `make sdimage`, `run` and `bootdir` no longer build the hello example. The tape example builds only when `TAPE` is left at its default.

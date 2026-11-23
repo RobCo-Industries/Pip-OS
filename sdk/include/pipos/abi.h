@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.1: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.2: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010001  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010002  /* (major << 16) | minor */
 
 /* log: at most this many bytes, NUL included. */
 #define PIP_LOG_MAX         256
@@ -198,7 +198,8 @@
 #define PIP_BTN_RIGHT       3
 #define PIP_BTN_SELECT      4
 #define PIP_BTN_DIAL        5           /* dial press */
-#define PIP_BTN_COUNT       6
+#define PIP_BTN_BACK        6           /* ABI 1.2: never seen on a 1.0 or 1.1 Pip-OS */
+#define PIP_BTN_COUNT       7
 #define PIP_BTN_BIT(n)      (1u << (n))
 #define PIP_BTN_UP_BIT      PIP_BTN_BIT(PIP_BTN_UP)
 #define PIP_BTN_DOWN_BIT    PIP_BTN_BIT(PIP_BTN_DOWN)
@@ -206,6 +207,7 @@
 #define PIP_BTN_RIGHT_BIT   PIP_BTN_BIT(PIP_BTN_RIGHT)
 #define PIP_BTN_SELECT_BIT  PIP_BTN_BIT(PIP_BTN_SELECT)
 #define PIP_BTN_DIAL_BIT    PIP_BTN_BIT(PIP_BTN_DIAL)
+#define PIP_BTN_BACK_BIT    PIP_BTN_BIT(PIP_BTN_BACK)
 #define PIP_DIAL_MAX        359         /* read_dial: 0 to 359 degrees */
 #define PIP_DIAL_DETENT_DEG 15
 #define PIP_EV_BUTTON       1           /* pip_event_t.type */

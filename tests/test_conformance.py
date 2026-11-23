@@ -23,10 +23,11 @@ PART_OFFSET = 2048 * 512
 
 # (press check, short name) of each button prompt, in order.
 BUTTONS = [("btn_up", "btn_up"), ("btn_down", "btn_down"), ("btn_left", "btn_left"),
-           ("btn_right", "btn_right"), ("btn_select", "btn_select"), ("btn_dial_press", "btn_dial")]
+           ("btn_right", "btn_right"), ("btn_select", "btn_select"), ("btn_dial_press", "btn_dial"),
+           ("btn_back", "btn_back")]
 # The script name of each button.
 KEYS = {"btn_up": "up", "btn_down": "down", "btn_left": "left", "btn_right": "right",
-        "btn_select": "select", "btn_dial_press": "dial_push"}
+        "btn_select": "select", "btn_dial_press": "dial_push", "btn_back": "back"}
 
 # (call, [check names]) in the order the ROM runs them. "none" holds the
 # checks of unknown numbers.

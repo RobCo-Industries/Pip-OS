@@ -95,7 +95,7 @@ After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-
 | r0 | `0x017F0000`, the startup block |
 | r1 to r3 | 0 |
 | lr | `0x017F0080`, the return stub. Returning acts like `exit(r0)`. |
-| `abi_version`, `size` | `0x00010000`, 128 |
+| `abi_version`, `size` | `0x00010002`, 128 |
 | `heap_base`, `heap_size` | `0x01000000`, `0x007F0000` |
 | `stack_top`, `kind`, `flags`, `args` | `0x01800000`, 0, 0, empty |
 

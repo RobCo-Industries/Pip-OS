@@ -105,7 +105,7 @@ When the ROM starts, it owns the screen. When it ends, the boot text comes back.
 | BACK | Backspace, or Escape alone |
 | Dial | None |
 
-The dial reports 15 degrees per detent. A ROM reads the controls only while it runs.
+The dial reports 15 degrees per detent. A ROM reads the controls only while it runs. BACK reaches the ROM like the other buttons. The example ROM ends on LEFT or BACK.
 
 ## The example ROM and holotape
 

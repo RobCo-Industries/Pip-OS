@@ -17,7 +17,10 @@ static const uint16_t key_of_button[] = {
     [PIP_BTN_RIGHT] = INPUT_KEY_RIGHT,
     [PIP_BTN_SELECT] = INPUT_KEY_SELECT,
     [PIP_BTN_DIAL] = INPUT_KEY_DIAL_PUSH,
+    [PIP_BTN_BACK] = INPUT_KEY_BACK,
 };
+_Static_assert(sizeof(key_of_button) / sizeof(key_of_button[0]) == PIP_BTN_COUNT,
+               "one key per button");
 
 static int button_of(unsigned code)
 {
@@ -28,6 +31,7 @@ static int button_of(unsigned code)
     case INPUT_KEY_RIGHT:     return PIP_BTN_RIGHT;
     case INPUT_KEY_SELECT:    return PIP_BTN_SELECT;
     case INPUT_KEY_DIAL_PUSH: return PIP_BTN_DIAL;
+    case INPUT_KEY_BACK:      return PIP_BTN_BACK;
     default:                  return -1;
     }
 }

@@ -33,6 +33,11 @@ CHECKS = [
     # hold
     "hold_rc", "hold_value", "buttons_held", "hold2_rc", "buttons_two", "release_rc",
     "release_value", "buttons_one", "release2_rc", "buttons_released",
+    # back
+    "back_rc", "back_code", "back_value", "buttons_back", "back_select_rc",
+    "buttons_back_select", "back_release_rc", "back_release_code", "back_release_value",
+    "buttons_select_only", "back_release2_rc", "buttons_none", "console_back_rc",
+    "console_back_press", "console_back_rc2", "console_back_release",
     # dial
     "dial_back_rc", "dial_back_value", "dial_back", "dial_big_rc", "dial_big",
     # timed
@@ -64,10 +69,12 @@ EARLY = [("key", "select", "1"), ("key", "select", "0"), ("dial", "0", "2")]
 FLOOD_CONSOLE = "\r" * 16
 FLOOD_LINE = "dial 1"
 
-# Kept and dropped keys mixed: back, f1 and characters never reach the ROM.
+# Kept and dropped keys mixed: f1 and characters never reach the ROM. Back
+# does since ABI 1.2, as button 6.
 SEQ_LINES = ["key up", "key back", "key down", "key left", "key f1", "key right", "char x",
              "key select", "key dial_push", "text ab", "dial 3", "dial -2"]
-SEQ_EVENTS = [(1, b, v) for b in range(6) for v in (1, 0)] + [(2, 0, 3), (2, 0, -2)]
+SEQ_EVENTS = ([(1, b, v) for b in (0, 6, 1, 2, 3, 4, 5) for v in (1, 0)]
+              + [(2, 0, 3), (2, 0, -2)])
 
 
 def script_ok(vm, line):
@@ -119,6 +126,18 @@ def test_input_calls(board, kernel_image, test_rom, tmp_path, need_mtools):
         script_ok(vm, "key select 0")
         at_phase(vm, "release2")
         script_ok(vm, "key left 0")
+
+        at_phase(vm, "back")
+        script_ok(vm, "key back 1")
+        at_phase(vm, "back_select")
+        script_ok(vm, "key select 1")
+        at_phase(vm, "back_release")
+        script_ok(vm, "key back 0")
+        at_phase(vm, "back_release2")
+        script_ok(vm, "key select 0")
+        # Backspace on the console: Back pressed and released.
+        at_phase(vm, "back_console")
+        vm.send("\x7f")
 
         at_phase(vm, "dial")
         script_ok(vm, "dial -10")

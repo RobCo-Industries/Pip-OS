@@ -239,7 +239,7 @@ def test_default_card_runs_hello_and_tape(board, kernel_image, need_mtools, defa
         m = one(vm, "rom")
         assert (m["rc"], m["name"], m["version"]) == ("ok", "HELLO", "1.0.0"), vm.serial
         assert one(vm, "holo")["count"] == "1", vm.serial
-        assert "hello: Pip-OS ROM running, ABI 0x00010001\n" in vm.serial
+        assert "hello: Pip-OS ROM running, ABI 0x00010002\n" in vm.serial
         assert "hello: heap 0x01000000, 8128 KiB, stack top 0x01800000\n" in vm.serial
         assert "hello: This line came from the heap.\n" in vm.serial
         assert "hello: slept " in vm.serial
@@ -276,3 +276,22 @@ def test_default_card_runs_hello_and_tape(board, kernel_image, need_mtools, defa
         assert one(vm, "ready")["rom"] == "1"
         assert [m["status"] for m in pipos_markers(vm, "holo_exit")] == ["4", "3"], vm.serial
         no_exception(vm)
+
+
+def test_default_card_back_ends_hello(board, kernel_image, need_mtools, default_card, tmp_path):
+    """Back reaches the ROM since ABI 1.2: the hello example ends on it,
+    from the script channel and from the console's Escape alone."""
+    for keys in (["key back"], "\x1b"):
+        sd = tmp_path / "sd.img"
+        shutil.copyfile(default_card, sd)
+        with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+            serial_count(vm, MENU, 1)
+            if isinstance(keys, str):
+                vm.send(keys)
+            else:
+                for line in keys:
+                    assert vm.script(line, timeout=TIMEOUT).status == "ok"
+            vm.wait_for(READY, timeout=TIMEOUT)
+            assert "hello: bye\n" in vm.serial
+            assert one(vm, "rom_exit")["status"] == "0", vm.serial
+            no_exception(vm)

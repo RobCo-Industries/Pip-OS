@@ -150,6 +150,7 @@ static const struct {
       PIP_BTN_SELECT },
     { "btn_dial_press", "btn_dial_state", "btn_dial_clear", "Press and hold the dial in",
       PIP_BTN_DIAL },
+    { "btn_back", "btn_back_state", "btn_back_clear", "Press and hold BACK", PIP_BTN_BACK },
 };
 
 static int is_button(const pip_event_t *ev, int code, int32_t value)
@@ -439,7 +440,7 @@ void run_interactive(void)
         "btn_down_clear", "btn_left", "btn_left_state", "btn_left_clear", "btn_right",
         "btn_right_state", "btn_right_clear", "btn_select", "btn_select_state",
         "btn_select_clear", "btn_dial_press", "btn_dial_state", "btn_dial_clear",
-        "dial_clockwise", "dial_cw_position", "dial_counter", "dial_ccw_position",
+        "btn_back", "btn_back_state", "btn_back_clear", "dial_clockwise", "dial_cw_position", "dial_counter", "dial_ccw_position",
         "heard_tone", "heard_tune", "heard_sample", "heard_chain", "picture_right",
     };
     pip_gfx_info_t gi;
@@ -451,10 +452,10 @@ void run_interactive(void)
     dim = (fg >> 1) & 0x7F7F7Fu;
     if (auto_mode || !intro()) {
         for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
-            cur_call = i < 18 ? (i % 3 ? "read_buttons" : "wait_event") :
-                       i < 22 ? "read_dial" : i == 22 ? "tone" :
-                       i == 23 ? "play_seq" : i == 24 ? "sample" :
-                       i == 25 ? "sample_queue" : "present";
+            cur_call = i < 21 ? (i % 3 ? "read_buttons" : "wait_event") :
+                       i < 25 ? "read_dial" : i == 25 ? "tone" :
+                       i == 26 ? "play_seq" : i == 27 ? "sample" :
+                       i == 28 ? "sample_queue" : "present";
             skip(names[i]);
         }
         return;

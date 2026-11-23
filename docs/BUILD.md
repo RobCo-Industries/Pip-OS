@@ -116,9 +116,9 @@ The buttons come from the serial console, so type in the terminal that runs `mak
 | Up arrow, Down arrow | UP, DOWN |
 | Left arrow, Right arrow | LEFT, RIGHT |
 | Enter | SELECT |
-| Backspace, Escape | BACK, seen only by the kernel |
+| Backspace, Escape | BACK, button 6 of the ROM |
 
-The console has no key for the dial. On the default card, the hello example lists `BEACON.HTP`. Press Enter to run it, Up or Down to change its exit status, and Enter again to go back. The ROM then shows `Last run: exit status 3`, or the status you picked. Left ends the ROM.
+The console has no key for the dial. On the default card, the hello example lists `BEACON.HTP`. Press Enter to run it, Up or Down to change its exit status, and Enter again to go back. The ROM then shows `Last run: exit status 3`, or the status you picked. Left or Backspace ends the ROM.
 
 ## A real card
 

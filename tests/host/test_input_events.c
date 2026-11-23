@@ -30,7 +30,7 @@ TEST(map_every_key_code)
 {
     static const int want[INPUT_KEY_COUNT + 2] = {
         -1, PIP_BTN_UP, PIP_BTN_DOWN, PIP_BTN_LEFT, PIP_BTN_RIGHT, PIP_BTN_SELECT,
-        -1, -1, -1, -1, -1, PIP_BTN_DIAL, -1, -1,
+        PIP_BTN_BACK, -1, -1, -1, -1, PIP_BTN_DIAL, -1, -1,
     };
     unsigned code;
     int32_t v;
@@ -209,15 +209,65 @@ TEST(buttons_from_core_hold)
     for (code = 0; code < INPUT_KEY_COUNT; code++) {
         core_push(key(code, INPUT_PRESS, INPUT_SRC_GPIO));
     }
-    /* Back and F1 to F4 have no bit. */
-    CHECK_EQ(pipos_input_buttons(core_key_down), 0x3fu);
+    /* F1 to F4 have no bit. Back is bit 6 since ABI 1.2. */
+    CHECK_EQ(pipos_input_buttons(core_key_down), 0x7fu);
     core_drain(&s);
     core_push(key(INPUT_KEY_UP, INPUT_PRESS, INPUT_SRC_SCRIPT));
     core_push(key(INPUT_KEY_UP, INPUT_RELEASE, INPUT_SRC_GPIO));
-    CHECK_EQ(pipos_input_buttons(core_key_down), 0x3fu);
+    CHECK_EQ(pipos_input_buttons(core_key_down), 0x7fu);
     core_push(key(INPUT_KEY_UP, INPUT_RELEASE, INPUT_SRC_SCRIPT));
     core_push(key(INPUT_KEY_RIGHT, INPUT_RELEASE, INPUT_SRC_GPIO));
-    CHECK_EQ(pipos_input_buttons(core_key_down), 0x3fu & ~(PIP_BTN_UP_BIT | PIP_BTN_RIGHT_BIT));
+    CHECK_EQ(pipos_input_buttons(core_key_down), 0x7fu & ~(PIP_BTN_UP_BIT | PIP_BTN_RIGHT_BIT));
+}
+
+/* Back: press, repeat and release events with code 6, and bit 6 of the
+ * mask while held, alone and together with another button. */
+TEST(back_button)
+{
+    pipos_input_state_t s;
+    pip_event_t out;
+    static const int32_t values[] = { INPUT_PRESS, INPUT_REPEAT, INPUT_RELEASE };
+    unsigned i;
+
+    pipos_input_state_init(&s);
+    core_init();
+    core_push(key(INPUT_KEY_BACK, INPUT_PRESS, INPUT_SRC_GPIO));
+    CHECK_EQ(pipos_input_buttons(core_key_down), PIP_BTN_BACK_BIT);
+    CHECK_EQ(PIP_BTN_BACK_BIT, 0x40u);
+    core_push(key(INPUT_KEY_SELECT, INPUT_PRESS, INPUT_SRC_GPIO));
+    CHECK_EQ(pipos_input_buttons(core_key_down), PIP_BTN_BACK_BIT | PIP_BTN_SELECT_BIT);
+    core_push(key(INPUT_KEY_BACK, INPUT_REPEAT, INPUT_SRC_GPIO));
+    core_push(key(INPUT_KEY_BACK, INPUT_RELEASE, INPUT_SRC_GPIO));
+    CHECK_EQ(pipos_input_buttons(core_key_down), PIP_BTN_SELECT_BIT);
+    core_push(key(INPUT_KEY_SELECT, INPUT_RELEASE, INPUT_SRC_GPIO));
+    CHECK_EQ(pipos_input_buttons(core_key_down), 0u);
+    core_drain(&s);
+    for (i = 0; i < 5; i++) {
+        CHECK_EQ(pipos_input_pop(&s, &out), 1);
+        CHECK_EQ(out.type, PIP_EV_BUTTON);
+    }
+    CHECK_EQ(pipos_input_pop(&s, &out), 0);
+
+    /* The events in order, Back's with code 6. */
+    pipos_input_state_init(&s);
+    for (i = 0; i < 3; i++) {
+        input_event_t ev = key(INPUT_KEY_BACK, values[i], INPUT_SRC_SERIAL);
+
+        CHECK_EQ(pipos_input_feed(&s, &ev, 1, 0, 0), 1);
+    }
+    for (i = 0; i < 3; i++) {
+        CHECK_EQ(pipos_input_pop(&s, &out), 1);
+        CHECK_EQ(out.type, PIP_EV_BUTTON);
+        CHECK_EQ(out.code, 6u);
+        CHECK_EQ(out.value, values[i]);
+    }
+    /* Not delivered while no image runs, like the other buttons. */
+    {
+        input_event_t ev = key(INPUT_KEY_BACK, INPUT_PRESS, INPUT_SRC_GPIO);
+
+        CHECK_EQ(pipos_input_feed(&s, &ev, 0, 0, 0), 0);
+        CHECK_EQ(pipos_input_pop(&s, &out), 0);
+    }
 }
 
 /*

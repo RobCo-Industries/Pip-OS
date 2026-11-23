@@ -4,7 +4,7 @@ A running image calls the kernel with `svc #0`. The call number goes in r7, the 
 
 [`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers, the error codes, the structs and every limit. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for every call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
-Pip-OS implements ABI 1.1, `PIP_ABI_VERSION` `0x00010001`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
+Pip-OS implements ABI 1.2, `PIP_ABI_VERSION` `0x00010002`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 or 1.1 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
 
 | Error | Value |
 |---|---|
@@ -102,13 +102,15 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 | Input | Event |
 |---|---|
 | Up, down, left, right, select, dial push | `PIP_EV_BUTTON`, `code` 0 to 5 |
+| Back | `PIP_EV_BUTTON`, `code` 6, `PIP_BTN_BACK`. New in ABI 1.2. |
 | One dial turn | `PIP_EV_DIAL`, `code` 0, the signed detent count |
-| Back, F1 to F4, characters | Nothing. Only the kernel sees them. |
+| F1 to F4, characters | Nothing. Only the kernel sees them. |
 
 - Events come from the GPIO buttons and dial, the serial console and the script channel alike.
 - Every input call and the wait in `sleep_ms` take new input first. `wait_event` runs the kernel's main-loop work while it blocks, so script commands still answer.
 - RobCo-Core keeps a 32-event queue in front of the image's queue. It fills only while the kernel does not poll. Pip-OS sets it to drop its oldest event too, so when more than 32 events arrive between two polls, the image gets the newest 32 in order. Characters and kernel-only keys count toward the 32.
 - At image start the kernel reads every byte that waits in the UARTs and keeps those events. Bytes that reach a UART later belong to the image, even if the host sent them earlier. The mini UART holds 8 bytes and the console UART 16. QEMU keeps the rest until the kernel reads.
+- Back comes from its GPIO pin, from Backspace or a lone Escape on the serial console, and from `key back` on the script channel. It sends press, release and repeat events like the other buttons, and sets bit 6, `PIP_BTN_BACK_BIT`, of `read_buttons` while held. The kernel uses Back for nothing else. An image built for ABI 1.2 that runs on a 1.0 or 1.1 Pip-OS never sees it.
 - `read_buttons` is the OR of the buttons each source holds. A release clears only the button its own source pressed.
 - `read_dial` starts at 0 at boot.
 - The kernel prints an `ev=key` marker for every input event, also while an image runs.
