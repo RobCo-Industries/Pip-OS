@@ -43,6 +43,36 @@ In an existing clone, run `git submodule update --init` first. `CI=1` turns warn
 
 The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. The link fails when the image and its stacks pass `0x00400000`, the end of the Pip-OS slot. `python3 external/robco-core/tools/rimg.py info build/pipos.img` prints its header.
 
+## Make targets and variables
+
+| Target | What it does |
+|---|---|
+| `make`, `make all` | The kernel, the test ROMs and holotapes, the SDK examples and the conformance ROM |
+| `make kernel` | `build/pipos.img`, its ELF and map only |
+| `make sdimage` | `build/sd.img`, see [SD card image for QEMU](#sd-card-image-for-qemu) |
+| `make run` | Builds the card and boots it in QEMU on this terminal |
+| `make bootdir DIR=<dir>` | The files of the card plus the firmware, see [A real card](#a-real-card) |
+| `make conformance`, `make conformance-card`, `make conformance-bootdir DIR=<dir>` | The conformance ROM, its card and its real-card files |
+| `make sdk-example`, `make test-roms` | The SDK examples and the test ROMs only |
+| `make test`, `make test-host`, `make test-target` | The tests, see [TESTING.md](TESTING.md) |
+| `make check-pins` | The CI pins and the RobCo-Core doc links match the submodule |
+| `make clean` | Removes `build/` |
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BUILD` | `build` | Output folder. From another repository, pass an absolute path. |
+| `ROM` | The hello example | The card's `PIPBOY/ROM1.ROM`, or `none` |
+| `TAPE` | The tape example | Holotapes for `PIPBOY/HOLO/`, separated by spaces, or `none` |
+| `CARD_DIR` | unset | A folder tree copied onto the card after the standard files. A file at the path of a standard file stops the build. |
+| `BOARD` | `all` | QEMU board for `test` and `run`. `run` takes `raspi2b` for `all`. |
+| `WINDOW` | unset | `WINDOW=1` makes `run` open the display window |
+| `DIR` | unset | The folder for `bootdir` and `conformance-bootdir` |
+| `FIRMWARE` | unset | `FIRMWARE=0` leaves the firmware out of `bootdir` |
+| `CI` | unset | `CI=1` turns warnings into errors |
+| `PYTHON` | `python3` | Python for the tools |
+
+A ROM project in another repository calls these targets with `make -C <pip-os>`. See [Using Pip-OS from another repository](ROM_DEVELOPMENT.md#using-pip-os-from-another-repository).
+
 ## Layout
 
 | Path | Content |
