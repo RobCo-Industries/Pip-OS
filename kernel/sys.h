@@ -38,7 +38,7 @@ enum {
 #define PIPOS_SYS_OWNER(nr)                                                        \
     ((nr) >= PIP_SYS_DRAW_LINE && (nr) <= PIP_SYS_SET_FONT ? PIPOS_GROUP_GFX :      \
      (nr) >= PIP_SYS_READ_BUTTONS && (nr) <= PIP_SYS_WAIT_EVENT ? PIPOS_GROUP_INPUT : \
-     (nr) >= PIP_SYS_TONE && (nr) <= PIP_SYS_PLAY_SEQ ? PIPOS_GROUP_AUDIO :        \
+     (nr) >= PIP_SYS_TONE && (nr) <= PIP_SYS_SAMPLE_QUEUE ? PIPOS_GROUP_AUDIO :    \
      (nr) == PIP_SYS_READ_SENSOR || (nr) == PIP_SYS_SENSOR_AVAILABLE ||           \
      (nr) == PIP_SYS_GET_TIME || (nr) == PIP_SYS_GET_BATTERY ||                    \
      (nr) == PIP_SYS_POWER || (nr) == PIP_SYS_SET_TIME ? PIPOS_GROUP_TIME :        \

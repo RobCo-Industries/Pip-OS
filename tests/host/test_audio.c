@@ -123,3 +123,131 @@ TEST(volume_swap)
     CHECK_EQ(pipos_audio_volume_swap(&level, 0), 0);
     CHECK_EQ(level, 0);
 }
+
+/* sample_queue's buffer state: every transition of audio_rules.h. */
+#define PLAY_WAIT(q, p, w) do { CHECK_EQ((q).play, (p)); CHECK_EQ((q).wait, (w)); } while (0)
+
+static pipos_pcmq_t q_state(int play, int wait)
+{
+    pipos_pcmq_t q = { play, wait };
+
+    return q;
+}
+
+TEST(pcmq_idle_starts)
+{
+    pipos_pcmq_t q = PIPOS_PCMQ_IDLE;
+    pipos_pcmq_plan_t p;
+
+    /* Silence, or a tone or a sequence (busy, nothing to queue behind). */
+    pipos_pcmq_sync(&q, 0, 0);
+    p = pipos_pcmq_plan(&q, 0);
+    CHECK_EQ(p.action, PIPOS_PCMQ_START);
+    CHECK_EQ(p.buf, 0);
+    pipos_pcmq_sync(&q, 0, 1);
+    p = pipos_pcmq_plan(&q, 0);
+    CHECK_EQ(p.action, PIPOS_PCMQ_START);
+    PLAY_WAIT(q, -1, -1);
+    pipos_pcmq_started(&q, 0);
+    PLAY_WAIT(q, 0, -1);
+}
+
+TEST(pcmq_queue_while_playing)
+{
+    pipos_pcmq_t q;
+    pipos_pcmq_plan_t p;
+    int b;
+
+    for (b = 0; b < 2; b++) {
+        q = q_state(b, -1);
+        pipos_pcmq_sync(&q, 1, 1);
+        PLAY_WAIT(q, b, -1);
+        p = pipos_pcmq_plan(&q, 1);
+        CHECK_EQ(p.action, PIPOS_PCMQ_QUEUE);
+        CHECK_EQ(p.buf, 1 - b); /* never the buffer that plays */
+        pipos_pcmq_queued(&q, p.buf);
+        PLAY_WAIT(q, b, 1 - b);
+    }
+}
+
+TEST(pcmq_busy_while_one_waits)
+{
+    pipos_pcmq_t q = q_state(0, 1);
+    pipos_pcmq_plan_t p;
+
+    pipos_pcmq_sync(&q, 0, 1);
+    PLAY_WAIT(q, 0, 1);
+    p = pipos_pcmq_plan(&q, 0);
+    CHECK_EQ(p.action, PIPOS_PCMQ_BUSY);
+    PLAY_WAIT(q, 0, 1);
+}
+
+TEST(pcmq_switch_frees_old_buffer)
+{
+    pipos_pcmq_t q = q_state(0, 1);
+    pipos_pcmq_plan_t p;
+
+    pipos_pcmq_sync(&q, 1, 1); /* buffer 1 took over */
+    PLAY_WAIT(q, 1, -1);
+    p = pipos_pcmq_plan(&q, 1);
+    CHECK_EQ(p.action, PIPOS_PCMQ_QUEUE);
+    CHECK_EQ(p.buf, 0);
+    q = q_state(1, 0);
+    pipos_pcmq_sync(&q, 1, 1);
+    PLAY_WAIT(q, 0, -1);
+    CHECK_EQ(pipos_pcmq_plan(&q, 1).buf, 1);
+}
+
+TEST(pcmq_underrun_acts_as_sample)
+{
+    pipos_pcmq_t q;
+    pipos_pcmq_plan_t p;
+
+    q = q_state(1, -1); /* the last chunk ended */
+    pipos_pcmq_sync(&q, 0, 0);
+    PLAY_WAIT(q, -1, -1);
+    p = pipos_pcmq_plan(&q, 0);
+    CHECK_EQ(p.action, PIPOS_PCMQ_START);
+    CHECK_EQ(p.buf, 0);
+    q = q_state(0, 1); /* both chunks ended */
+    pipos_pcmq_sync(&q, 0, 0);
+    PLAY_WAIT(q, -1, -1);
+    CHECK_EQ(pipos_pcmq_plan(&q, 0).action, PIPOS_PCMQ_START);
+    /* Nothing waits, but the driver cannot queue: start, never copy beside it. */
+    q = q_state(0, -1);
+    pipos_pcmq_sync(&q, 0, 1);
+    CHECK_EQ(pipos_pcmq_plan(&q, 0).action, PIPOS_PCMQ_START);
+}
+
+TEST(pcmq_ended_between_check_and_queue)
+{
+    pipos_pcmq_t q = q_state(0, -1);
+    pipos_pcmq_plan_t p;
+
+    pipos_pcmq_sync(&q, 1, 1);
+    p = pipos_pcmq_plan(&q, 1);
+    CHECK_EQ(p.buf, 1);
+    /* audio_pcm_queue() said AUDIO_ERR_STATE: the kernel starts buffer 1. */
+    pipos_pcmq_drop(&q);
+    pipos_pcmq_started(&q, p.buf);
+    PLAY_WAIT(q, 1, -1);
+    CHECK_EQ(pipos_pcmq_plan(&q, 1).buf, 0);
+}
+
+TEST(pcmq_drop_in_every_state)
+{
+    static const int states[][2] = { { -1, -1 }, { 0, -1 }, { 1, -1 }, { 0, 1 }, { 1, 0 } };
+    unsigned i;
+
+    /* tone, sample, play_seq, audio_stop and the image hooks. */
+    for (i = 0; i < sizeof(states) / sizeof(states[0]); i++) {
+        pipos_pcmq_t q = q_state(states[i][0], states[i][1]);
+
+        pipos_pcmq_drop(&q);
+        PLAY_WAIT(q, -1, -1);
+        CHECK_EQ(pipos_pcmq_plan(&q, 1).action, PIPOS_PCMQ_START);
+        /* sample after the drop: buffer 0 plays, nothing waits. */
+        pipos_pcmq_started(&q, 0);
+        PLAY_WAIT(q, 0, -1);
+    }
+}

@@ -129,6 +129,11 @@ int32_t pip_play_seq(const pip_note_t *notes, uint32_t count)
     return pip_syscall(PIP_SYS_PLAY_SEQ, P(notes), U(count), 0, 0);
 }
 
+int32_t pip_sample_queue(const uint8_t *data, uint32_t length)
+{
+    return pip_syscall(PIP_SYS_SAMPLE_QUEUE, P(data), U(length), 0, 0);
+}
+
 int32_t pip_read_sensor(uint32_t sensor, uint32_t *value)
 {
     return pip_syscall(PIP_SYS_READ_SENSOR, U(sensor), P(value), 0, 0);

@@ -118,7 +118,7 @@ static const struct {
     { 0x0F, "set_font" }, { 0x10, "read_buttons" }, { 0x11, "read_dial" },
     { 0x12, "poll_event" }, { 0x13, "wait_event" }, { 0x20, "tone" }, { 0x21, "sample" },
     { 0x22, "audio_stop" }, { 0x23, "volume" }, { 0x24, "audio_status" },
-    { 0x25, "play_seq" }, { 0x30, "read_sensor" }, { 0x31, "sensor_available" },
+    { 0x25, "play_seq" }, { 0x26, "sample_queue" }, { 0x30, "read_sensor" }, { 0x31, "sensor_available" },
     { 0x40, "get_time" }, { 0x41, "get_battery" }, { 0x42, "ticks_ms" },
     { 0x43, "sleep_ms" }, { 0x44, "exit" }, { 0x45, "sys_info" }, { 0x46, "mem_info" },
     { 0x47, "power" }, { 0x48, "log" }, { 0x49, "rand" }, { 0x4A, "set_time" },

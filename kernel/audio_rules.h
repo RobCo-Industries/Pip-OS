@@ -14,7 +14,7 @@
 /* 0, or -PIP_EINVAL unless hz is 20 to 20000 and ms is 1 to 60000. */
 int32_t pipos_audio_check_tone(uint32_t hz, uint32_t ms);
 
-/* 0, or -PIP_EINVAL unless len is 1 to PIP_SAMPLE_MAX (65536) bytes. */
+/* sample and sample_queue: 0, or -PIP_EINVAL unless len is 1 to PIP_SAMPLE_MAX (65536) bytes. */
 int32_t pipos_audio_check_sample(uint32_t len);
 
 /* 0, or -PIP_EINVAL unless count is 1 to 256. */
@@ -35,5 +35,46 @@ int32_t pipos_audio_convert(const pip_note_t *in, uint32_t count, audio_note_t *
  * -PIP_EINVAL and keeps *level when level is above 100.
  */
 int32_t pipos_audio_volume_swap(unsigned *level, uint32_t new_level);
+
+/*
+ * sample_queue's two PCM buffers, 0 and 1. The driver does not copy, so
+ * the kernel must know which buffer it may still read:
+ *   play  the buffer that plays, or -1 when no sample of the image plays;
+ *   wait  the buffer queued behind it, or -1;
+ *   free  a buffer that is neither: the only one a copy may write.
+ *
+ * pipos_pcmq_sync() first brings the state up to date from two driver
+ * facts read under one irq_save(): can_queue = audio_pcm_can_queue() and
+ * busy = audio_busy(). Both come from the driver, so they cannot go stale:
+ *   busy 0                 the sound ended: both free (idle);
+ *   wait set, can_queue 1  the waiting buffer took over: play = wait, the
+ *                          old one is free (the driver's lifetime rule).
+ * Then pipos_pcmq_plan() picks the action:
+ *   wait set               BUSY: nothing changes;
+ *   play set, can_queue 1  QUEUE: copy into the free buffer, then queue it;
+ *   otherwise              START as sample: stop, copy into buffer 0, start.
+ * The caller then reports what the driver did: pipos_pcmq_queued() sets
+ * wait, pipos_pcmq_started() sets play and clears wait. tone, sample's
+ * stop, play_seq, audio_stop and the image hooks call pipos_pcmq_drop().
+ */
+typedef struct {
+    int play;
+    int wait;
+} pipos_pcmq_t;
+
+#define PIPOS_PCMQ_IDLE { -1, -1 }
+
+enum { PIPOS_PCMQ_BUSY, PIPOS_PCMQ_QUEUE, PIPOS_PCMQ_START };
+
+typedef struct {
+    int action; /* PIPOS_PCMQ_* */
+    int buf;    /* the buffer to copy into, for QUEUE and START */
+} pipos_pcmq_plan_t;
+
+void pipos_pcmq_sync(pipos_pcmq_t *q, int can_queue, int busy);
+pipos_pcmq_plan_t pipos_pcmq_plan(const pipos_pcmq_t *q, int can_queue);
+void pipos_pcmq_queued(pipos_pcmq_t *q, int buf);
+void pipos_pcmq_started(pipos_pcmq_t *q, int buf);
+void pipos_pcmq_drop(pipos_pcmq_t *q);
 
 #endif
