@@ -11,7 +11,12 @@
  */
 #include "conform.h"
 
-#define MAX_RESULTS   192
+/*
+ * Result slots: a full run records 194 checks. The last slot is kept for
+ * the results_overflow FAIL, so a check that does not fit is never lost
+ * without a trace.
+ */
+#define MAX_RESULTS   320
 #define NAME_COLS     28          /* name characters shown on screen */
 #define ROWS_PER_PAGE 12
 #define ROW_H         PIP_FONT_H
@@ -33,7 +38,10 @@ typedef struct {
 } result_t;
 
 static result_t results[MAX_RESULTS];
-static int nresults;
+static int nresults;      /* checks run: the n of the serial lines */
+static int nstored;       /* results in the table */
+static int ndropped;      /* checks that found no free slot */
+static int overflow_row;   /* 1 while record_overflow() records its FAIL */
 static int counts[4];
 const char *cur_call = "-";
 static uint32_t fg = 0x33E066, dim;
@@ -59,8 +67,9 @@ void ck_res(const char *name, int res, int has_values, int32_t got, int32_t expe
     char line[PIP_LOG_MAX];
     int n;
 
-    if (nresults < MAX_RESULTS) {
-        result_t *r = &results[nresults];
+    /* The last slot holds only the overflow FAIL: see record_overflow(). */
+    if (nstored < MAX_RESULTS - 1 || (overflow_row && nstored == MAX_RESULTS - 1)) {
+        result_t *r = &results[nstored++];
 
         r->name = name;
         r->call = cur_call;
@@ -68,6 +77,8 @@ void ck_res(const char *name, int res, int has_values, int32_t got, int32_t expe
         r->has_values = (uint8_t)has_values;
         r->got = got;
         r->expected = expected;
+    } else {
+        ndropped++;
     }
     nresults++;
     counts[res]++;
@@ -94,6 +105,24 @@ void ck(const char *name, int ok)
 void ck_eq(const char *name, int32_t got, int32_t expected)
 {
     ck_res(name, got == expected ? R_PASS : R_FAIL, 1, got, expected);
+}
+
+/*
+ * Checks that found no free slot make one FAIL in the reserved last slot:
+ * on screen, on serial, in the counts and in the exit status. got is the
+ * number of checks dropped from the pages.
+ */
+static void record_overflow(void)
+{
+    int dropped = ndropped;
+
+    if (dropped == 0) {
+        return;
+    }
+    cur_call = "none";
+    overflow_row = 1;
+    ck_res("results_overflow", R_FAIL, 1, dropped, 0);
+    overflow_row = 0;
 }
 
 /* ---- screen ---------------------------------------------------------------- */
@@ -170,7 +199,7 @@ static int nrows;
 
 static void build_rows(void)
 {
-    int i, n = nresults < MAX_RESULTS ? nresults : MAX_RESULTS;
+    int i, n = nstored;
 
     nrows = 0;
     for (i = 0; i < n; i++) {
@@ -229,7 +258,7 @@ static void draw_row(int y, const row_t *row)
 static void draw_page(int page, int pages)
 {
     char line[48];
-    int i;
+    int i, first = 0, last = 0;
 
     pip_clear(0);
     pip_snprintf(line, sizeof(line), "RESULTS  page %d of %d", page + 1, pages);
@@ -237,7 +266,15 @@ static void draw_page(int page, int pages)
     pip_set_color(dim, PIP_COLOR_NONE);
     pip_draw_line(0, TOP_Y - 3, PIP_SCREEN_W - 1, TOP_Y - 3);
     for (i = 0; i < ROWS_PER_PAGE && page * ROWS_PER_PAGE + i < nrows; i++) {
-        draw_row(TOP_Y + i * ROW_H, &rows[page * ROWS_PER_PAGE + i]);
+        const row_t *row = &rows[page * ROWS_PER_PAGE + i];
+
+        draw_row(TOP_Y + i * ROW_H, row);
+        if (row->result >= 0 && !row->detail) {
+            if (first == 0) {
+                first = row->result + 1;
+            }
+            last = row->result + 1;
+        }
     }
     pip_draw_line(0, PIP_SCREEN_H - 19, PIP_SCREEN_W - 1, PIP_SCREEN_H - 19);
     text(0, PIP_SCREEN_H - PIP_FONT_H, dim,
@@ -245,7 +282,9 @@ static void draw_page(int page, int pages)
     /* Drop stale presses before the page shows: a press after this is an answer. */
     drain_events();
     pip_present();
-    pip_printf("@RC stage=conform ev=page n=%d of=%d\n", page + 1, pages);
+    /* first and last: the row numbers of the checks this page shows. */
+    pip_printf("@RC stage=conform ev=page n=%d of=%d first=%d last=%d last_name=%s\n",
+               page + 1, pages, first, last, last ? results[last - 1].name : "-");
 }
 
 /* The page of row r. */
@@ -292,7 +331,7 @@ static void fail_line(char *line, size_t size)
 }
 
 /* Shows the summary. Returns the button pressed, or -1. */
-static int show_summary(void)
+static int show_summary(int pages)
 {
     char line[48];
     int i;
@@ -321,8 +360,8 @@ static int show_summary(void)
     drain_events();
     pip_present();
     pip_printf("@RC stage=conform ev=summary total=%d pass=%d fail=%d skip=%d absent=%d "
-               "mode=%s\n", nresults, counts[R_PASS], counts[R_FAIL], counts[R_SKIP],
-               counts[R_ABSENT], auto_mode ? "auto" : "interactive");
+               "mode=%s pages=%d rows=%d\n", nresults, counts[R_PASS], counts[R_FAIL], counts[R_SKIP],
+               counts[R_ABSENT], auto_mode ? "auto" : "interactive", pages, nstored);
     if (auto_mode) {
         pip_sleep_ms(AUTO_SUMMARY_MS);
         return -1;
@@ -355,7 +394,7 @@ static void show_results(void)
         int b;
 
         if (page >= pages) {
-            b = show_summary();
+            b = show_summary(pages);
             if (b != PIP_BTN_UP && b != PIP_BTN_LEFT) {
                 return;
             }
@@ -396,6 +435,7 @@ int pip_main(const pipos_startup_t *startup)
                auto_mode ? "auto" : "interactive", PIP_SYSCALL_COUNT);
     run_automatic();
     run_interactive();
+    record_overflow();
     show_results();
     return counts[R_FAIL] ? 1 : 0;
 }

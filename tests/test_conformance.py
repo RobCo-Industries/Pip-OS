@@ -217,6 +217,24 @@ def assert_results(vm, skip):
     summary = found[0]
     assert (summary["total"], summary["fail"], summary["skip"], summary["absent"]) == \
         (str(len(NAMES)), "0", str(len(skip)), str(len(ABSENT))), summary
+    assert_pages_show_all(vm, summary)
+
+
+def assert_pages_show_all(vm, summary):
+    """The pages show one row per serial check line, the last check last."""
+    lines = len(conform(vm, "check"))
+    assert lines == len(NAMES), vm.serial
+    assert summary["rows"] == str(lines), summary
+    pages = int(summary["pages"])
+    shown = conform(vm, "page")[:pages]
+    assert [m["n"] for m in shown] == [str(i) for i in range(1, pages + 1)], vm.serial
+    # Row numbers run 1 to the last check with no gap from page to page.
+    expect = 1
+    for m in shown:
+        assert m["first"] == str(expect), (m, vm.serial)
+        expect = int(m["last"]) + 1
+    assert shown[-1]["last"] == str(lines), shown[-1]
+    assert shown[-1]["last_name"] == NAMES[-1], shown[-1]
 
 
 def one_conform(vm, ev):
