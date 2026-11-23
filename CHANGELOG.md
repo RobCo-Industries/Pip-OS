@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
 
 ### Changed
+- RobCo-Core moved to `00d9a2d` for the Back button in the ABI 1.2 spec and `check_doc_links.sh --repo`.
 - The tests build subprocess environments with RobCo-Core's `minimal_env()` instead of a copy of the host environment, so a failing test cannot print it. `tests/test_env_hygiene.py` guards the rule.
 - `make check-pins` uses RobCo-Core's shared `tools/check_doc_links.sh` through the new `make check-doc-links`. A short hash in a RobCo-Core link is now an error. Pip-OS's own copy is gone.
 - `set_time` writes the RTC chip when one answers, so the time survives a reboot. A failed chip write returns `-PIP_EIO`; the clock keeps the new value. A time outside 2000 to 2099 sets the clock only.
