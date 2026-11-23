@@ -507,6 +507,8 @@ static int32_t tape_size(void)
     static pip_dirent_t d[PIP_DIR_LIST_MAX];
     int32_t n = pip_dir_list("/PIPBOY/HOLO", d, PIP_DIR_LIST_MAX, 0), i;
 
+    n = n > PIP_DIR_LIST_MAX ? PIP_DIR_LIST_MAX : n;   /* a wrong count reads no further */
+
     for (i = 0; i < n; i++) {
         if (strcmp(d[i].name, TAPE_FILE) == 0 && !(d[i].flags & PIP_DIRENT_DIR)) {
             return (int32_t)d[i].size;
@@ -544,13 +546,14 @@ void check_file_read(void)
     static uint8_t buf[512];
     int32_t size = tape_size();
     int32_t h = pip_file_open(TAPE_PATH), n, total = 0, rc = 0;
-    int magic_ok = 0;
+    int magic_ok = 0, reads = 0;
 
     if (h < 0) {
         ck_res("read_whole", R_FAIL, 1, h, 0);
         return;
     }
-    while ((n = pip_file_read(h, buf, sizeof(buf))) > 0) {
+    /* At most 8 MiB: a kernel that never reports the end cannot hang the run. */
+    while ((n = pip_file_read(h, buf, sizeof(buf))) > 0 && ++reads < 16384) {
         if (total == 0 && n >= 0x28) {
             magic_ok = memcmp(buf + 0x20, "ROBCO78", 8) == 0;
         }
@@ -595,6 +598,8 @@ void check_holo_enumerate(void)
     int32_t n = pip_holo_enumerate(hi, PIP_HOLO_ENUM_MAX), i;
     int tape = -1, data = -1;
 
+    n = n > PIP_HOLO_ENUM_MAX ? PIP_HOLO_ENUM_MAX : n;
+
     for (i = 0; i < n; i++) {
         if (strcmp(hi[i].file, TAPE_FILE) == 0) {
             tape = hi[i].subtype;
@@ -624,6 +629,7 @@ void check_holo_launch(void)
     ck_eq("launch_fault", pip_holo_launch(TAPE_FILE, "fault"), -PIP_EFAULT);
     ck_eq("launch_after_fault", pip_holo_launch(TAPE_FILE, "exit 5"), 5);
     n = pip_holo_enumerate(hi, PIP_HOLO_ENUM_MAX);
+    n = n > PIP_HOLO_ENUM_MAX ? PIP_HOLO_ENUM_MAX : n;
     for (i = 0; i < n; i++) {
         has_data |= strcmp(hi[i].file, DATA_FILE) == 0;
     }
