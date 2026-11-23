@@ -249,7 +249,7 @@ build-dir-test:
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
-           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
+           sdimage-rom-test bootdir-sync-test bootdir-test conformance-bootdir-test outside-project-test
 
 .PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
@@ -264,7 +264,10 @@ sdimage-rom-test:
 outside-project-test:
 	tests/host/outside_project_test.sh
 
-.PHONY: bootdir-test conformance-bootdir-test
+.PHONY: bootdir-sync-test bootdir-test conformance-bootdir-test
+bootdir-sync-test:
+	tests/host/bootdir_sync_test.sh
+
 bootdir-test:
 	tests/host/bootdir_test.sh
 
