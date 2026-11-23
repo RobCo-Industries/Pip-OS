@@ -15,6 +15,12 @@
 #define SEQ_EVENTS      14
 #define BUSY_MS         2000    /* the test's bytes reach the UARTs meanwhile */
 #define HELD_MS         250     /* the test holds the event back 300 ms */
+#define TICK_STEP_MS    10      /* ticks_ms moves in steps of this size */
+#define REPEAT_DELAY_MS 500     /* kernel/robco_config.h */
+#define REPEAT_RATE_MS  100
+#define REPEAT_SLACK_MS 2000    /* upper bounds only: a loaded host runs late */
+#define REPEATS_SEEN    3       /* repeats before the test releases the key */
+#define REPEAT_QUIET_MS 300     /* no event may come this long after the release */
 
 static void phase(const char *name)
 {
@@ -133,24 +139,39 @@ static int32_t wait_one(pip_event_t *ev)
     return pip_wait_event(fresh(ev), PIP_WAIT_FOREVER);
 }
 
+/*
+ * Like wait_one, but skips repeat events. A key the test holds past
+ * REPEAT_DELAY_MS repeats, and the phases that wait here check presses
+ * and releases only.
+ */
+static int32_t wait_change(pip_event_t *ev)
+{
+    int32_t rc;
+
+    do {
+        rc = wait_one(ev);
+    } while (rc == 1 && ev->type == PIP_EV_BUTTON && ev->value == 2);
+    return rc;
+}
+
 static void hold(void)
 {
     pip_event_t ev;
 
     phase("ph_hold");
-    rt_check_eq("hold_rc", wait_one(&ev), 1);
+    rt_check_eq("hold_rc", wait_change(&ev), 1);
     rt_check_eq("hold_value", ev.value, 1);
     rt_check_eq("buttons_held", pip_read_buttons(), (int32_t)PIP_BTN_SELECT_BIT);
     phase("ph_hold2");
-    rt_check_eq("hold2_rc", wait_one(&ev), 1);
+    rt_check_eq("hold2_rc", wait_change(&ev), 1);
     rt_check_eq("buttons_two", pip_read_buttons(),
                 (int32_t)(PIP_BTN_SELECT_BIT | PIP_BTN_LEFT_BIT));
     phase("ph_release");
-    rt_check_eq("release_rc", wait_one(&ev), 1);
+    rt_check_eq("release_rc", wait_change(&ev), 1);
     rt_check_eq("release_value", ev.value, 0);
     rt_check_eq("buttons_one", pip_read_buttons(), (int32_t)PIP_BTN_LEFT_BIT);
     phase("ph_release2");
-    rt_check_eq("release2_rc", wait_one(&ev), 1);
+    rt_check_eq("release2_rc", wait_change(&ev), 1);
     rt_check_eq("buttons_released", pip_read_buttons(), 0);
 }
 
@@ -237,33 +258,38 @@ static int32_t busy(int32_t ms)
 }
 
 /*
- * While the ROM is busy, the test puts 31 events' worth of bytes in the
- * console FIFO and "key up" in the script FIFO. The next poll reads both
- * in one pass: RobCo-Core's queue of 32 takes the press and drops the
- * release. read_buttons must still see the button up.
+ * While the ROM is busy, the test puts 16 CRs in the console FIFO, 32
+ * events of select pressed and released, and "dial 1" in the script FIFO.
+ * The next poll reads both in one pass: RobCo-Core's queue of 32 drops its
+ * oldest event, the first press, and keeps the newest 32 in order.
  */
-static void stale(void)
+static void flood(void)
 {
     pip_event_t ev;
-    int32_t presses = 0, releases = 0;
+    int32_t n = 0, in_order = 1, last_type = 0, last_value = 0;
 
-    phase("ph_stale_press");
-    rt_check_eq("stale_select_rc", wait_one(&ev), 1);
-    rt_check_eq("stale_select_value", ev.value, 0);
-    phase("ph_stale");
+    phase("ph_flood_press");
+    rt_check_eq("flood_select_rc", wait_change(&ev), 1);
+    rt_check_eq("flood_select_value", ev.value, 0);
+    phase("ph_flood");
     busy(BUSY_MS);
     while (pip_poll_event(fresh(&ev)) == 1) {
-        if (ev.type == PIP_EV_BUTTON && ev.code == PIP_BTN_UP) {
-            if (ev.value == 1) {
-                presses++;
-            } else if (ev.value == 0) {
-                releases++;
+        n++;
+        if (n < PIP_EVENT_QUEUE) {
+            /* select released, then pressed and released 15 times */
+            if (ev.type != PIP_EV_BUTTON || ev.code != PIP_BTN_SELECT ||
+                ev.value != (n % 2 == 1 ? 0 : 1)) {
+                in_order = 0;
             }
         }
+        last_type = (int32_t)ev.type;
+        last_value = ev.value;
     }
-    rt_check_eq("stale_press_seen", presses, 1);
-    rt_check_eq("stale_release_lost", releases, 0);
-    rt_check_eq("stale_released", pip_read_buttons(), 0);
+    rt_check_eq("flood_count", n, PIP_EVENT_QUEUE);
+    rt_check("flood_in_order", in_order);
+    rt_check_eq("flood_last_type", last_type, PIP_EV_DIAL);
+    rt_check_eq("flood_last_value", last_value, 1);
+    rt_check_eq("flood_released", pip_read_buttons(), 0);
 }
 
 /*
@@ -292,6 +318,58 @@ static void stamp(void)
     rt_end();
 }
 
+/*
+ * The test holds down until the ROM saw REPEATS_SEEN repeats. Stamps move
+ * in tick steps, so the lower bounds allow one step.
+ */
+static void repeat(void)
+{
+    pip_event_t ev;
+    int32_t t_press, t_last, gap, repeats = 0, codes = 1, early = 0, late = 0;
+    int32_t first = -1, min_gap = 0x7fffffff, max_gap = 0;
+
+    phase("ph_repeat");
+    rt_check_eq("repeat_press_rc", wait_one(&ev), 1);
+    rt_check_eq("repeat_press_value", ev.value, 1);
+    t_press = (int32_t)ev.time_ms;
+    t_last = t_press;
+    for (;;) {
+        if (wait_one(&ev) != 1 || ev.type != PIP_EV_BUTTON || ev.code != PIP_BTN_DOWN) {
+            codes = 0;
+            break;
+        }
+        if (ev.value != 2) {
+            break;
+        }
+        gap = (int32_t)ev.time_ms - t_last;
+        if (repeats == 0) {
+            first = gap;
+        } else {
+            min_gap = gap < min_gap ? gap : min_gap;
+            max_gap = gap > max_gap ? gap : max_gap;
+        }
+        t_last = (int32_t)ev.time_ms;
+        if (++repeats == REPEATS_SEEN) {
+            phase("ph_repeat_release");
+        }
+    }
+    early = first < REPEAT_DELAY_MS - TICK_STEP_MS || min_gap < REPEAT_RATE_MS - TICK_STEP_MS;
+    late = first >= REPEAT_DELAY_MS + REPEAT_SLACK_MS || max_gap >= REPEAT_RATE_MS + REPEAT_SLACK_MS;
+    rt_check("repeat_codes", codes);
+    rt_check("repeat_count", repeats >= REPEATS_SEEN);
+    rt_check("repeat_not_early", !early);
+    rt_check("repeat_not_late", !late);
+    rt_check_eq("repeat_release_value", ev.value, 0);
+    rt_check_eq("repeat_quiet", pip_wait_event(fresh(&ev), REPEAT_QUIET_MS), -PIP_ETIMEDOUT);
+    rt_check_eq("repeat_released", pip_read_buttons(), 0);
+    rt_begin("repeat");
+    rt_dec("first", first);
+    rt_dec("min_gap", min_gap);
+    rt_dec("max_gap", max_gap);
+    rt_dec("count", repeats);
+    rt_end();
+}
+
 int pip_main(const pipos_startup_t *startup)
 {
     (void)startup;
@@ -302,8 +380,9 @@ int pip_main(const pipos_startup_t *startup)
     dial();
     timed();
     overflow();
-    stale();
+    flood();
     stamp();
+    repeat();
     rt_checks_done();
     return 0;
 }

@@ -8,7 +8,6 @@ void pipos_input_state_init(pipos_input_state_t *s)
     s->dropped = 0;
     s->last_ms = 0;
     s->stamped = 0;
-    s->dial_deg = 0;
 }
 
 static const uint16_t key_of_button[] = {
@@ -58,10 +57,10 @@ int pipos_input_map(const input_event_t *ev, pip_event_t *out)
     return 0;
 }
 
-uint32_t pipos_input_dial_step(uint32_t deg, int32_t steps)
+uint32_t pipos_input_dial_deg(int32_t total)
 {
     int32_t turns = 360 / PIP_DIAL_DETENT_DEG;
-    int32_t d = (int32_t)(deg % 360u) + (steps % turns) * PIP_DIAL_DETENT_DEG;
+    int32_t d = (total % turns) * PIP_DIAL_DETENT_DEG;
 
     return (uint32_t)((d + 360) % 360);
 }
@@ -91,9 +90,6 @@ int pipos_input_feed(pipos_input_state_t *s, const input_event_t *ev, int delive
 
     if (!pipos_input_map(ev, &pe)) {
         return 0;
-    }
-    if (pe.type == PIP_EV_DIAL) {
-        s->dial_deg = pipos_input_dial_step(s->dial_deg, pe.value);
     }
     if (!deliver) {
         return 0;

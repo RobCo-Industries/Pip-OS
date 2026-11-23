@@ -111,34 +111,19 @@ TEST(press_release_repeat)
     CHECK_EQ(pipos_input_pop(&s, &out), 0);
 }
 
-TEST(dial_steps)
+TEST(dial_degrees)
 {
-    CHECK_EQ(pipos_input_dial_step(0, 1), 15u);
-    CHECK_EQ(pipos_input_dial_step(0, -1), 345u);
-    CHECK_EQ(pipos_input_dial_step(345, 1), 0u);
-    CHECK_EQ(pipos_input_dial_step(15, -2), 345u);
-    CHECK_EQ(pipos_input_dial_step(0, 24), 0u);
-    CHECK_EQ(pipos_input_dial_step(0, -24), 0u);
-    CHECK_EQ(pipos_input_dial_step(30, 1000000), 270u);  /* 1000000 % 24 = 16 */
-    CHECK_EQ(pipos_input_dial_step(30, -1000000), 150u);
-    CHECK_EQ(pipos_input_dial_step(0, INT32_MAX), 105u); /* % 24 = 7 */
-    CHECK_EQ(pipos_input_dial_step(0, INT32_MIN), 240u); /* % 24 = -8 */
-}
-
-TEST(dial_accumulates_without_image)
-{
-    pipos_input_state_t s;
-    input_event_t ev;
-
-    pipos_input_state_init(&s);
-    CHECK_EQ(s.dial_deg, 0u);
-    ev = dial(2);
-    CHECK_EQ(pipos_input_feed(&s, &ev, 0, 5, 5), 0);
-    CHECK_EQ(s.dial_deg, 30u);
-    ev = dial(-5);
-    CHECK_EQ(pipos_input_feed(&s, &ev, 1, 5, 5), 1);
-    CHECK_EQ(s.dial_deg, 315u);
-    CHECK_EQ(s.count, 1u);
+    CHECK_EQ(pipos_input_dial_deg(0), 0u);
+    CHECK_EQ(pipos_input_dial_deg(1), 15u);
+    CHECK_EQ(pipos_input_dial_deg(-1), 345u);
+    CHECK_EQ(pipos_input_dial_deg(23), 345u);
+    CHECK_EQ(pipos_input_dial_deg(24), 0u);
+    CHECK_EQ(pipos_input_dial_deg(-24), 0u);
+    CHECK_EQ(pipos_input_dial_deg(-25), 345u);
+    CHECK_EQ(pipos_input_dial_deg(1000002), 270u);  /* 1000002 % 24 = 18 */
+    CHECK_EQ(pipos_input_dial_deg(-999998), 150u);  /* -999998 % 24 = -14 */
+    CHECK_EQ(pipos_input_dial_deg(INT32_MAX), 105u); /* % 24 = 7 */
+    CHECK_EQ(pipos_input_dial_deg(INT32_MIN), 240u); /* % 24 = -8 */
 }
 
 TEST(queue_overflow_drops_oldest)
@@ -177,7 +162,6 @@ TEST(flush)
     pipos_input_feed(&s, &ev, 1, 0, 0);
     pipos_input_queue_flush(&s);
     CHECK_EQ(pipos_input_pop(&s, &out), 0);
-    CHECK_EQ(s.dial_deg, 45u);
     ev = dial(1);
     pipos_input_feed(&s, &ev, 1, 7, 7);
     CHECK_EQ(pipos_input_pop(&s, &out), 1);
@@ -185,26 +169,23 @@ TEST(flush)
 }
 
 
-/* A stand-in for RobCo-Core's queue and held-key state, built from its pure parts. */
-static input_queue_t core_q;
-static input_hold_t core_hold;
+/* RobCo-Core's queue, held keys and dial totals, as Pip-OS sets them up. */
+static input_core_t core;
 
 static void core_init(void)
 {
-    input_queue_init(&core_q);
-    input_hold_init(&core_hold);
+    input_core_init(&core);
+    core.policy = INPUT_DROP_OLDEST;
 }
 
-/* Like input_push(): the held state follows the event even when the queue drops it. */
-static void core_push(input_event_t ev)
+static int core_push(input_event_t ev)
 {
-    input_hold_update(&core_hold, &ev);
-    input_queue_push(&core_q, &ev);
+    return input_core_push(&core, &ev, 0);
 }
 
 static int core_key_down(unsigned code)
 {
-    return input_hold_down(&core_hold, code);
+    return input_hold_down(&core.hold, code);
 }
 
 /* Like pipos_poll(): every queued Core event goes to the image's state. */
@@ -212,7 +193,7 @@ static void core_drain(pipos_input_state_t *s)
 {
     input_event_t ev;
 
-    while (input_queue_pop(&core_q, &ev)) {
+    while (input_queue_pop(&core.queue, &ev)) {
         pipos_input_feed(s, &ev, 1, 0, 0);
     }
 }
@@ -239,32 +220,42 @@ TEST(buttons_from_core_hold)
     CHECK_EQ(pipos_input_buttons(core_key_down), 0x3fu & ~(PIP_BTN_UP_BIT | PIP_BTN_RIGHT_BIT));
 }
 
-/* Core's full queue drops the release: the mask still shows the button up. */
-TEST(buttons_after_dropped_release)
+/*
+ * Core's full queue drops its oldest event: the image gets the newest 32,
+ * the release among them, and the dial total still counts the dropped step.
+ */
+TEST(core_overflow_keeps_newest)
 {
     pipos_input_state_t s;
     pip_event_t out;
     int32_t i;
-    int saw_release = 0;
 
     pipos_input_state_init(&s);
     core_init();
     core_push(key(INPUT_KEY_SELECT, INPUT_PRESS, INPUT_SRC_SCRIPT));
     core_drain(&s);
+    CHECK_EQ(pipos_input_pop(&s, &out), 1);
     CHECK_EQ(pipos_input_buttons(core_key_down), PIP_BTN_SELECT_BIT);
     for (i = 1; i <= (int32_t)INPUT_QUEUE_LEN; i++) {
-        core_push(dial(i));
+        CHECK_EQ(core_push(dial(i)), 0);
     }
-    core_push(key(INPUT_KEY_SELECT, INPUT_RELEASE, INPUT_SRC_SCRIPT));
-    CHECK_EQ(core_q.dropped, 1u);
+    CHECK_EQ(core_push(key(INPUT_KEY_SELECT, INPUT_RELEASE, INPUT_SRC_SCRIPT)),
+             INPUT_DROPPED_OLDEST);
+    CHECK_EQ(core.queue.dropped, 1u);
     core_drain(&s);
-    while (pipos_input_pop(&s, &out)) {
-        if (out.type == PIP_EV_BUTTON && out.value == INPUT_RELEASE) {
-            saw_release = 1;
-        }
+    for (i = 2; i <= (int32_t)INPUT_QUEUE_LEN; i++) {
+        CHECK_EQ(pipos_input_pop(&s, &out), 1);
+        CHECK_EQ(out.type, (uint32_t)PIP_EV_DIAL);
+        CHECK_EQ(out.value, i);
     }
-    CHECK_EQ(saw_release, 0);
+    CHECK_EQ(pipos_input_pop(&s, &out), 1);
+    CHECK_EQ(out.type, (uint32_t)PIP_EV_BUTTON);
+    CHECK_EQ(out.value, INPUT_RELEASE);
+    CHECK_EQ(pipos_input_pop(&s, &out), 0);
     CHECK_EQ(pipos_input_buttons(core_key_down), 0u);
+    /* 1 + 2 + ... + 32 = 528 detents, 528 % 24 = 0. */
+    CHECK_EQ(input_core_dial_total(&core, 0), 528);
+    CHECK_EQ(pipos_input_dial_deg(input_core_dial_total(&core, 0)), 0u);
 }
 
 TEST(stamp_uses_event_age)
