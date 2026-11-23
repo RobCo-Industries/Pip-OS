@@ -137,6 +137,31 @@ sdk-example:
 
 $(EXAMPLE_ROM) $(EXAMPLE_TAPE): sdk-example
 
+# ---- Conformance ROM ------------------------------------------------------
+
+# conformance/: a ROM that runs every system call and shows a PASS/FAIL
+# table, its companion holotape, and a data holotape made from it.
+# `make conformance-card` writes build/conformance.img through sdimage,
+# so build/sd.img is the same card afterwards. See docs/TESTING.md.
+CONF_BUILD   = $(abspath $(BUILD))/conformance
+CONF_ROM     = $(CONF_BUILD)/rom/CONFORM.ROM
+CONF_TAPE    = $(CONF_BUILD)/tape/CONFTAPE.HTP
+CONF_DATA    = $(CONF_BUILD)/CONFDATA.HTP
+CONF_FILES   = boot/PIPOS.CFG:PIPBOY/PIPOS.CFG $(CONF_ROM):PIPBOY/ROM1.ROM \
+               $(CONF_TAPE):PIPBOY/HOLO/ $(CONF_DATA):PIPBOY/HOLO/
+
+.PHONY: conformance conformance-card
+all: conformance
+
+conformance:
+	$(MAKE) --no-print-directory -C conformance/rom BUILD=$(CONF_BUILD)/rom
+	$(MAKE) --no-print-directory -C conformance/tape BUILD=$(CONF_BUILD)/tape
+	$(PYTHON) conformance/mkdata.py $(CONF_TAPE) $(CONF_DATA)
+
+conformance-card: conformance $(BUILD)/$(IMAGE).img
+	$(MAKE) --no-print-directory sdimage SDIMAGE_FILES="$(CONF_FILES)"
+	cp $(BUILD)/sd.img $(BUILD)/conformance.img
+
 # ---- Python environment for the target tests --------------------------
 
 VENV := .venv
