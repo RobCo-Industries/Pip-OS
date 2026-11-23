@@ -19,7 +19,8 @@
 #   make sdk-example          build/examples/hello/ROM1.ROM and
 #                             build/examples/tape/BEACON.HTP from sdk/examples
 #   make bootdir DIR=<path>   the files of build/sd.img for a real card,
-#                             firmware included (FIRMWARE=0 leaves it out)
+#                             firmware included (FIRMWARE=0 leaves it out,
+#                             CLEAN=1 removes files an earlier run wrote)
 #   make conformance-bootdir DIR=<path>
 #                             bootdir with the conformance ROM as
 #                             PIPBOY/ROM1.ROM and its two holotapes
@@ -243,7 +244,7 @@ build-dir-test:
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
-           sdimage-rom-test conformance-bootdir-test outside-project-test
+           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
 
 .PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
@@ -258,7 +259,10 @@ sdimage-rom-test:
 outside-project-test:
 	tests/host/outside_project_test.sh
 
-.PHONY: conformance-bootdir-test
+.PHONY: bootdir-test conformance-bootdir-test
+bootdir-test:
+	tests/host/bootdir_test.sh
+
 conformance-bootdir-test:
 	tests/host/conformance_bootdir_test.sh
 
@@ -318,7 +322,9 @@ run: sdimage
 # The files of `make sdimage`, with the same ROM, TAPE and CARD_DIR rules,
 # plus the firmware. They are staged in $(BUILD)/bootstage first, so a
 # CARD_DIR clash stops the build before DIR changes. A PIPBOY/PIPOS.CFG
-# already in DIR stays: it holds the user's settings.
+# already in DIR stays: it holds the user's settings. tools/bootdir_sync.sh
+# keeps DIR/BOOTDIR.LST, the files the run wrote, and stops when DIR holds
+# one this run would not write; CLEAN=1 removes those the list names.
 BOOT_STAGE := $(BUILD)/bootstage
 bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 	$(if $(strip $(DIR)),,$(error DIR is not set: make bootdir DIR=<path>))
@@ -330,11 +336,9 @@ bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 	$(if $(CARD_ROM),cp $(CARD_ROM) $(BOOT_STAGE)/PIPBOY/ROM1.ROM)
 	$(if $(CARD_TAPES),cp $(CARD_TAPES) $(BOOT_STAGE)/PIPBOY/HOLO/)
 	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(BOOT_STAGE) $(CARD_DIR))
-	if [ -e $(DIR)/PIPBOY/PIPOS.CFG ]; then rm $(BOOT_STAGE)/PIPBOY/PIPOS.CFG; fi
-	mkdir -p $(DIR)
-	cp -R $(BOOT_STAGE)/. $(DIR)/
+	tools/bootdir_sync.sh $(BOOT_STAGE) $(DIR) $(if $(filter 1,$(CLEAN)),clean)
 
 # The same files as build/conformance.img, plus the firmware.
 conformance-bootdir: conformance
-	$(MAKE) --no-print-directory bootdir ROM=$(CONF_ROM) TAPE="$(CONF_TAPE) $(CONF_DATA)" \
+	$(MAKE) --no-print-directory bootdir CLEAN=$(CLEAN) ROM=$(CONF_ROM) TAPE="$(CONF_TAPE) $(CONF_DATA)" \
 	    CARD_DIR=

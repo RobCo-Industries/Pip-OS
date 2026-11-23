@@ -224,7 +224,7 @@ Pass absolute paths. `make -C` runs in the Pip-OS folder, so a relative path wou
 | `TAPE` | One or more holotapes for `PIPBOY/HOLO/`, separated by spaces. Each keeps its file name, and two files with the same name stop the build. `none` leaves the folder empty. The tape example by default. |
 | `CARD_DIR` | A folder whose tree is copied onto the card root after the standard files, such as `content/PIPBOY/DATA/README.TXT`. |
 | `BOARD`, `WINDOW` | The QEMU board for `run`, and `WINDOW=1` for the display window |
-| `DIR`, `FIRMWARE` | The folder for `bootdir`, and `FIRMWARE=0` to leave the firmware out |
+| `DIR`, `FIRMWARE`, `CLEAN` | The folder for `bootdir`, `FIRMWARE=0` to leave the firmware out, and `CLEAN=1` to remove files an earlier `bootdir` run wrote, see [Running bootdir again](BUILD.md#running-bootdir-again) |
 
 The standard files are `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, `PIPBOY/ROM1.ROM`, the `TAPE` files and, for `bootdir`, the firmware. When a file in `CARD_DIR` has the path of a standard file, the build stops and writes nothing. FAT ignores case, so `pipboy/rom1.rom` counts as `PIPBOY/ROM1.ROM`. A folder in `CARD_DIR` that differs from a standard folder only in case also stops the build. Folders with the same name merge, so `CARD_DIR` can add tapes to `PIPBOY/HOLO/`. Use `TAPE` for the tapes you build and `CARD_DIR` for files you keep in the repository.
 
@@ -260,7 +260,7 @@ run: all
 	$(PIPOS_MAKE) run $(CARD_VARS) BOARD=$(BOARD) WINDOW=$(WINDOW)
 
 bootdir: all
-	$(PIPOS_MAKE) bootdir $(CARD_VARS) DIR=$(abspath $(DIR)) FIRMWARE=$(FIRMWARE)
+	$(PIPOS_MAKE) bootdir $(CARD_VARS) DIR=$(abspath $(DIR)) FIRMWARE=$(FIRMWARE) CLEAN=$(CLEAN)
 ```
 
 `$(PIP_OUT)` is the sealed image that `pipos-app.mk` builds. The card lands in `build/pipos/sd.img`. For tests, see [TESTING.md](TESTING.md#testing-a-rom-project).

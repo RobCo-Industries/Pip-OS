@@ -17,6 +17,8 @@ Nothing in Pip-OS has been validated on a real Raspberry Pi yet. The tests run i
 make conformance-bootdir DIR=card
 ```
 
+If `card` already holds files from another `bootdir` run, the target may stop and list them. Use a new folder, or see [Running bootdir again](BUILD.md#running-bootdir-again).
+
 2. Format the card as FAT32 and copy everything in `card/` to it.
 
 `card/` then holds the Pi firmware, `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG`, the conformance ROM as `PIPBOY/ROM1.ROM`, and `PIPBOY/HOLO/CONFTAPE.HTP` and `CONFDATA.HTP`. The make target downloads the firmware. `build/conformance.img` from `make conformance-card` has the same files without the firmware, so it boots only in QEMU.

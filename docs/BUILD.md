@@ -68,6 +68,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `WINDOW` | unset | `WINDOW=1` makes `run` open the display window |
 | `DIR` | unset | The folder for `bootdir` and `conformance-bootdir` |
 | `FIRMWARE` | unset | `FIRMWARE=0` leaves the firmware out of `bootdir` |
+| `CLEAN` | unset | `CLEAN=1` lets `bootdir` remove files an earlier run wrote that this run does not, see [A real card](#a-real-card) |
 | `CI` | unset | `CI=1` turns warnings into errors |
 | `PYTHON` | `python3` | Python for the tools |
 
@@ -129,5 +130,17 @@ make bootdir DIR=/path/to/dir
 This writes the files of `make sdimage` into `DIR`, plus the firmware files from RobCo-Core's `tools/fetch_firmware.sh`: `PIPOS.IMG`, `config.txt`, `PIPBOY/PIPOS.CFG` unless one exists, the ROM as `PIPBOY/ROM1.ROM`, the holotapes in `PIPBOY/HOLO/` and the `CARD_DIR` tree. `ROM`, `TAPE` and `CARD_DIR` work as for `make sdimage`, so by default the card holds the hello example and `BEACON.HTP`. It builds only the kernel and the files it copies. Copy them to the FAT32 boot partition of the card. It never writes a device. The kernel has not been tested on hardware yet.
 
 `make conformance-bootdir DIR=/path/to/dir` writes the same files with the conformance ROM as `PIPBOY/ROM1.ROM` and its two holotapes in `PIPBOY/HOLO/`. See [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md). With `FIRMWARE=0`, both targets leave the firmware out and need no network.
+
+### Running bootdir again
+
+Use a new, empty folder and it is one command. `bootdir` never deletes a file in `DIR` unless you ask. It writes `BOOTDIR.LST` in `DIR`, the list of files it wrote. It does not list `PIPBOY/PIPOS.CFG`. The card does not need `BOOTDIR.LST`, but it does no harm there.
+
+Before it changes anything, `bootdir` looks at each file in `DIR` that this run would not write. Names compare as on FAT, ignoring case.
+
+- A file that `BOOTDIR.LST` names is stale, for example the ROM after `ROM=none` or a tape no longer in `TAPE`. `bootdir` stops, lists the files, and changes nothing. Use an empty folder, or run again with `CLEAN=1` to remove them.
+- A file that `BOOTDIR.LST` does not name, at a path `bootdir` writes, also stops it, even with `CLEAN=1`. These paths are the firmware files, `PIPOS.IMG`, `config.txt`, `PIPBOY/ROM1.ROM` and `PIPBOY/HOLO/*.HTP`. This happens with a folder from before `BOOTDIR.LST` existed. `bootdir` cannot tell whether the file is stale, so delete or move it yourself, or use an empty folder.
+- Any other file is yours. `bootdir` leaves it and names it once.
+
+`CLEAN=1` removes only files that `BOOTDIR.LST` names and this run does not write. It never removes `PIPBOY/PIPOS.CFG`. `conformance-bootdir` follows the same rules.
 
 `config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/BOARD_SUPPORT.md#configtxt).

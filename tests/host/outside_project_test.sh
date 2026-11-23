@@ -11,7 +11,7 @@ set -eu
 # Build settings from the caller's environment or an outer make
 # (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
 unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE \
-    DIR FIRMWARE CARD_DIR SDIMAGE_DIR
+    DIR FIRMWARE CARD_DIR SDIMAGE_DIR CLEAN
 pipos=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -108,12 +108,13 @@ if pm sdimage ROM="$rom" TAPE=none SDIMAGE_DIR="$proj/content" >/dev/null 2>"$tm
 fi
 grep -q 'CARD_DIR' "$tmp/err" || fail "SDIMAGE_DIR: the message does not name CARD_DIR"
 
-# make bootdir: the same files as the card, firmware left out.
+# make bootdir: the same files as the card, firmware left out, plus
+# BOOTDIR.LST, its list of what it wrote.
 dir="$tmp/card"
 pm bootdir DIR="$dir" FIRMWARE=0 ROM="$rom" TAPE=none CARD_DIR="$proj/content" >/dev/null
 no_bundled "make bootdir ROM=<file> TAPE=none"
 pm sdimage ROM="$rom" TAPE=none CARD_DIR="$proj/content" >/dev/null
-(cd "$dir" && find . -type f | sed 's|^\./||' | tr '[:lower:]' '[:upper:]' | sort) >"$tmp/dir.list"
+(cd "$dir" && find . -type f | sed 's|^\./||' | grep -v -x 'BOOTDIR.LST' | tr '[:lower:]' '[:upper:]' | sort) >"$tmp/dir.list"
 mdir -/ -b -i "$card" :: | grep -v '/$' | sed 's|^::/||' | tr '[:lower:]' '[:upper:]' | sort >"$tmp/card.list"
 cmp -s "$tmp/dir.list" "$tmp/card.list" ||
     fail "bootdir files differ from the card: $(diff "$tmp/card.list" "$tmp/dir.list" | tr '\n' ' ')"

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Checks make conformance-bootdir: the folder holds the same files as the
 # QEMU conformance card, under the same names. FIRMWARE=0 keeps it
-# offline, so the firmware download is not tested here.
+# offline, so the firmware download is not tested here. BOOTDIR.LST,
+# bootdir's list of what it wrote, is the one file the card lacks.
 set -eu
 # Build settings from the caller's environment or an outer make must not
 # change the builds here.
@@ -22,7 +23,7 @@ make -s conformance-bootdir BUILD="$b" DIR="$dir" FIRMWARE=0 >/dev/null
 make -s conformance-card BUILD="$b" >/dev/null
 
 # Both lists: one path per file, upper case, sorted.
-(cd "$dir" && find . -type f | sed 's|^\./||' | tr '[:lower:]' '[:upper:]' | sort) >"$tmp/dir.list"
+(cd "$dir" && find . -type f | sed 's|^\./||' | grep -v -x 'BOOTDIR.LST' | tr '[:lower:]' '[:upper:]' | sort) >"$tmp/dir.list"
 mdir -/ -b -i "$b/conformance.img@@1M" :: | grep -v '/$' | sed 's|^::/||' |
     tr '[:lower:]' '[:upper:]' | sort >"$tmp/card.list"
 cmp -s "$tmp/dir.list" "$tmp/card.list" ||
@@ -36,4 +37,13 @@ cmp -s "$dir/PIPBOY/ROM1.ROM" "$b/conformance/rom/CONFORM.ROM" || fail "PIPBOY/R
 for f in bootcode.bin start.elf fixup.dat; do
     [ ! -e "$dir/$f" ] || fail "FIRMWARE=0 still wrote $f"
 done
+grep -qx 'PIPBOY/ROM1.ROM' "$dir/BOOTDIR.LST" || fail "BOOTDIR.LST does not name PIPBOY/ROM1.ROM"
+
+# Run again with CLEAN=1 after the person drops a tape in by hand: the
+# rules of bootdir apply, so the unknown tape stops it.
+printf 'x\n' >"$dir/PIPBOY/HOLO/EXTRA.HTP"
+if make -s conformance-bootdir BUILD="$b" DIR="$dir" FIRMWARE=0 CLEAN=1 >"$tmp/out" 2>&1; then
+    fail "conformance-bootdir did not stop on PIPBOY/HOLO/EXTRA.HTP"
+fi
+grep -q 'PIPBOY/HOLO/EXTRA.HTP' "$tmp/out" || fail "conformance-bootdir stop does not list PIPBOY/HOLO/EXTRA.HTP"
 echo "conformance_bootdir_test: passed"
