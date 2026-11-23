@@ -109,19 +109,21 @@ def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
         no_exception(vm)
     assert [t[0] for t in tr] == TRACE, tr
     assert not pipos_markers(vm, "audio_drop"), vm.serial
-    # Each chunk plays in full, the next one right after it.
+    # Each chunk plays in full, the next one right after it. A switch can come
+    # late by up to one timer IRQ, which shortens the following interval, so
+    # the strict bounds run from the start: the engine keeps one time base.
     span(tr, 0, 1, play_ms(4000))
-    span(tr, 1, 2, play_ms(4000))
+    span(tr, 0, 2, play_ms(8000))
     span(tr, 3, 4, play_ms(2400))
-    span(tr, 4, 5, play_ms(1600))
-    span(tr, 5, 6, play_ms(800))
-    span(tr, 3, 6, play_ms(4800), 300)
+    span(tr, 3, 5, play_ms(4000))
+    span(tr, 3, 6, play_ms(4800))
     span(tr, 8, 9, play_ms(400))
     for i in (10, 14, 18, 22):  # cut after about 50 ms, nothing chained
         span(tr, i, i + 1, 50 - CUT_MS, 1000)
     span(tr, 12, 13, play_ms(800))
     # The long chain: no restart, and at least the whole length.
-    span(tr, LONG, LONG + LONG_N, play_ms(LONG_N * LONG_LEN), 500)
+    for i in range(1, LONG_N + 1):
+        span(tr, LONG, LONG + i, play_ms(i * LONG_LEN), 500)
 
 
 def test_exit_stops_both(board, kernel_image, test_rom, tmp_path, need_mtools):
