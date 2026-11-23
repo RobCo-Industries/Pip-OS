@@ -50,7 +50,7 @@ TRACE = [
     pcm(1, 800), ("pcm_end",),
     pcm(2, 1), ("pcm_end",),
     pcm(3, 65536), ("stop", 0, 70),               # audio_stop
-    ("tone", 2200, 70), pcm(4, 400), ("pcm_end",),  # sample over tone
+    ("tone", 2200, 70), ("stop", 0, 70), pcm(4, 400), ("pcm_end",),  # sample over tone
     pcm(5, 4000), ("stop", 0, 70), ("tone", 2300, 70), ("stop", 0, 70),  # tone over sample
     pcm(6, 8000), ("stop", 0, 70), pcm(7, 800), ("pcm_end",),  # sample over sample
     pcm(8, 8000), ("stop", 0, 70), ("tone", 2400, 70), ("stop", 0, 70),  # play_seq over sample
@@ -125,16 +125,16 @@ def test_sample(board, kernel_image, test_rom, tmp_path, need_mtools):
     lasted(tr, 4, 0)                   # 1 byte
     cut(tr, 6, 50)                     # 65536 bytes, stopped after about 50 ms
     cut(tr, 8, 50)                     # the tone, replaced after about 50 ms
-    lasted(tr, 9, 400 * 1000 // RATE)  # 400 bytes: 50 ms
-    cut(tr, 11, 50)                    # 4000 bytes, replaced by a tone
-    lasted(tr, 13, 100)                # tone(2300, 100) in full
-    cut(tr, 15, 50)                    # 8000 bytes, cut by the next sample
-    lasted(tr, 17, 800 * 1000 // RATE)  # the replacing sample in full
-    cut(tr, 19, 50)                    # 8000 bytes, cut by play_seq
-    lasted(tr, 21, 60)                 # the note in full
-    lasted(tr, 23, 80 * 1000 // RATE)  # 80 bytes: 10 ms
-    # A replacement stops the old sample and starts the new sound on the same tick.
-    for i in (12, 16, 20):
+    lasted(tr, 10, 400 * 1000 // RATE)  # 400 bytes: 50 ms
+    cut(tr, 12, 50)                    # 4000 bytes, replaced by a tone
+    lasted(tr, 14, 100)                # tone(2300, 100) in full
+    cut(tr, 16, 50)                    # 8000 bytes, cut by the next sample
+    lasted(tr, 18, 800 * 1000 // RATE)  # the replacing sample in full
+    cut(tr, 20, 50)                    # 8000 bytes, cut by play_seq
+    lasted(tr, 22, 60)                 # the note in full
+    lasted(tr, 24, 80 * 1000 // RATE)  # 80 bytes: 10 ms
+    # A replacement stops the old sound and starts the new one on the same tick.
+    for i in (9, 13, 17, 21):
         assert tr[i][1] == tr[i + 1][1], (i, tr)
 
 

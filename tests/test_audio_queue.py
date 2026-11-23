@@ -57,15 +57,15 @@ STOP = ("stop", 0, 70)
 TRACE = [
     pcm(1, 4000), nxt(2, 4000), END,                           # 0: busy
     pcm(10, 2400), nxt(11, 1600), nxt(12, 800), END,           # 3: three chunks
-    ("tone", 2200, 70), pcm(13, 400), END,                     # 7: over a tone
-    pcm(20, 8000), STOP, pcm(40, 800), END,                    # 10: sample drops it
-    pcm(21, 8000), STOP, ("tone", 2300, 70), STOP,             # 14: tone drops it
-    pcm(22, 8000), STOP, ("tone", 2400, 70), STOP,             # 18: play_seq drops it
-    pcm(23, 8000), STOP,                                       # 22: audio_stop drops it
-    pcm(50, 80), END, pcm(51, 80), END,                        # 24: underrun
-    pcm(60, LONG_LEN)] + [nxt(60 + i, LONG_LEN) for i in range(1, LONG_N)] + [END]  # 28
+    ("tone", 2200, 70), STOP, pcm(13, 400), END,               # 7: over a tone
+    pcm(20, 8000), STOP, pcm(40, 800), END,                    # 11: sample drops it
+    pcm(21, 8000), STOP, ("tone", 2300, 70), STOP,             # 15: tone drops it
+    pcm(22, 8000), STOP, ("tone", 2400, 70), STOP,             # 19: play_seq drops it
+    pcm(23, 8000), STOP,                                       # 23: audio_stop drops it
+    pcm(50, 80), END, pcm(51, 80), END,                        # 25: underrun
+    pcm(60, LONG_LEN)] + [nxt(60 + i, LONG_LEN) for i in range(1, LONG_N)] + [END]  # 29
 
-LONG = 28
+LONG = 29
 
 
 def key(m):
@@ -143,10 +143,11 @@ def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
     span(tr, 3, 4, play_ms(2400))
     span(tr, 3, 5, play_ms(4000))
     span(tr, 3, 6, play_ms(4800))
-    span(tr, 8, 9, play_ms(400))
-    for i in (10, 14, 18, 22):  # cut after about 50 ms, nothing chained
+    assert tr[8][1] == tr[9][1], tr  # the sample replaces the tone on one tick
+    span(tr, 9, 10, play_ms(400))
+    for i in (11, 15, 19, 23):  # cut after about 50 ms, nothing chained
         cut(tr, i, 50)
-    span(tr, 12, 13, play_ms(800))
+    span(tr, 13, 14, play_ms(800))
     # The long chain: no restart, and at least the whole length.
     for i in range(1, LONG_N + 1):
         span(tr, LONG, LONG + i, play_ms(i * LONG_LEN), 500)

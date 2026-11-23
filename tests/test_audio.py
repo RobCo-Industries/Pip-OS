@@ -29,11 +29,12 @@ CALL_CHECKS = [
 ]
 
 # (op, hz, vol) of every marker, in order: the boot beep at the configured
-# volume, then each sound of audio_calls.c. A rest is a stop.
+# volume, then each sound of audio_calls.c. A rest is a stop. A start that
+# replaces a playing sound prints one stop first, at the same tick.
 CALL_TRACE = [
     ("tone", 1000, 70), ("stop", 0, 70),
     ("tone", 1050, 40), ("stop", 0, 40),
-    ("tone", 1100, 90), ("tone", 1200, 90), ("stop", 0, 90),
+    ("tone", 1100, 90), ("stop", 0, 90), ("tone", 1200, 90), ("stop", 0, 90),
     ("tone", 1300, 90), ("stop", 0, 90),
     ("tone", 1400, 90), ("stop", 0, 90), ("tone", 1500, 90), ("tone", 1600, 90),
     ("stop", 0, 90),
@@ -97,11 +98,12 @@ def test_calls(board, kernel_image, test_rom, tmp_path, need_mtools):
     lasted(tr, 2, 100)      # tone(1050, 100)
     # The 1100 Hz tone was replaced after about 50 ms, not after 5 s.
     cut(tr, 4, 50)
-    lasted(tr, 5, 100)      # tone(1200, 100)
-    cut(tr, 7, 50)          # stopped after about 50 ms
-    for i, ms in zip(range(9, 13), (60, 40, 60, 50)):
+    assert tr[5][3] == tr[6][3], tr     # the replacement's stop and start share a tick
+    lasted(tr, 6, 100)      # tone(1200, 100)
+    cut(tr, 8, 50)          # stopped after about 50 ms
+    for i, ms in zip(range(10, 14), (60, 40, 60, 50)):
         lasted(tr, i, ms)
-    cut(tr, 14, 50)         # 256 notes, stopped after about 50 ms
+    cut(tr, 15, 50)         # 256 notes, stopped after about 50 ms
 
 
 def test_exit_stops_sound(board, kernel_image, test_rom, tmp_path, need_mtools):
