@@ -4,7 +4,7 @@ A running image calls the kernel with `svc #0`. The call number goes in r7, the 
 
 [`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers, the error codes, the structs and every limit. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for every call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
-Pip-OS implements ABI 1.2, `PIP_ABI_VERSION` `0x00010002`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 or 1.1 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
+Pip-OS implements ABI 1.3, `PIP_ABI_VERSION` `0x00010003`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0, 1.1 or 1.2 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
 
 | Error | Value |
 |---|---|
@@ -54,7 +54,9 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 - `ticks_ms` moves in steps of 10 ms, the 100 Hz tick.
 - `sleep_ms` waits on the 1 MHz system timer, so it never ends early. The tick wakes it, so it can run up to 10 ms long. IRQs stay on, and the kernel runs its main-loop work while it waits.
 - The exit status is the low 8 bits of `status`. `exit` prints it as `ev=rom_exit status=<0 to 255>` for the ROM. For a holotape, `holo_launch` returns it.
-- `sys_info` writes `size` 32, `abi_version` `0x00010001`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, and two reserved words set to 0.
+- `sys_info` writes `size` 32, `abi_version` `0x00010003`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, `hw_flags` and one reserved word set to 0.
+- `hw_flags` sits at offset `0x18` and is new in ABI 1.3. Bit 0, `PIP_HW_RTC`, is set when a clock chip answered at boot. Bit 2, `PIP_HW_AUDIO`, is set when the audio driver started at boot. Bit 1 and bits 3 to 31 are 0. A Pip-OS before 1.3 writes 0 there, so a ROM checks `abi_version >= 0x00010003` before it reads the field.
+- What a ROM can tell its user: a set time lasts past power-off only when `PIP_HW_RTC` is set, the time lies in 946684800 to 4102444799, and `set_time` returns 0. With the bit clear the time is lost at power-off. The full rule is in the spec's [System information](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/PIPOS_ABI.md#system-information) section.
 - `mem_info` reports the caller's own region. For the ROM: `heap_base` `0x01000000`, `heap_size` `0x007F0000`, `stack_top` `0x01800000`, `stack_size` `0x00010000`. For a holotape: `0x01800000`, `0x007F0000`, `0x02000000`, `0x00010000`.
 - `log` prints on the PL011 with no newline added. Printable ASCII, `\n` and `\t` print as they are, every other byte as `?`.
 
@@ -132,6 +134,7 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 - The level starts at the `volume` key of `PIPOS.CFG`, 100 without one. See [CONFIG.md](CONFIG.md). It is a percentage of the square wave's duty cycle for tones. For a sample it scales each byte around 128.
 - A ROM that wants its own level sets it and restores the old one before it exits.
 - `sample` stops the current sound before it copies the data. An argument error returns before that, so the current sound plays on.
+- When several errors apply, a call returns the first in this order: a number out of its limits, a bad pointer, a bad note, a waiting sample for `sample_queue`, then the driver's `EIO`.
 - `sample_queue` checks the length, then the pointer, then whether a sample waits. When a sample plays, it copies the data and queues it behind, with no gap. When none plays, it acts as `sample`. `sample_queue` is new in ABI 1.1. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#playing-long-audio) has a streaming loop.
 - `tone`, `sample`, `play_seq` and `audio_stop` drop the waiting sample with the one that plays. Image start and end stop both.
 - On PWM the sound goes out on the audio pins in [HARDWARE.md](HARDWARE.md). Samples are not tried on real hardware yet.

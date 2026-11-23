@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- ABI 1.3: `sys_info` reports `hw_flags` at offset `0x18`. `PIP_HW_RTC`, bit 0, is set when a clock chip answered at boot. `PIP_HW_AUDIO`, bit 2, is set when the audio driver started. The conformance ROM checks the flags, and a new conformance run uses QEMU's clock chip.
 - `make kernel` builds only the kernel image and its ELF, for a ROM project that calls Pip-OS's Makefile from another repository.
 - `CARD_DIR=<dir>` copies a folder tree onto the card for `make sdimage`, `run` and `bootdir`. A file at the path of a standard card file stops the build. `TAPE` takes several files.
 - "Using Pip-OS from another repository" in `docs/ROM_DEVELOPMENT.md`, with a complete Makefile, and `tests/host/outside_project_test.sh`.
@@ -22,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The kernel finds the card's volume with RobCo-Core's `fs_mount_boot()`. It prefers the first FAT volume that holds `/PIPBOY/PIPOS.CFG` or `/PIPBOY/ROM1.ROM`, and falls back to the first that mounts. `ev=mount` gains `marker`. `ev=card rc=nomount` gains `why`. A card with an empty partition table now reports `rc=nomount why=nofat` instead of `rc=nopart`.
-- `PIP_ABI_VERSION` is `0x00010002`. Images sealed for 1.0 and 1.1 still run.
+- `PIP_ABI_VERSION` is `0x00010003`. Images sealed for 1.0, 1.1 and 1.2 still run.
+- `pip_sys_info_t.reserved` is one word, not an array of two. Code that read `reserved[0]` reads `hw_flags` now.
+- RobCo-Core moved to `796607f` for ABI 1.3 in the spec, a TFT panel driver, screen adopt calls, `ini_parse_sections()` and word-wise memory copies. The audio trace now prints one `op=stop` line when a start replaces a playing sound. The audio tests expect it.
 - RobCo-Core moved to `f5bba36` for `fs_mount_boot()`, `board_model_name()`, `rimg_self_check()` and a console backend that leaves bytes in the UART while the input queue is full.
 - `make bootdir` writes the same files as `make sdimage`, the example ROM and tape included, plus the firmware. It builds only the kernel and the files it copies, not `all`.
 - With `ROM=<file>`, `make sdimage`, `run` and `bootdir` no longer build the hello example. The tape example builds only when `TAPE` is left at its default.
