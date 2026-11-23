@@ -45,6 +45,11 @@ TEST(listed_name_and_match)
 {
     CHECK_STR(pipos_holo_listed_name("Long name.htp", "LONGNA~1.HTP"), "LONGNA~1.HTP");
     CHECK_STR(pipos_holo_listed_name("GAME.HTP", ""), "GAME.HTP");
+    /* A leading '#' or '~' is an ordinary holotape name, not a work file. */
+    CHECK_STR(pipos_holo_listed_name("#GAME.HTP", ""), "#GAME.HTP");
+    CHECK_STR(pipos_holo_listed_name("~GAME.HTP", ""), "~GAME.HTP");
+    CHECK(pipos_holo_entry_match("#GAME.HTP", "#GAME.HTP", ""));
+    CHECK(pipos_holo_entry_match("~GAME.HTP", "~GAME.HTP", ""));
     /* FatFs finds an entry by its long name or its alias, ignoring case. */
     CHECK(pipos_holo_entry_match("GAME.HTP", "game.htp", "GAME.HTP"));
     CHECK(pipos_holo_entry_match("GAME.HTP", "Game.Htp", ""));

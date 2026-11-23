@@ -24,7 +24,7 @@ The rules come from the spec's [Holotapes](https://github.com/RobCo-Industries/R
 - `name` is a plain 8.3 name: 1 to 8 characters from `A-Z`, `0-9` and ``! # $ % & ' ( ) - @ ^ _ ` { } ~``, then `.HTP`. Lower case works and is upper-cased. A folder, a drive prefix, `.`, `..`, a wildcard, a space or a longer name returns `-PIP_EINVAL`.
 - `args` must end with a NUL within 100 bytes, so 0 to 99 characters. A longer string returns `-PIP_EINVAL`. A `NULL` pointer returns `-PIP_EFAULT`.
 - Pip-OS copies both strings in before it checks anything else.
-- The name must be the one `holo_enumerate` lists. Pip-OS finds the entry the card would open for that name, by long name or alias. If that entry is a folder, a work file, or a file listed under another name, the launch returns `-PIP_ENOENT`.
+- The name must be the one `holo_enumerate` lists. Pip-OS finds the entry the card would open for that name, by long name or alias. If that entry is a folder or a file listed under another name, the launch returns `-PIP_ENOENT`.
 - A missing file returns `-PIP_ENOENT`. A card error while Pip-OS loads the file returns `-PIP_EIO`. Any other failed load step returns `-PIP_ENOEXEC`, a file shorter than 0x60 bytes included. A data holotape, subtype 2, fails the bounds step.
 - The holotape runs inside the ROM's call. `exit` and a return from `pip_main` end the holotape only. A fault or a kill ends it with `-PIP_EFAULT`, and the ROM goes on.
 

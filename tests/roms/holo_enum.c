@@ -1,7 +1,8 @@
 /*
  * holo_enumerate: the argument checks, then the whole listing as one
  * "ev=tape" line per entry and "ev=count n=<n>". test_holo.py builds the
- * card and compares the listing.
+ * card and compares the listing. Each listed tape whose name starts with
+ * '#' or '~' is then launched with "ret 42": "ev=hlaunch file=<f> rc=<rc>".
  */
 #include "rt.h"
 
@@ -55,6 +56,16 @@ int pip_main(const pipos_startup_t *startup)
     n = pip_holo_enumerate(all, PIP_HOLO_ENUM_MAX);
     for (i = 0; i < n; i++) {
         show(i, &all[i]);
+    }
+    for (i = 0; i < n; i++) {
+        if (all[i].file[0] == '#' || all[i].file[0] == '~') {
+            char line[80];
+
+            rc = pip_holo_launch(all[i].file, "ret 42");
+            pip_snprintf(line, sizeof(line), "@RC stage=testrom ev=hlaunch file=%s rc=%d\n",
+                         all[i].file, (int)rc);
+            pip_log(line);
+        }
     }
     rt_begin("count");
     rt_dec("n", n);

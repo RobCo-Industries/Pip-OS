@@ -151,7 +151,7 @@ unsigned pipos_holo_count(int card)
 
     if (card && fs_opendir(&d, VOL(PIPOS_HOLO_DIR)) == FS_OK) {
         while ((rc = fs_readdir(&d, &st)) == 1) {
-            if (!st.is_dir && !st.leftover && pipos_is_holotape_name(st.name)) {
+            if (!st.is_dir && pipos_is_holotape_name(st.name)) {
                 count++;
             }
         }

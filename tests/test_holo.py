@@ -241,6 +241,23 @@ def test_enumerate_many(board, kernel_image, test_rom, test_holo, tmp_path, need
     assert [t[0] for t in tapes] == [f"T{i:02d}.HTP" for i in range(32)], tapes
 
 
+def test_enumerate_work_file_names(board, kernel_image, test_rom, test_holo, tmp_path,
+                                  need_mtools):
+    """A tape whose name starts with '#' or '~' is listed and launches like any other."""
+    tape = test_holo("tape")
+    sd = make_card(tmp_path / "sd.img", {
+        ROM: test_rom("holo_enum"),
+        HOLO + "#GAME.HTP": tape,
+        HOLO + "~GAME.HTP": tape,
+    })
+    vm, n, tapes = run_enum(kernel_image, board, sd)
+    assert sorted(t[0] for t in tapes) == ["#GAME.HTP", "~GAME.HTP"], tapes
+    assert n == 2
+    runs = sorted((m["file"], m["rc"]) for m in rom_markers(vm, "hlaunch"))
+    assert runs == [("#GAME.HTP", "42"), ("~GAME.HTP", "42")], vm.serial
+    assert [m["count"] for m in pipos_markers(vm, "holo")] == ["2"], vm.serial
+
+
 # ---- the state handover ----------------------------------------------------
 
 STATE_CHECKS = ["open", "read_before", "tone", "busy", "keys", "launch_killed", "last_killed",
