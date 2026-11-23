@@ -6,6 +6,7 @@
 #ifndef PIPOS_TIME_CLOCK_H
 #define PIPOS_TIME_CLOCK_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "sys.h"
@@ -45,9 +46,24 @@ int32_t pipos_time_read_sensor(const pipos_sys_ctx_t *ctx, const pipos_clock_t *
 /* sensor_available: 1 when read_sensor would succeed now, else 0; -PIP_EINVAL above 6. */
 int32_t pipos_time_sensor_available(const pipos_clock_t *c, uint32_t sensor);
 
-/* set_time: -PIP_EPERM for a holotape, else sets the clock and returns 0. */
+/* The Unix seconds a clock chip holds: years 2000 to 2099. */
+#define PIPOS_RTC_FIRST     946684800u
+#define PIPOS_RTC_LAST      4102444799u
+
+/*
+ * Writes `seconds` to the clock chip. Returns 0 or a negative error. The
+ * caller passes it only when a chip answers.
+ */
+typedef int (*pipos_rtc_write_fn)(uint32_t seconds);
+
+/*
+ * set_time: -PIP_EPERM for a holotape. Else sets the clock, then writes
+ * the chip through `rtc_write` when it is not NULL and `seconds` is in
+ * PIPOS_RTC_FIRST to PIPOS_RTC_LAST. Returns -PIP_EIO when that write
+ * fails, else 0. The clock keeps the new value either way.
+ */
 int32_t pipos_time_set(const pipos_sys_ctx_t *ctx, pipos_clock_t *c, uint64_t now_us,
-                       uint32_t seconds);
+                       uint32_t seconds, pipos_rtc_write_fn rtc_write);
 
 /* What power(op) does. */
 enum {

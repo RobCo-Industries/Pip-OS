@@ -84,11 +84,26 @@ static int32_t sys_power(const pipos_sys_ctx_t *ctx, uint32_t op, uint32_t a1, u
     }
 }
 
+/* pipos_time_set() calls it only for a time the chip can hold. */
+static int write_rtc(uint32_t seconds)
+{
+    datetime_t dt;
+    int rc = dt_from_seconds(seconds - PIPOS_UNIX_2000, &dt);
+
+    if (rc != 0) {
+        return rc;
+    }
+    rc = rtc_set(&dt);
+    k_printf("@RC stage=" PIPOS_STAGE " ev=rtc_set rc=%d\n", rc);
+    return rc;
+}
+
 static int32_t sys_set_time(const pipos_sys_ctx_t *ctx, uint32_t seconds, uint32_t a1,
                             uint32_t a2, uint32_t a3)
 {
     (void)a1, (void)a2, (void)a3;
-    return pipos_time_set(ctx, &clock, timer_now_us(), seconds);
+    return pipos_time_set(ctx, &clock, timer_now_us(), seconds,
+                          rtc_present() ? write_rtc : NULL);
 }
 
 static const pipos_sys_entry_t time_calls[] = {

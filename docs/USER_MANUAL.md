@@ -158,7 +158,7 @@ A ROM's saves live in `PIPBOY/SAVE/` as `<NAME>.SAV` files of at most 64 KiB. To
 
 ## Clock
 
-With an RTC module that holds a valid time, Pip-OS starts its clock from it at boot. Without one, the clock is unset until the ROM sets it, and the ROM gets no time. A time the ROM sets is not written to the RTC module, so it is lost at the next boot.
+With an RTC module that holds a valid time, Pip-OS starts its clock from it at boot. Without one, the clock is unset until the ROM sets it, and the ROM gets no time. A time the ROM sets is written to the RTC module too, so it survives a reboot. Without a module, it is lost at power-off. The module holds years 2000 to 2099 only.
 
 ## Sound
 

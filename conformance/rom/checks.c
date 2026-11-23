@@ -454,7 +454,11 @@ void check_rand(void)
     ck("rand_varies", differ);
 }
 
-/* The software clock only: Pip-OS never writes the chip. The old time comes back. */
+/*
+ * set_time also writes the RTC chip when one answers. The old time goes
+ * back to the clock and the chip at the end, rounded down to the second.
+ * With no time before, nothing is restored: a chip then keeps 2023-11-14.
+ */
 void check_set_time(void)
 {
     uint32_t before = 0, now = 0;

@@ -171,12 +171,13 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 `main_loop()` in `main.c` runs `audio_poll()` and the group polls, then waits up to 20 ms for an input event. It prints one `ev=key` marker per event.
 
-The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c` adds four commands:
+The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c` adds five commands:
 
 | Command | Effect |
 |---|---|
 | `dump` | The screen console as text |
 | `state` | `ready rom heap_free files holo` |
+| `rtc` | The time the RTC chip holds |
 | `kill` | Ends the innermost running image with `umode_request_kill()` |
 | `panic <reason>` | Takes the panic path |
 

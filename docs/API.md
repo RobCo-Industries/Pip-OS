@@ -159,11 +159,11 @@ A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` 
 | `0x40` | `get_time` | `uint32 *unix_seconds` | 0 | `EFAULT`, `ENODEV` while the clock is not set |
 | `0x41` | `get_battery` | none | none | Always `ENODEV` |
 | `0x47` | `power` | `uint32 op` | 0 for ops 2 and 3. Ops 0 and 1 do not return. | `EINVAL` for `op` above 3, `EPERM` for a holotape |
-| `0x4A` | `set_time` | `uint32 unix_seconds` | 0 | `EPERM` for a holotape |
+| `0x4A` | `set_time` | `uint32 unix_seconds` | 0 | `EIO` when the RTC chip write fails, `EPERM` for a holotape |
 
 The clock and sensor rules are in the spec's [Time, sensors and power](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/PIPOS_ABI.md#time-sensors-and-power) section.
 
-- At boot the clock takes the time from the RTC chip when `ev=clock` says `rtc=present` and a time. See [HARDWARE.md](HARDWARE.md) for the chip. `set_time` never writes the chip, so a time it sets is lost at the next boot.
+- At boot the clock takes the time from the RTC chip when `ev=clock` says `rtc=present` and a time. See [HARDWARE.md](HARDWARE.md) for the chip. `set_time` also writes the chip when one answered at boot, so the time survives a reboot. It prints `ev=rtc_set rc=<n>` after each chip write. A failed write returns `-PIP_EIO` and the clock keeps the new value. The chip holds years 2000 to 2099. A time outside that range sets the clock only and returns 0. Without a chip the time is lost at power-off.
 - No sensor other than the clock and no battery monitor is supported.
 
 | `op` | What Pip-OS does |
