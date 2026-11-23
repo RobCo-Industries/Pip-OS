@@ -7,13 +7,15 @@
 #   make test-target          QEMU target tests
 #   make check-pins           CI workflow pins match the submodule
 #   make check-pins-test      the pin check works without git
-#   make sdimage              build/sd.img with the kernel, a sample config and
+#   make sdimage              build/sd.img with the kernel, a sample config,
 #                             the hello example as ROM1.ROM (ROM=<file> picks
-#                             another image, ROM=none leaves it out)
+#                             another image, ROM=none leaves it out) and the
+#                             tape example in PIPBOY/HOLO (TAPE=<file>, TAPE=none)
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #                             (WINDOW=1 also opens the display window)
 #   make test-roms            build/roms/<name>/<name>.rom from tests/roms/
-#   make sdk-example          build/examples/hello/ROM1.ROM from sdk/examples/hello
+#   make sdk-example          build/examples/hello/ROM1.ROM and
+#                             build/examples/tape/BEACON.HTP from sdk/examples
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
 
 ROBCO_CORE := external/robco-core
@@ -59,6 +61,14 @@ EXAMPLE_ROM    = $(EXAMPLE_BUILD)/ROM1.ROM
 ROM           ?= $(EXAMPLE_ROM)
 ifneq ($(ROM),none)
 SDIMAGE_FILES += $(ROM):PIPBOY/ROM1.ROM
+endif
+# The card's holotape, whatever ROM says: the tape example unless TAPE
+# names another file, which keeps its own name. TAPE=none leaves it out.
+TAPE_BUILD     = $(abspath $(BUILD))/examples/tape
+EXAMPLE_TAPE   = $(TAPE_BUILD)/BEACON.HTP
+TAPE          ?= $(EXAMPLE_TAPE)
+ifneq ($(TAPE),none)
+SDIMAGE_FILES += $(TAPE):PIPBOY/HOLO/
 endif
 
 ifeq ($(wildcard $(ROBCO_CORE)/mk/robco.mk),)
@@ -120,11 +130,12 @@ $(HOLO_TARGETS): holo-%:
 $(addprefix rom-,$(ROM_PROJECTS)): rom-%:
 	$(MAKE) --no-print-directory -C tests/roms/$* BUILD=$(abspath $(ROM_BUILD))/$*
 
-# The hello example, the default ROM of the card.
+# The hello and tape examples, the default ROM and holotape of the card.
 sdk-example:
 	$(MAKE) --no-print-directory -C sdk/examples/hello BUILD=$(EXAMPLE_BUILD)
+	$(MAKE) --no-print-directory -C sdk/examples/tape BUILD=$(TAPE_BUILD)
 
-$(EXAMPLE_ROM): sdk-example
+$(EXAMPLE_ROM) $(EXAMPLE_TAPE): sdk-example
 
 # ---- Python environment for the target tests --------------------------
 
