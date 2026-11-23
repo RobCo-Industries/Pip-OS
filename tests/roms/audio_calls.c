@@ -60,7 +60,6 @@ static void limits(void)
     CK("seq_kernel", pip_play_seq(at(KERNEL_ADDR), 1), -PIP_EFAULT);
     CK("seq_mmio", pip_play_seq(at(MMIO_ADDR), 1), -PIP_EFAULT);
     CK("seq_slot_end", pip_play_seq(at(SLOT_END - 2), 1), -PIP_EFAULT);
-    CK("sample_enosys", pip_sample((const uint8_t *)many, 16), -PIP_ENOSYS);
     CK("idle_status", pip_audio_status(), 0);
     CK("idle_stop", pip_audio_stop(), 0);
 }

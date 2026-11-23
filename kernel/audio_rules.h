@@ -14,6 +14,9 @@
 /* 0, or -PIP_EINVAL unless hz is 20 to 20000 and ms is 1 to 60000. */
 int32_t pipos_audio_check_tone(uint32_t hz, uint32_t ms);
 
+/* 0, or -PIP_EINVAL unless len is 1 to PIP_SAMPLE_MAX (65536) bytes. */
+int32_t pipos_audio_check_sample(uint32_t len);
+
 /* 0, or -PIP_EINVAL unless count is 1 to 256. */
 int32_t pipos_audio_check_count(uint32_t count);
 
