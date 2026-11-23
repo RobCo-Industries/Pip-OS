@@ -7,7 +7,7 @@
 set -eu
 # Build settings from the caller's environment or an outer make
 # (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
-unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE ICON TITLE SRCS
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE ICON TITLE SRCS SUBTYPE
 root=$(cd "$(dirname "$0")/../.." && pwd)
 rimg="$root/external/robco-core/tools/rimg.py"
 nm=${CROSS:-arm-none-eabi-}nm

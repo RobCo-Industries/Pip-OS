@@ -10,8 +10,8 @@
 #   include $(PIPOS_SDK)/pipos-app.mk
 #
 # Optional: TITLE (META title), ICON (32x32 PBM or 128 raw bytes),
-# VERSION (such as 1.2.3), BUILD (output folder, default build),
-# CFLAGS_EXTRA, ROBCO_CORE (default $(PIPOS_SDK)/../external/robco-core),
+# VERSION (such as 1.2.3), SUBTYPE (holotape: game or 0, the default,
+# utility or 1), BUILD (output folder, default build), CFLAGS_EXTRA, ROBCO_CORE (default $(PIPOS_SDK)/../external/robco-core),
 # LIBPIP_DIR (where libpip.a is built, default $(BUILD)/libpip), CROSS,
 # PYTHON, CI=1 (warnings are errors).
 #
@@ -45,14 +45,29 @@ ifeq ($(wildcard $(ROBCO_CORE)/tools/rimg.py),)
 $(error RobCo-Core not found in $(ROBCO_CORE): run git submodule update --init --recursive, or set ROBCO_CORE)
 endif
 
+# SUBTYPE: the header subtype. A ROM has only 0. A holotape takes 0 or
+# game, 1 or utility. Data holotapes, subtype 2, have no slot: seal refuses them.
+PIP_SUBTYPE_IN := $(strip $(SUBTYPE))
 ifeq ($(strip $(KIND)),rom)
 PIP_LDS     := $(PIP_SDK)/rom.ld
 PIP_MAGIC   := ROM1
+ifeq ($(filter-out 0,$(PIP_SUBTYPE_IN)),)
 PIP_SUBTYPE := 0
+else
+$(error SUBTYPE=$(PIP_SUBTYPE_IN) is not valid for KIND=rom: a ROM has only subtype 0)
+endif
 else ifeq ($(strip $(KIND)),holotape)
 PIP_LDS     := $(PIP_SDK)/holotape.ld
 PIP_MAGIC   := ROBCO78
+ifeq ($(filter-out 0 game,$(PIP_SUBTYPE_IN)),)
 PIP_SUBTYPE := 0
+else ifeq ($(filter-out 1 utility,$(PIP_SUBTYPE_IN)),)
+PIP_SUBTYPE := 1
+else ifeq ($(filter-out 2 data,$(PIP_SUBTYPE_IN)),)
+$(error SUBTYPE=$(PIP_SUBTYPE_IN) is a data holotape: it has no slot and cannot run, so the SDK does not build it)
+else
+$(error SUBTYPE=$(PIP_SUBTYPE_IN) is not valid for KIND=holotape: use 0 or game, 1 or utility)
+endif
 else
 $(error KIND must be rom or holotape, not $(KIND))
 endif

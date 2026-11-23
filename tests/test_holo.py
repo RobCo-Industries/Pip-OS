@@ -198,6 +198,7 @@ def test_enumerate_empty_folder(board, kernel_image, test_rom, tmp_path, need_mt
 
 def test_enumerate_tapes(board, kernel_image, test_rom, test_holo, tmp_path, need_mtools):
     tape = test_holo("tape")
+    util = test_holo("tape_util")  # built with SUBTYPE=utility
     icon = bytes((i * 13 + 1) & 0xFF for i in range(128))
     meta = with_meta(tape, "Fancy_Title", icon)
     sd = make_card(tmp_path / "sd.img", {
@@ -213,6 +214,7 @@ def test_enumerate_tapes(board, kernel_image, test_rom, test_holo, tmp_path, nee
         HOLO + "I_DIR.HTP/": b"",
         HOLO + "J_TEXT.TXT": tape,
         HOLO + "K_UTIL.HTP": with_subtype(with_field(tape, 0x44, 0x00010203), 1),
+        HOLO + "L_UTIL.HTP": util,
         HOLO + "Long name.htp": tape,
     })
     _, n, tapes = run_enum(kernel_image, board, sd)
@@ -225,9 +227,11 @@ def test_enumerate_tapes(board, kernel_image, test_rom, test_holo, tmp_path, nee
         ("C_BADCRC.HTP",) + plain,
         ("F_DATA.HTP", "2") + plain[1:],
         ("K_UTIL.HTP", "1", size, "0x00010203") + plain[3:],
+        ("L_UTIL.HTP", "1", len(util), "0x00010000", "tape_util", "Holotape_tape_util",
+         "0x00000000"),
         ("LONGNA~1.HTP",) + plain,
     ], tapes
-    assert n == 6
+    assert n == 7
 
 
 def test_enumerate_many(board, kernel_image, test_rom, test_holo, tmp_path, need_mtools):

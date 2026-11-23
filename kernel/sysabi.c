@@ -93,3 +93,8 @@ int pipos_fault_line(unsigned type, uint32_t pc, char *buf, size_t size)
     }
     return k_snprintf(buf, size, "ROM(1) %s AT 0x%08X", what, (unsigned)pc);
 }
+
+int32_t pipos_exit_status(int code)
+{
+    return (int32_t)((unsigned)code & 0xffu);
+}

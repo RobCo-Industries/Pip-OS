@@ -127,6 +127,14 @@ $(HOLO_TARGETS): holo-%:
 	    TITLE="Holotape_$*" SRCS="tests/roms/holo_tapes/$*.c tests/roms/rt.c" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
+# tape_util: the tape source sealed as a utility, subtype 1.
+.PHONY: holo-tape_util
+test-roms: holo-tape_util
+holo-tape_util:
+	$(PIP_APP) KIND=holotape SUBTYPE=utility BUILD=$(HOLO_BUILD)/tape_util IMAGE=tape_util.htp \
+	    NAME=tape_util TITLE="Holotape_tape_util" SRCS="tests/roms/holo_tapes/tape.c tests/roms/rt.c" \
+	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
+
 $(addprefix rom-,$(ROM_PROJECTS)): rom-%:
 	$(MAKE) --no-print-directory -C tests/roms/$* BUILD=$(abspath $(ROM_BUILD))/$*
 
