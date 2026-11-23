@@ -199,6 +199,7 @@ ROMs and holotapes build through `sdk/pipos-app.mk` with the same CPU flags. `KI
 | Shell tests of the build, SDK and card | `tests/host/*.sh` | `make test-host` |
 | Target tests in QEMU on `raspi0`, `raspi1ap`, `raspi2b`, `raspi3b` | `tests/test_*.py` | `make test-target` |
 | Golden screens | `tests/golden/*.png` | the target tests |
+| Every system call against the spec, in QEMU or on a Pi | the [conformance ROM](TESTING.md#conformance-rom) in `conformance/` | `tests/test_conformance.py` |
 
 Test ROMs are C files in `tests/roms/`, each linked with `rt.c`, the small runtime that prints `@RC stage=testrom` lines through `log`. Test holotapes are in `tests/roms/holo_tapes/`. `make test-roms` finds both by wildcard.
 

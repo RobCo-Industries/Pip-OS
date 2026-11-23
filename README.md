@@ -46,7 +46,7 @@ make test
 make test BOARD=raspi0
 ```
 
-`make test` runs the host unit tests, then boots the kernel in QEMU on all four boards. See [docs/TESTING.md](docs/TESTING.md).
+`make test` runs the host unit tests, then boots the kernel in QEMU on all four boards. See [docs/TESTING.md](docs/TESTING.md). The [conformance ROM](docs/TESTING.md#conformance-rom) checks every system call in QEMU or on a real board.
 
 ## Run in QEMU
 
@@ -76,6 +76,7 @@ Copy the files in `DIR` to the FAT32 boot partition of the card, then add `PIPBO
 | [docs/BOOT.md](docs/BOOT.md) | Boot flow, boot text, markers, script commands, memory map |
 | [docs/CONFIG.md](docs/CONFIG.md) | `PIPOS.CFG` keys and defaults |
 | [docs/TESTING.md](docs/TESTING.md) | Host tests, QEMU tests, CI |
+| [docs/HARDWARE_VALIDATION.md](docs/HARDWARE_VALIDATION.md) | Checking a real Pi with the conformance ROM |
 | [docs/HARDWARE.md](docs/HARDWARE.md) | Pins, buses and what the kernel drives |
 | [docs/API.md](docs/API.md) | System call reference |
 | [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md) | Writing a ROM and a holotape with the SDK |

@@ -23,6 +23,7 @@ RobCo-Core's `mk/host.mk` builds them. The `Makefile` sets `HOST_TEST_DIR`, `HOS
 | `sdk_example_test.sh` | `sdk/examples/hello` builds from its folder and from a copy outside the tree, with an absolute and a relative `PIPOS_SDK`, and as a holotape. Each result passes `rimg.py verify` with the right magic, subtype and load address. |
 | `sdk_rebuild_test.sh` | A ROM project rebuilds after each change: a source removed from `SRCS` leaves the ELF, a header edit rebuilds its object, a new `TITLE` reseals, new flags rebuild `libpip.a`. `start.c` and `start.S` both link, objects stay in `BUILD`, and a failed seal leaves no image. |
 | `sdimage_rom_test.sh` | `make sdimage` puts the hello example on the card as `PIPBOY/ROM1.ROM`, `ROM=<file>` puts that file, `ROM=none` puts none. It reads the card with mtools. |
+| `conformance_bootdir_test.sh` | `make conformance-bootdir FIRMWARE=0` writes the same files as `build/conformance.img`, under the same names and with the same bytes. It needs no network, so it does not test the firmware download. |
 
 `tests/host/libpip_test.c` tests `libpip.a` on the host: printf conversions and truncation, the split of long `pip_printf` output into `log` calls, the string functions, and the heap. It is not a `test_*.c` file because it builds apart: the library sources get `tests/host/libpip_names.h` forced in, which renames `memcpy`, `strlen` and the others to `pipt_*` so they do not replace the host libc. `log` and `mem_info` are fakes in the test. `make libpip-host-test` runs it alone.
 
@@ -43,6 +44,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
+| `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers and in auto mode. See [Conformance ROM](#conformance-rom). |
 
 While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/TESTING.md#qemu-keep-alive).
 
@@ -99,6 +101,70 @@ def test_mine(board, kernel_image, test_rom, tmp_path, need_mtools):
 On `raspi0` and `raspi1ap` the `jmpkern` test asserts `rom_kill reason=undef` at the kernel's first privileged instruction, read from `pipos.elf` with `arm-none-eabi-objdump`. It fails if QEMU starts to raise the prefetch abort there. See [BOOT.md](BOOT.md#running-the-rom).
 
 Tests read the screen in two ways: the `dump` command on the script channel, which `vm.script("dump")` sends, and a QEMU screenshot. See [BOOT.md](BOOT.md#maintenance-commands) for the commands. `tests/golden/boot_nocard.png` is the screen after a boot without a card. `card_hello_list.png` and `card_beacon.png` show the default card's hello example and tape. `gfx_prims.png`, `gfx_text.png` and `gfx_blits.png` are the graphics scenes. `boot_nocard.png` must match on every board, pixel for pixel. Run the tests with `PIPOS_UPDATE_GOLDEN=1` to write it again after a deliberate change to the boot screen.
+
+## Conformance ROM
+
+`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+
+| File | Is |
+|---|---|
+| `conformance/rom/` | `CONFORM.ROM`: the checks, the prompts and the result screens |
+| `conformance/tape/` | `CONFTAPE.HTP`: the companion holotape. Its argument picks a self-check, an exit status or a fault. |
+| `conformance/mkdata.py` | Writes `CONFDATA.HTP`, a copy of the tape with subtype 2. `holo_launch` must refuse it. |
+
+Both images build with `sdk/pipos-app.mk` and `libpip.a` only, like a third-party project.
+
+```sh
+make conformance          # build/conformance/: the ROM and both tapes
+make conformance-card     # build/conformance.img
+make sdimage ROM=build/conformance/rom/CONFORM.ROM TAPE=build/conformance/tape/CONFTAPE.HTP
+```
+
+`make conformance-card` writes the card through `make sdimage`, so `build/sd.img` holds the same card afterwards. It carries `PIPOS.CFG`, the ROM as `ROM1.ROM` and both tapes. The plain `make sdimage` line gives a card without the data tape: its two data-tape checks show ABSENT. To run the card in QEMU:
+
+```sh
+make conformance-card
+make run BOARD=raspi2b
+```
+
+`make run` rebuilds `build/sd.img` from the default rules, so boot the card with the harness instead: `PYTHONPATH=external/robco-core/tests python3 -m harness.run build/pipos.img --board raspi2b --sd build/conformance.img`.
+
+### What it covers
+
+The ROM's table is built from `PIP_SYSCALLS` in `abi.h`, with one `check_<call>()` function per call. A call added to `abi.h` without its function fails the link, and a `_Static_assert` compares the table with `PIP_SYSCALL_COUNT`.
+
+The automatic part needs no person. Each call runs on its main path and on the error paths the spec names: bad limits, bad pointers to kernel memory and across the end of the stack, missing files and saves. Drawing calls are checked by return value. A save named `CONFTEST` is written, read back, compared and deleted. The ROM reads `CONFTAPE.HTP` through the file calls and compares the bytes read with the size from `dir_list`. It launches the tape to check the tape's entry state and memory limits, the calls a holotape may not make, `exit`, and a fault in the ROM slot that must return `-PIP_EFAULT`.
+
+`power` runs only `op` 2 and 3. Reboot and halt would end the run. `exit` is checked through the tape: the ROM's own exit ends the run.
+
+The interactive part starts with an intro screen. It says what comes next and waits 10 minutes for SELECT, which starts the part, or LEFT, which skips it. LEFT or no answer makes every interactive check SKIP. The interactive part asks a person to press and hold each button, turn the dial both ways, say whether a tone, a tune and a sample were heard and whether a test picture is right. SELECT is yes, LEFT is no. Each prompt waits 30 s, then the check is SKIP. While a button is held, `read_buttons` must show it down, and after the release up. A tap released before the ROM reads asks again: it proves nothing. A sound starts once its prompt shows, and UP plays it again.
+
+### Mode
+
+ROMs get no argument string from the kernel. A file `/PIPBOY/CONFORM.CFG` that starts with `auto` makes the run automatic: the interactive checks are SKIP without a prompt, and every page and the summary go by on their own. Without the file, the run is interactive.
+
+### Reading the results
+
+| Result | Means |
+|---|---|
+| PASS | The call answered as the spec says |
+| FAIL | It did not. The serial line, and a second row on screen, show the value it returned and the one expected. |
+| SKIP | A prompt got no answer, or the run is automatic |
+| ABSENT | The hardware is not there and the call said so as the spec requires, for example `-PIP_ENODEV` from a sensor |
+
+The screen shows 12 rows per page: the check number, its name and the result. In an interactive run, the pages open on the first page with a FAIL, or on page 1. DOWN or RIGHT turns the page, UP or LEFT goes back, SELECT jumps to the summary. Each page waits for a button, at most 10 minutes. The summary shows the four counts and, after a FAIL, the pages that hold one. From the summary, UP or LEFT goes back to the last page, DOWN and RIGHT do nothing, and SELECT ends the run. The summary also ends the run after 10 minutes. In auto mode, each page shows for 0.3 s and the summary for 1 s. The ROM exits with status 0 when no check failed, 1 otherwise.
+
+On the serial port, each check prints one line:
+
+```
+@RC stage=conform ev=check n=86 call=get_time name=time_at_boot result=ABSENT got=-41 expected=0
+```
+
+Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` once it is answered, `ev=prompt name=<check>` when a prompt is on screen, `ev=page n=<n> of=<pages>` per results page, and `ev=summary total= pass= fail= skip= absent= mode=` each time the summary shows. The tape prints `ev=tape_check name=<name> ok=<0|1>` for each of its own checks.
+
+### Test
+
+`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel, turns every page with DOWN, goes back from the summary to the last page once, then ends on SELECT. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, one results row per serial check line with the last check on the last page, and golden screens of the intro, the picture prompt, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_picture.png`, `conform_page1.png` and `conform_summary.png`. The ROM has room for 319 results. A check past that is not shown: the ROM adds a FAIL named `results_overflow` instead, so the run fails. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP.
 
 ## CI
 
