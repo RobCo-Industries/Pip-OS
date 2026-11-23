@@ -73,3 +73,10 @@ int rt_checks_done(void)
     rt_end();
     return checks_failed;
 }
+
+void rt_mark(const char *ev)
+{
+    rt_begin(ev);
+    rt_dec("t_ms", (int32_t)(pip_ticks_ms() & 0x7fffffffu));
+    rt_end();
+}

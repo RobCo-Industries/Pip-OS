@@ -70,6 +70,7 @@ static void errors(void)
     CK("idle_status", pip_audio_status(), 0);
 
     /* An error leaves the sound that plays alone. */
+    rt_mark("t0_2100");
     CK("tone_2100", pip_tone(2100, 5000), 0);
     CK("err_len0", pip_sample(buf, 0), -PIP_EINVAL);
     CK("err_kernel", pip_sample(at(KERNEL_ADDR), 16), -PIP_EFAULT);

@@ -15,7 +15,6 @@ from pipos_helpers import (assert_rom_checks, booted, config, dump, make_card, n
 ROM = "PIPBOY/ROM1.ROM"
 CFG = "PIPBOY/PIPOS.CFG"
 SLACK_MS = 150
-CUT_MS = 10
 
 CALL_CHECKS = [
     "tone_hz19", "tone_hz20001", "tone_ms0", "tone_ms60001", "volume_101",
@@ -67,6 +66,17 @@ def cut(tr, i, ms, slack=1000):
     lasted(tr, i, 0, ms + slack)
 
 
+def cut_from_mark(tr, i, t0, ms, slack):
+    """Marker i is a sound started right after the ROM's t0 mark and cut ms later.
+
+    The tick that starts the sound can run late on a loaded host, so marker
+    i to the cut can be shorter than ms. The ROM printed t0, the kernel's
+    time, before the call, and the cut comes at least ms after the call.
+    """
+    assert tr[i + 1][-1] - t0 >= ms, (i, t0, ms, tr)
+    assert tr[i + 1][-1] - tr[i][-1] <= ms + slack, (i, ms, tr)
+
+
 def card(tmp_path, rom, cfg):
     return make_card(tmp_path / "sd.img", {ROM: rom, CFG: cfg})
 
@@ -96,6 +106,7 @@ def test_exit_stops_sound(board, kernel_image, test_rom, tmp_path, need_mtools):
     """volume = 0 and beep = no: no boot beep, silent tones, and image end stops the tone."""
     sd = card(tmp_path, test_rom("audio_exit"), config(volume=0, beep="no"))
     with booted(kernel_image, board, sd=sd) as vm:
+        t0 = int(rom_one(vm, "t0")["t_ms"])
         start = rom_one(vm, "audio_start")
         assert (start["vol"], start["rc"], start["status"]) == ("0", "0", "1"), vm.serial
         assert one(vm, "rom_exit")["status"] == "0"
@@ -105,4 +116,4 @@ def test_exit_stops_sound(board, kernel_image, test_rom, tmp_path, need_mtools):
         no_exception(vm)
     assert [t[:3] for t in tr] == [("tone", 1900, 0), ("stop", 0, 0)], tr
     # The ROM sleeps 100 ms, then exits; the tone was 30 s long.
-    lasted(tr, 0, 100 - CUT_MS, 2000)
+    cut_from_mark(tr, 0, t0, 100, 2000)

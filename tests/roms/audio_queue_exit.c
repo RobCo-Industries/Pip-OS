@@ -17,6 +17,7 @@ int pip_main(const pipos_startup_t *startup)
     for (i = 0; i < LEN; i++) {
         buf[i] = (uint8_t)i;
     }
+    rt_mark("t0");
     play = pip_sample_queue(buf, LEN);
     for (i = 0; i < LEN; i++) {
         buf[i] = (uint8_t)~i;
