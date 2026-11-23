@@ -39,6 +39,7 @@ In an existing clone, run `git submodule update --init` first. `CI=1` turns warn
 | `build/roms/<name>/<name>.rom` | The test ROMs, see [TESTING.md](TESTING.md#test-roms) |
 | `build/examples/hello/ROM1.ROM` | The SDK's hello example, see [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md) |
 | `build/examples/tape/BEACON.HTP` | The SDK's tape example |
+| `build/conformance/`, `build/conformance.img` | The conformance ROM, its tapes and its card from `make conformance` and `make conformance-card`, see [TESTING.md](TESTING.md#conformance-rom) |
 
 The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. The link fails when the image and its stacks pass `0x00400000`, the end of the Pip-OS slot. `python3 external/robco-core/tools/rimg.py info build/pipos.img` prints its header.
 
@@ -55,6 +56,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
 | `tools/check_doc_links.sh` | The doc link check of `make check-pins` |
+| `conformance/` | The conformance ROM and its tapes, built with the SDK only, see [TESTING.md](TESTING.md#conformance-rom) |
 | `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py`, test ROMs in `tests/roms/` |
 | `pytest.ini` | The boards the QEMU tests run on by default |
 | `external/robco-core/` | The library |
@@ -95,6 +97,8 @@ The console has no key for the dial. On the default card, the hello example list
 make bootdir DIR=/path/to/dir
 ```
 
-This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself, such as `build/examples/hello/ROM1.ROM`, and holotapes in `PIPBOY/HOLO/`, such as `build/examples/tape/BEACON.HTP`. `make sdk-example` builds both. The kernel has not been tested on hardware yet.
+This writes the boot files into `DIR`: the firmware files from RobCo-Core's `tools/fetch_firmware.sh`, `PIPOS.IMG`, `config.txt`, an empty `PIPBOY/HOLO/` and `PIPBOY/PIPOS.CFG` unless one exists. Copy them to the FAT32 boot partition of the card. It never writes a device. Put `ROM1.ROM` in `PIPBOY/` yourself, such as `build/examples/hello/ROM1.ROM`, and holotapes in `PIPBOY/HOLO/`, such as `build/examples/tape/BEACON.HTP`. `make sdk-example` builds both. The kernel has not been tested on hardware yet.
+
+`make conformance-bootdir DIR=/path/to/dir` writes the same files, plus the conformance ROM as `PIPBOY/ROM1.ROM` and its two holotapes in `PIPBOY/HOLO/`. See [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md). With `FIRMWARE=0`, both targets leave the firmware out and need no network.
 
 `config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/06316cd5179009832fc164921bd04bf5016950a1/docs/spec/BOARD_SUPPORT.md#configtxt).

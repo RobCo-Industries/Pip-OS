@@ -17,6 +17,10 @@
 #   make sdk-example          build/examples/hello/ROM1.ROM and
 #                             build/examples/tape/BEACON.HTP from sdk/examples
 #   make bootdir DIR=<path>   boot files for a real card, firmware included
+#                             (FIRMWARE=0 leaves the firmware out)
+#   make conformance-bootdir DIR=<path>
+#                             bootdir plus the conformance ROM as
+#                             PIPBOY/ROM1.ROM and its two holotapes
 
 ROBCO_CORE := external/robco-core
 IMAGE      := pipos
@@ -145,6 +149,31 @@ sdk-example:
 
 $(EXAMPLE_ROM) $(EXAMPLE_TAPE): sdk-example
 
+# ---- Conformance ROM ------------------------------------------------------
+
+# conformance/: a ROM that runs every system call and shows a PASS/FAIL
+# table, its companion holotape, and a data holotape made from it.
+# `make conformance-card` writes build/conformance.img through sdimage,
+# so build/sd.img is the same card afterwards. See docs/TESTING.md.
+CONF_BUILD   = $(abspath $(BUILD))/conformance
+CONF_ROM     = $(CONF_BUILD)/rom/CONFORM.ROM
+CONF_TAPE    = $(CONF_BUILD)/tape/CONFTAPE.HTP
+CONF_DATA    = $(CONF_BUILD)/CONFDATA.HTP
+CONF_FILES   = boot/PIPOS.CFG:PIPBOY/PIPOS.CFG $(CONF_ROM):PIPBOY/ROM1.ROM \
+               $(CONF_TAPE):PIPBOY/HOLO/ $(CONF_DATA):PIPBOY/HOLO/
+
+.PHONY: conformance conformance-card
+all: conformance
+
+conformance:
+	$(MAKE) --no-print-directory -C conformance/rom BUILD=$(CONF_BUILD)/rom
+	$(MAKE) --no-print-directory -C conformance/tape BUILD=$(CONF_BUILD)/tape
+	$(PYTHON) conformance/mkdata.py $(CONF_TAPE) $(CONF_DATA)
+
+conformance-card: conformance $(BUILD)/$(IMAGE).img
+	$(MAKE) --no-print-directory sdimage SDIMAGE_FILES="$(CONF_FILES)"
+	cp $(BUILD)/sd.img $(BUILD)/conformance.img
+
 # ---- Python environment for the target tests --------------------------
 
 VENV := .venv
@@ -181,7 +210,7 @@ build-dir-test:
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
-           sdimage-rom-test
+           sdimage-rom-test conformance-bootdir-test
 
 .PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test
 sdk-example-test:
@@ -192,6 +221,10 @@ sdk-rebuild-test:
 
 sdimage-rom-test:
 	tests/host/sdimage_rom_test.sh
+
+.PHONY: conformance-bootdir-test
+conformance-bootdir-test:
+	tests/host/conformance_bootdir_test.sh
 
 # libpip.a on the host: sdk/lib/ without svc.c and the wrappers, and RobCo-Core's
 # string, printf and heap code. libpip_names.h renames the C library
@@ -231,7 +264,7 @@ sdimage-stage::
 	    --kernel-name PIPOS.IMG --no-firmware
 	mkdir -p $(SDIMAGE_STAGE)/PIPBOY/HOLO
 
-.PHONY: run bootdir
+.PHONY: run bootdir conformance-bootdir
 
 RUN_BOARD := $(if $(filter all,$(BOARD)),raspi2b,$(BOARD))
 run: sdimage
@@ -240,6 +273,12 @@ run: sdimage
 
 bootdir: all
 	$(if $(strip $(DIR)),,$(error DIR is not set: make bootdir DIR=<path>))
-	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(DIR) --kernel-name PIPOS.IMG
+	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(DIR) --kernel-name PIPOS.IMG \
+	    $(if $(filter 0,$(FIRMWARE)),--no-firmware)
 	mkdir -p $(DIR)/PIPBOY/HOLO
 	test -e $(DIR)/PIPBOY/PIPOS.CFG || cp boot/PIPOS.CFG $(DIR)/PIPBOY/PIPOS.CFG
+
+# The same files as build/conformance.img, plus the firmware.
+conformance-bootdir: bootdir
+	cp $(CONF_ROM) $(DIR)/PIPBOY/ROM1.ROM
+	cp $(CONF_TAPE) $(CONF_DATA) $(DIR)/PIPBOY/HOLO/
