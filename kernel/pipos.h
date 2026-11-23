@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include <robco/input.h>
 #include <robco/loader.h>
 
 #include "settings.h"
@@ -33,6 +34,10 @@ void pipos_rom_run(const loader_result_t *res);
 
 /* main.c: one pass of the main loop's work: audio, input, script commands, group polls. */
 void pipos_poll(void);
+
+/* sys_input.c: every RobCo-Core event main.c takes; empties the image's event queue. */
+void pipos_input_event(const input_event_t *ev);
+void pipos_input_flush(void);
 
 /* screen.c: boot text on the screen console and the UART. */
 void pipos_screen_delay(uint32_t ms);
