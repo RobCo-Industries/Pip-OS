@@ -78,8 +78,13 @@ TAPE_BUILD     = $(abspath $(BUILD))/examples/tape
 EXAMPLE_TAPE   = $(TAPE_BUILD)/BEACON.HTP
 TAPE          ?= $(EXAMPLE_TAPE)
 CARD_TAPES    := $(filter-out none,$(TAPE))
-ifneq ($(words $(sort $(notdir $(CARD_TAPES)))),$(words $(CARD_TAPES)))
-$(error TAPE names two files with the same name: $(TAPE))
+# tools/check_tapes.sh: two names that differ only in case, or a name
+# that is not *.HTP, stop the build. A long *.HTP name gets a warning.
+ifneq ($(CARD_TAPES),)
+TAPE_ERRORS := $(shell tools/check_tapes.sh $(CARD_TAPES))
+ifneq ($(TAPE_ERRORS),)
+$(error $(TAPE_ERRORS))
+endif
 endif
 SDIMAGE_FILES += $(addsuffix :PIPBOY/HOLO/,$(CARD_TAPES))
 CARD_ROM      := $(filter-out none,$(ROM))

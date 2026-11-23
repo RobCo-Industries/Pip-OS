@@ -62,7 +62,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 |---|---|---|
 | `BUILD` | `build` | Output folder. From another repository, pass an absolute path. |
 | `ROM` | The hello example | The card's `PIPBOY/ROM1.ROM`, or `none` |
-| `TAPE` | The tape example | Holotapes for `PIPBOY/HOLO/`, separated by spaces, or `none` |
+| `TAPE` | The tape example | Holotapes for `PIPBOY/HOLO/`, separated by spaces, or `none`. Each name must end in `.HTP`, and two names may not differ only in case. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#using-pip-os-from-another-repository). |
 | `CARD_DIR` | unset | A folder tree copied onto the card after the standard files. A file at the path of a standard file stops the build. |
 | `BOARD` | `all` | QEMU board for `test` and `run`. `run` takes `raspi2b` for `all`. |
 | `WINDOW` | unset | `WINDOW=1` makes `run` open the display window |

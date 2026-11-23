@@ -221,7 +221,7 @@ Pass absolute paths. `make -C` runs in the Pip-OS folder, so a relative path wou
 |---|---|
 | `BUILD` | Output folder. Use an absolute path outside the Pip-OS tree. |
 | `ROM` | The card's `PIPBOY/ROM1.ROM`. `none` leaves it out. The hello example by default. |
-| `TAPE` | One or more holotapes for `PIPBOY/HOLO/`, separated by spaces. Each keeps its file name, and two files with the same name stop the build. `none` leaves the folder empty. The tape example by default. |
+| `TAPE` | One or more holotapes for `PIPBOY/HOLO/`, separated by spaces. Each keeps its file name. Two names that differ only in case stop the build, because FAT ignores case. A name that does not end in `.HTP` stops it too, since `holo_enumerate` never lists it. A longer name than 8.3 `NAME.HTP` gets a warning: ROMs see it under a FAT short name such as `LONGNA~1.HTP`. `none` leaves the folder empty. The tape example by default. |
 | `CARD_DIR` | A folder whose tree is copied onto the card root after the standard files, such as `content/PIPBOY/DATA/README.TXT`. |
 | `BOARD`, `WINDOW` | The QEMU board for `run`, and `WINDOW=1` for the display window |
 | `DIR`, `FIRMWARE`, `CLEAN` | The folder for `bootdir`, `FIRMWARE=0` to leave the firmware out, and `CLEAN=1` to remove files an earlier `bootdir` run wrote, see [Running bootdir again](BUILD.md#running-bootdir-again) |
