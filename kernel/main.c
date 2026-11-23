@@ -105,7 +105,7 @@ static void dump_char(char c)
 /* The umode_request_kill() reason of the kill script command. */
 #define PIPOS_KILL_SCRIPT 1
 
-/* Project commands on the script channel: dump, state, kill, panic <reason>. */
+/* Project commands on the script channel: dump, state, rtc, kill, panic <reason>. */
 static int script_command(int argc, char *argv[], input_script_reply_t *reply, void *ctx)
 {
     static char why[PIPOS_LINE_MAX];
@@ -125,6 +125,20 @@ static int script_command(int argc, char *argv[], input_script_reply_t *reply, v
         k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u files=%u holo=%d\n",
                    ready_flag, rom_loaded, (unsigned)heap.free, pipos_storage_open_count(),
                    pipos_holo_running());
+        reply->write(line);
+        return 0;
+    }
+    /* Reads the clock chip itself, not the software clock. */
+    if (k_strcmp(argv[0], "rtc") == 0 && argc == 1) {
+        datetime_t dt;
+        char iso[DT_ISO_SIZE];
+        int rc = rtc_present() ? rtc_get(&dt) : RTC_ERR_ABSENT;
+
+        if (rc != 0 || dt_format_iso(&dt, iso, sizeof(iso)) <= 0) {
+            k_snprintf(line, sizeof(line), "rc=%d time=none\n", rc);
+        } else {
+            k_snprintf(line, sizeof(line), "rc=0 time=%s\n", iso);
+        }
         reply->write(line);
         return 0;
     }

@@ -26,6 +26,12 @@ void rt_dec(const char *key, int32_t v);
 /* Ends the line and logs it in one call. */
 void rt_end(void);
 
+/*
+ * Prints "ev=<ev> t_ms=<pip_ticks_ms()>": the kernel's time right before
+ * a call. The audio driver's t_ms counts from the same tick clock.
+ */
+void rt_mark(const char *ev);
+
 /* One named check. name: no spaces, at most 64 bytes. Returns ok. */
 int rt_check(const char *name, int ok);
 /* A check that got == expected, with both values in the line. */

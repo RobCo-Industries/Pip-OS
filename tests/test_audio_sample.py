@@ -13,14 +13,13 @@ far fewer timer IRQs than samples on some hosts.
 
 import zlib
 
-from pipos_helpers import (assert_rom_checks, booted, config, dump, make_card, no_exception,
-                           one, pipos_markers, rom_one, wait_markers)
+from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, config, dump, make_card,
+                           no_exception, one, pipos_markers, rom_one, wait_markers)
 
 ROM = "PIPBOY/ROM1.ROM"
 CFG = "PIPBOY/PIPOS.CFG"
 RATE = 8000
 SLACK_MS = 150
-CUT_MS = 10
 
 CHECKS = [
     "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "idle_status",
@@ -84,12 +83,25 @@ def cut(tr, i, ms, slack=1000):
 
     The tick that starts the sound runs up to one period after the call,
     plus its interrupt latency, which a loaded host makes unbounded. So
-    marker i to the cut can be shorter than ms - CUT_MS. The ROM made the
+    marker i to the cut can be shorter than ms - 10. The ROM made the
     call after marker i - 1, the end of the sound it waited for, and the cut
     comes at least ms after the call. So the cut is at least ms after
     marker i - 1.
     """
     assert tr[i + 1][-1] - tr[i - 1][-1] >= ms, (i, ms, tr)
+    assert tr[i + 1][-1] - tr[i][-1] <= ms + slack, (i, ms, tr)
+
+
+def cut_from_mark(tr, i, t0, ms, slack):
+    """Marker i is a sound started right after the ROM's t0 mark and cut ms later.
+
+    The tick that starts the sound can run late on a loaded host, so marker
+    i to the cut can be shorter than ms. The ROM printed t0, the kernel's
+    time, before the call, and the cut comes at least ms after the call.
+    t0 is on the kernel's tick clock and the cut on the audio clock: see
+    AUDIO_CLOCK_LAG_MS.
+    """
+    assert tr[i + 1][-1] - t0 >= ms - AUDIO_CLOCK_LAG_MS, (i, t0, ms, tr)
     assert tr[i + 1][-1] - tr[i][-1] <= ms + slack, (i, ms, tr)
 
 
@@ -101,13 +113,14 @@ def test_sample(board, kernel_image, test_rom, tmp_path, need_mtools):
     sd = card(tmp_path, test_rom("audio_sample"), config(volume=70, beep="no"))
     with booted(kernel_image, board, sd=sd) as vm:
         assert_rom_checks(vm, CHECKS)
+        t0 = int(rom_one(vm, "t0_2100")["t_ms"])
         assert one(vm, "rom_exit")["status"] == "0"
         wait_markers(vm, "audio", count=len(TRACE))
         tr = trace(vm)
         no_exception(vm)
     assert [t[0] for t in tr] == TRACE, tr
     assert not pipos_markers(vm, "audio_drop"), vm.serial
-    lasted(tr, 0, 100 - CUT_MS, 1000)  # the 5 s tone ran until audio_stop, about 100 ms
+    cut_from_mark(tr, 0, t0, 100, 1000)  # the 5 s tone ran until audio_stop, about 100 ms
     lasted(tr, 2, 800 * 1000 // RATE)  # 800 bytes: 100 ms
     lasted(tr, 4, 0)                   # 1 byte
     cut(tr, 6, 50)                     # 65536 bytes, stopped after about 50 ms
@@ -129,6 +142,7 @@ def test_exit_stops_sample(board, kernel_image, test_rom, tmp_path, need_mtools)
     """The ROM starts an 8.192 s sample and exits after 100 ms: image end stops it."""
     sd = card(tmp_path, test_rom("audio_pcm_exit"), config(volume=0, beep="no"))
     with booted(kernel_image, board, sd=sd) as vm:
+        t0 = int(rom_one(vm, "t0")["t_ms"])
         start = rom_one(vm, "sample_start")
         assert (start["rc"], start["status"]) == ("0", "1"), vm.serial
         assert one(vm, "rom_exit")["status"] == "0"
@@ -138,4 +152,4 @@ def test_exit_stops_sample(board, kernel_image, test_rom, tmp_path, need_mtools)
         no_exception(vm)
     data_crc = f"{zlib.crc32(bytes(i & 0xff for i in range(65536))):08x}"
     assert [t[0] for t in tr] == [("pcm", 65536, 0, data_crc), ("stop", 0, 0)], tr
-    lasted(tr, 0, 100 - CUT_MS, 2000)
+    cut_from_mark(tr, 0, t0, 100, 2000)

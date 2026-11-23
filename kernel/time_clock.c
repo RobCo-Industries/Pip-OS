@@ -67,7 +67,7 @@ int32_t pipos_time_sensor_available(const pipos_clock_t *c, uint32_t sensor)
 }
 
 int32_t pipos_time_set(const pipos_sys_ctx_t *ctx, pipos_clock_t *c, uint64_t now_us,
-                       uint32_t seconds)
+                       uint32_t seconds, pipos_rtc_write_fn rtc_write)
 {
     int32_t rc = pipos_sys_rom_only(ctx);
 
@@ -75,7 +75,10 @@ int32_t pipos_time_set(const pipos_sys_ctx_t *ctx, pipos_clock_t *c, uint64_t no
         return rc;
     }
     pipos_clock_set(c, seconds, now_us);
-    return 0;
+    if (rtc_write == NULL || seconds < PIPOS_RTC_FIRST || seconds > PIPOS_RTC_LAST) {
+        return 0;
+    }
+    return rtc_write(seconds) == 0 ? 0 : -PIP_EIO;
 }
 
 int32_t pipos_power_action(const pipos_sys_ctx_t *ctx, uint32_t op)

@@ -6,7 +6,7 @@
 #   make test-host            host unit tests and the pin check
 #   make test-target          QEMU target tests
 #   make check-pins           CI workflow pins and doc links match the submodule
-#   make check-pins-test      the pin and link checks work without git
+#   make check-pins-test      the pin check and the link check wiring work without git
 #   make sdimage              build/sd.img with the kernel, a sample config,
 #                             the hello example as ROM1.ROM (ROM=<file> picks
 #                             another image, ROM=none leaves it out) and the
@@ -197,9 +197,17 @@ test: test-host
 test-target: all venv
 	$(VENV)/bin/pytest tests -v --board $(BOARD) --build-dir $(BUILD)
 
-check-pins:
+# DOC_ROOT: the tree whose Markdown links check-doc-links reads. The
+# submodule path is relative to it. tests/host/check_doc_links_test.sh
+# points it at a temporary copy.
+DOC_ROOT ?= .
+
+check-pins: check-doc-links
 	$(ROBCO_CORE)/tools/check_pins.sh .github/workflows/ci.yml
-	ROBCO_CORE=$(ROBCO_CORE) tools/check_doc_links.sh
+
+.PHONY: check-doc-links
+check-doc-links:
+	$(ROBCO_CORE)/tools/check_doc_links.sh $(DOC_ROOT) external/robco-core
 
 check-pins-test:
 	tests/host/check_pins_test.sh

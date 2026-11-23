@@ -44,11 +44,14 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
+| `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers and in auto mode. See [Conformance ROM](#conformance-rom). |
 
-While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/TESTING.md#qemu-keep-alive).
+While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/TESTING.md#qemu-keep-alive).
 
 Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` in `tests/pipos_helpers.py` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
+
+A test that runs a subprocess builds its environment with `minimal_env()` from RobCo-Core's `harness.env`, and passes the variables it needs as arguments. Never copy `os.environ`: pytest prints locals when a test fails, so a copy puts every host secret in the log. `tests/test_env_hygiene.py` fails on such a copy.
 
 ## Test ROMs
 
@@ -104,7 +107,7 @@ Tests read the screen in two ways: the `dump` command on the script channel, whi
 
 ## Conformance ROM
 
-`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/d6f756d259d8e6faefa983a719560d19209121d0/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
 
 | File | Is |
 |---|---|
@@ -134,6 +137,8 @@ make run BOARD=raspi2b
 The ROM's table is built from `PIP_SYSCALLS` in `abi.h`, with one `check_<call>()` function per call. A call added to `abi.h` without its function fails the link, and a `_Static_assert` compares the table with `PIP_SYSCALL_COUNT`.
 
 The automatic part needs no person. Each call runs on its main path and on the error paths the spec names: bad limits, bad pointers to kernel memory and across the end of the stack, missing files and saves. Drawing calls are checked by return value. A save named `CONFTEST` is written, read back, compared and deleted. The ROM reads `CONFTAPE.HTP` through the file calls and compares the bytes read with the size from `dir_list`. It launches the tape to check the tape's entry state and memory limits, the calls a holotape may not make, `exit`, and a fault in the ROM slot that must return `-PIP_EFAULT`.
+
+What the run leaves behind: it deletes `CONFTEST` again, but the save write creates `/PIPBOY/SAVE` if it was missing, and the folder stays. `set_time` also writes the real-time clock chip when one answers. The ROM restores a valid old time within about a second. A chip with no valid time keeps 2023-11-14.
 
 `power` runs only `op` 2 and 3. Reboot and halt would end the run. `exit` is checked through the tape: the ROM's own exit ends the run.
 
@@ -174,4 +179,4 @@ A reusable workflow takes only literal inputs. So the workflow repeats two value
 
 The CI job runs as root on a checkout owned by another user, so git refuses every command on the work tree. `make check-pins` runs RobCo-Core's `tools/check_pins.sh` on the workflow. It reads the submodule commit from `external/robco-core/.git` and its git directory instead. It uses git only as a cross-check when git works. `make check-pins-test` runs the check with a `git` that always fails.
 
-`make check-pins` also runs `tools/check_doc_links.sh`. It fails when a Markdown file links to `github.com/RobCo-Industries/RobCo-Core/(blob|tree|commit)/<hash>` with another commit than the submodule's. `CHANGELOG.md` is skipped. It reads the commit the same way, without git.
+`make check-pins` also runs RobCo-Core's `tools/check_doc_links.sh` through `make check-doc-links`. It fails when a Markdown file links to `github.com/RobCo-Industries/RobCo-Core/(blob|tree|commit)/<ref>` with a full hash other than the submodule's, or with a short hash. Branch and tag names pass. It skips `CHANGELOG.md`, `CLAUDE.md`, `AGENTS.md` and folders named `build`, `.venv` or `.git`. It reads the commit the same way, without git. `tests/host/check_doc_links_test.sh` proves the wiring on a copy with a stale link.

@@ -178,15 +178,82 @@ TEST(set_time_rom_and_holotape)
     pipos_clock_t c = { 0 };
     uint32_t v = 0;
 
-    CHECK_EQ(pipos_time_set(&holo, &c, 0, 77), -PIP_EPERM);
+    CHECK_EQ(pipos_time_set(&holo, &c, 0, 77, NULL), -PIP_EPERM);
     CHECK_EQ(c.set, 0);
-    CHECK_EQ(pipos_time_set(&rom, &c, 0, 77), 0);
-    CHECK_EQ(pipos_time_set(&holo, &c, 0, 5), -PIP_EPERM);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 77, NULL), 0);
+    CHECK_EQ(pipos_time_set(&holo, &c, 0, 5, NULL), -PIP_EPERM);
     CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
     CHECK_EQ(v, 77);
-    CHECK_EQ(pipos_time_set(&rom, &c, 0, 0xffffffffu), 0);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 0xffffffffu, NULL), 0);
     CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
     CHECK_EQ(v, 0xffffffffu);
+}
+
+/* A fake chip: counts writes, keeps the last value, returns `fake_rc`. */
+static int fake_calls;
+static uint32_t fake_value;
+static int fake_rc;
+
+static int fake_write(uint32_t seconds)
+{
+    fake_calls++;
+    fake_value = seconds;
+    return fake_rc;
+}
+
+static void fake_reset(int rc)
+{
+    fake_calls = 0;
+    fake_value = 0;
+    fake_rc = rc;
+}
+
+TEST(set_time_chip)
+{
+    pipos_clock_t c = { 0 };
+    uint32_t v = 0;
+
+    /* A chip that answers: written, 0. */
+    fake_reset(0);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 1700000000u, fake_write), 0);
+    CHECK_EQ(fake_calls, 1);
+    CHECK_EQ(fake_value, 1700000000u);
+    CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
+    CHECK_EQ(v, 1700000000u);
+
+    /* The range edges are written; one second outside is not. */
+    fake_reset(0);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, PIPOS_RTC_FIRST, fake_write), 0);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, PIPOS_RTC_LAST, fake_write), 0);
+    CHECK_EQ(fake_calls, 2);
+    CHECK_EQ(fake_value, PIPOS_RTC_LAST);
+    fake_reset(0);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, PIPOS_RTC_FIRST - 1u, fake_write), 0);
+    CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
+    CHECK_EQ(v, PIPOS_RTC_FIRST - 1u);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, PIPOS_RTC_LAST + 1u, fake_write), 0);
+    CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
+    CHECK_EQ(v, PIPOS_RTC_LAST + 1u);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 0, fake_write), 0);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 0xffffffffu, fake_write), 0);
+    CHECK_EQ(fake_calls, 0);
+
+    /* A failed write: -PIP_EIO, and the clock keeps the new value. */
+    fake_reset(-5);
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 1800000000u, fake_write), -PIP_EIO);
+    CHECK_EQ(fake_calls, 1);
+    CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
+    CHECK_EQ(v, 1800000000u);
+    /* Out of range with a failing chip: not written, so 0. */
+    CHECK_EQ(pipos_time_set(&rom, &c, 0, 5, fake_write), 0);
+    CHECK_EQ(fake_calls, 1);
+
+    /* A holotape: -PIP_EPERM, nothing written, the clock unchanged. */
+    fake_reset(0);
+    CHECK_EQ(pipos_time_set(&holo, &c, 0, 1700000000u, fake_write), -PIP_EPERM);
+    CHECK_EQ(fake_calls, 0);
+    CHECK_EQ(pipos_clock_get(&c, 0, &v), 0);
+    CHECK_EQ(v, 5u);
 }
 
 TEST(power_table)

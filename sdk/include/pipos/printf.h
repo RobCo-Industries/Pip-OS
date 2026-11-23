@@ -1,13 +1,13 @@
 /*
  * Formatted output of libpip.a.
  *
- * Conversions: %d %u %x %X %c %s %p %%. A '0' flag and a field width
- * may come before them, as in "%08x" or "%5d". %c ignores the width.
- * %s pads with spaces;
- * a NULL string prints "(null)". %p prints 0x and 8 hex digits.
- * Not supported: '-', '+', ' ' and '#' flags, precision, length
- * modifiers such as l or ll, and floating point. An unknown conversion
- * prints as it is written.
+ * Conversions: %d %u %x %X %c %s %p %%, as in C, with the '-' and '0'
+ * flags, a field width and a precision. '*' reads the width or precision
+ * from an int argument. Integer precision is the minimum digit count.
+ * A NULL string prints "(null)". %p prints 0x and 8 hex digits and
+ * ignores flags, width and precision.
+ * Not supported: '+', ' ' and '#' flags, length modifiers such as l or
+ * ll, and floating point. An unknown conversion prints as it is written.
  */
 #ifndef PIPOS_PRINTF_H
 #define PIPOS_PRINTF_H

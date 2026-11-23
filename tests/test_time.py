@@ -31,6 +31,7 @@ CALL_CHECKS = [
     "set_zero", "get_zero", "zero_value",
 ]
 RTC_CHECKS = ["avail0", "get", "read0", "read0_agrees", "set", "get_set", "set_value"]
+WRITE_CHECKS = ["set_t1", "get_t1", "t1_value", "set_old", "get_old", "old_value"]
 BLANK_CHECKS = ["op4", "op_max", "off", "on"]
 
 
@@ -50,6 +51,10 @@ def test_calls_no_rtc(board, kernel_image, test_rom, tmp_path, need_mtools):
         assert one(vm, "clock")["rtc"] == "absent", vm.serial
         assert_rom_checks(vm, CALL_CHECKS)
         assert one(vm, "rom_exit")["status"] == "0"
+        # set_time moved the clock and wrote no chip.
+        assert not pipos_markers(vm, "rtc_set"), vm.serial
+        reply = vm.script("rtc", timeout=TIMEOUT)
+        assert reply.status == "ok" and reply.lines == ["rc=-11 time=none"], reply
         no_exception(vm)
 
 
@@ -64,7 +69,45 @@ def test_clock_from_rtc(board, kernel_image, test_rom, tmp_path, need_mtools):
         got = int(rom_one(vm, "rtc")["time"]) & 0xFFFFFFFF
         # QEMU's clock runs from launch; the boot takes some seconds.
         assert RTC_UNIX <= got <= RTC_UNIX + TIMEOUT, (got, RTC_UNIX, vm.serial)
+        # set_time(1234567890) wrote the chip too.
+        assert [m["rc"] for m in pipos_markers(vm, "rtc_set")] == ["0"], vm.serial
+        chip = read_chip(vm)
+        assert 1234567890 <= chip <= 1234567890 + TIMEOUT, (chip, vm.serial)
         no_exception(vm)
+
+
+def read_chip(vm):
+    """The time the clock chip holds, through the "rtc" script command."""
+    reply = vm.script("rtc", timeout=TIMEOUT)
+    assert reply.status == "ok" and len(reply.lines) == 1, reply
+    fields = dict(f.split("=", 1) for f in reply.lines[0].split())
+    assert fields["rc"] == "0", reply
+    return calendar.timegm(time.strptime(fields["time"], "%Y-%m-%dT%H:%M:%S"))
+
+
+def test_set_time_writes_rtc(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """set_time writes the chip; a time before 2000 moves the clock only.
+
+    QEMU resets its ds1338 model on a guest reset, so a reboot cannot show
+    the written time. The test reads the chip back in the same boot.
+    """
+    extra = RTC_DEVICE + ["-rtc", f"base={RTC_BASE}"]
+    sd = card(tmp_path, test_rom("time_rtc_write"))
+    with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT,
+              extra_args=extra) as vm:
+        wait_rom(vm, "step1")
+        t1 = read_chip(vm)
+        assert len(pipos_markers(vm, "rtc_set")) == 1, vm.serial
+        assert pipos_markers(vm, "rtc_set")[0]["rc"] == "0", vm.serial
+        wait_rom(vm, "step2")
+        after = read_chip(vm)
+        assert len(pipos_markers(vm, "rtc_set")) == 1, vm.serial
+        wait_rom(vm, "checks", timeout=2 * TIMEOUT)
+        assert_rom_checks(vm, WRITE_CHECKS)
+        no_exception(vm)
+    # T1 = 1900000000; the chip counts on from the write.
+    assert 1900000000 <= t1 <= 1900000000 + TIMEOUT, (t1, vm.serial)
+    assert t1 <= after <= t1 + TIMEOUT, (t1, after, vm.serial)
 
 
 def test_screen_off_on(board, kernel_image, test_rom, tmp_path, need_mtools):
