@@ -3,9 +3,10 @@ uses RobCo-Core's trace backend: one "ev=audio op=tone|stop hz= vol= t_ms="
 marker per change, with t_ms on the driver's own millisecond clock.
 
 Durations come from those t_ms values. The lower bound is strict; the
-upper bound leaves SLACK_MS for a loaded machine. A sound the ROM cuts
-after a pip_sleep_ms() can end up to CUT_MS early: the driver applies a
-request at its next tick, so the start and the cut each land on a tick.
+upper bound leaves SLACK_MS for a loaded machine. Steps of one sound
+follow their schedule, so their lengths are exact. A request from a call
+is applied by the next 100 Hz tick, and t_ms is the time that tick ran.
+So a sound the ROM cuts after a pip_sleep_ms() is bounded by cut().
 """
 
 from pipos_helpers import (assert_rom_checks, booted, config, dump, make_card, no_exception,
@@ -52,6 +53,20 @@ def lasted(tr, i, ms, slack=SLACK_MS):
     assert ms <= dt <= ms + slack, (i, dt, ms, tr)
 
 
+def cut(tr, i, ms, slack=1000):
+    """Marker i is a sound the ROM cut with a call after pip_sleep_ms(ms).
+
+    The tick that starts the sound runs up to one period after the call,
+    plus its interrupt latency, which a loaded host makes unbounded. So
+    marker i to the cut can be shorter than ms - 10. The ROM made the call
+    after marker i - 1, the end of the sound it waited for, and the cut
+    comes at least ms after the call. So the cut is at least ms after
+    marker i - 1.
+    """
+    assert tr[i + 1][-1] - tr[i - 1][-1] >= ms, (i, ms, tr)
+    lasted(tr, i, 0, ms + slack)
+
+
 def card(tmp_path, rom, cfg):
     return make_card(tmp_path / "sd.img", {ROM: rom, CFG: cfg})
 
@@ -69,12 +84,12 @@ def test_calls(board, kernel_image, test_rom, tmp_path, need_mtools):
     lasted(tr, 0, 80)       # boot beep
     lasted(tr, 2, 100)      # tone(1050, 100)
     # The 1100 Hz tone was replaced after about 50 ms, not after 5 s.
-    lasted(tr, 4, 50 - CUT_MS, 1000)
+    cut(tr, 4, 50)
     lasted(tr, 5, 100)      # tone(1200, 100)
-    lasted(tr, 7, 50 - CUT_MS, 1000)  # stopped after about 50 ms
+    cut(tr, 7, 50)          # stopped after about 50 ms
     for i, ms in zip(range(9, 13), (60, 40, 60, 50)):
         lasted(tr, i, ms)
-    lasted(tr, 14, 50 - CUT_MS, 1000)  # 256 notes, stopped after about 50 ms
+    cut(tr, 14, 50)         # 256 notes, stopped after about 50 ms
 
 
 def test_exit_stops_sound(board, kernel_image, test_rom, tmp_path, need_mtools):

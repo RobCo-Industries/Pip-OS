@@ -91,6 +91,20 @@ def span(tr, i, j, ms, slack=SLACK_MS):
     assert ms <= dt <= ms + slack, (i, j, dt, ms, tr)
 
 
+def cut(tr, i, ms, slack=1000):
+    """Marker i is a sound the ROM cut with a call after pip_sleep_ms(ms).
+
+    The tick that starts the sound runs up to one period after the call,
+    plus its interrupt latency, which a loaded host makes unbounded. So
+    marker i to the cut can be shorter than ms - CUT_MS. The ROM made the
+    call after marker i - 1, the end of the sound it waited for, and the cut
+    comes at least ms after the call. So the cut is at least ms after
+    marker i - 1.
+    """
+    assert tr[i + 1][-1] - tr[i - 1][-1] >= ms, (i, ms, tr)
+    assert tr[i + 1][-1] - tr[i][-1] <= ms + slack, (i, ms, tr)
+
+
 def card(tmp_path, rom, cfg):
     return make_card(tmp_path / "sd.img", {ROM: rom, CFG: cfg})
 
@@ -119,7 +133,7 @@ def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
     span(tr, 3, 6, play_ms(4800))
     span(tr, 8, 9, play_ms(400))
     for i in (10, 14, 18, 22):  # cut after about 50 ms, nothing chained
-        span(tr, i, i + 1, 50 - CUT_MS, 1000)
+        cut(tr, i, 50)
     span(tr, 12, 13, play_ms(800))
     # The long chain: no restart, and at least the whole length.
     for i in range(1, LONG_N + 1):
