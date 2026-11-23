@@ -27,6 +27,7 @@ PYTHON     ?= python3
 # Every kernel/*.c builds into the kernel. PURE_SRCS, one per line and
 # sorted, are the ones with no hardware access: the host tests link them.
 PURE_SRCS  := \
+              kernel/audio_rules.c \
               kernel/bootlines.c \
               kernel/gfx_draw.c \
               kernel/input_events.c \
