@@ -502,8 +502,8 @@ void check_save_delete(void)
 
 /* ---- files ------------------------------------------------------------- */
 
-/* The tape's size from dir_list, or -1. */
-static int32_t tape_size(void)
+/* The size of file name in /PIPBOY/HOLO from dir_list, or -1. */
+static int32_t holo_file_size(const char *name)
 {
     static pip_dirent_t d[PIP_DIR_LIST_MAX];
     int32_t n = pip_dir_list("/PIPBOY/HOLO", d, PIP_DIR_LIST_MAX, 0), i;
@@ -511,11 +511,16 @@ static int32_t tape_size(void)
     n = n > PIP_DIR_LIST_MAX ? PIP_DIR_LIST_MAX : n;   /* a wrong count reads no further */
 
     for (i = 0; i < n; i++) {
-        if (strcmp(d[i].name, TAPE_FILE) == 0 && !(d[i].flags & PIP_DIRENT_DIR)) {
+        if (strcmp(d[i].name, name) == 0 && !(d[i].flags & PIP_DIRENT_DIR)) {
             return (int32_t)d[i].size;
         }
     }
     return -1;
+}
+
+static int32_t tape_size(void)
+{
+    return holo_file_size(TAPE_FILE);
 }
 
 void check_file_open(void)
@@ -609,8 +614,12 @@ void check_holo_enumerate(void)
         }
     }
     ck_res("enum_tape", tape == PIP_HOLO_GAME ? R_PASS : R_FAIL, 1, tape, PIP_HOLO_GAME);
-    ck_res("enum_data_tape", data == PIP_HOLO_DATA ? R_PASS : data < 0 ? R_ABSENT : R_FAIL, 1,
-           data, PIP_HOLO_DATA);
+    /* dir_list, not holo_enumerate, says whether the data tape is on the card. */
+    if (holo_file_size(DATA_FILE) < 0) {
+        ck_res("enum_data_tape", data < 0 ? R_ABSENT : R_FAIL, 1, data, -1);
+    } else {
+        ck_res("enum_data_tape", data == PIP_HOLO_DATA ? R_PASS : R_FAIL, 1, data, PIP_HOLO_DATA);
+    }
     ck_eq("enum_max0", pip_holo_enumerate(hi, 0), -PIP_EINVAL);
     ck_eq("enum_max33", pip_holo_enumerate(hi, PIP_HOLO_ENUM_MAX + 1), -PIP_EINVAL);
     ck_eq("enum_null", pip_holo_enumerate(PTR(0), 1), -PIP_EFAULT);
@@ -619,9 +628,7 @@ void check_holo_enumerate(void)
 void check_holo_launch(void)
 {
     static char args[PIP_ARGS_SIZE + 4];
-    static pip_holo_info_t hi[PIP_HOLO_ENUM_MAX];
-    int32_t n, i, rc;
-    int has_data = 0;
+    int32_t rc;
 
     pip_snprintf(args, sizeof(args), "check 0x%08x", (unsigned)(uintptr_t)rom_text);
     ck_eq("launch_tape", pip_holo_launch(TAPE_FILE, args), TAPE_OK);
@@ -629,12 +636,8 @@ void check_holo_launch(void)
     /* A tape that writes to the ROM slot is killed; the ROM goes on. */
     ck_eq("launch_fault", pip_holo_launch(TAPE_FILE, "fault"), -PIP_EFAULT);
     ck_eq("launch_after_fault", pip_holo_launch(TAPE_FILE, "exit 5"), 5);
-    n = pip_holo_enumerate(hi, PIP_HOLO_ENUM_MAX);
-    n = n > PIP_HOLO_ENUM_MAX ? PIP_HOLO_ENUM_MAX : n;
-    for (i = 0; i < n; i++) {
-        has_data |= strcmp(hi[i].file, DATA_FILE) == 0;
-    }
-    if (has_data) {
+    /* Runs whenever the file is on the card, whatever holo_enumerate says. */
+    if (holo_file_size(DATA_FILE) >= 0) {
         ck_eq("launch_data_tape", pip_holo_launch(DATA_FILE, "exit 1"), -PIP_ENOEXEC);
     } else {
         ck_res("launch_data_tape", R_ABSENT, 0, 0, 0);
