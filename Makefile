@@ -78,18 +78,20 @@ TAPE_BUILD     = $(abspath $(BUILD))/examples/tape
 EXAMPLE_TAPE   = $(TAPE_BUILD)/BEACON.HTP
 TAPE          ?= $(EXAMPLE_TAPE)
 CARD_TAPES    := $(filter-out none,$(TAPE))
-# tools/check_tapes.sh: two names that differ only in case, or a name
-# that is not *.HTP, stop the build. A long *.HTP name gets a warning.
-ifneq ($(CARD_TAPES),)
-TAPE_ERRORS := $(shell tools/check_tapes.sh $(CARD_TAPES))
+CARD_ROM      := $(filter-out none,$(ROM))
+# tools/card.py check-tapes: two names that differ only in case, a name
+# that is not *.HTP, or a TAPE or ROM file that is a link or a special
+# file stop the build. A long *.HTP name gets a warning.
+CARD          := $(PYTHON) tools/card.py
+ifneq ($(CARD_TAPES)$(CARD_ROM),)
+TAPE_ERRORS := $(shell $(CARD) check-tapes $(if $(CARD_ROM),--rom $(CARD_ROM)) -- $(CARD_TAPES))
 ifneq ($(TAPE_ERRORS),)
 $(error $(TAPE_ERRORS))
 endif
 endif
 SDIMAGE_FILES += $(addsuffix :PIPBOY/HOLO/,$(CARD_TAPES))
-CARD_ROM      := $(filter-out none,$(ROM))
 # CARD_DIR: a folder tree copied onto the card root after the standard
-# files above and the kernel. tools/card_dir.sh stops the build when one
+# files above and the kernel. tools/card.py stage-card-dir stops the build when one
 # of its files would replace a standard one. It replaces RobCo-Core's
 # SDIMAGE_DIR, which copies first and lets the standard files win.
 ifneq ($(filter command% environment%,$(origin SDIMAGE_DIR)),)
@@ -249,7 +251,7 @@ build-dir-test:
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
-           sdimage-rom-test bootdir-sync-test bootdir-test conformance-bootdir-test outside-project-test
+           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
 
 .PHONY: sdk-example-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
@@ -264,10 +266,7 @@ sdimage-rom-test:
 outside-project-test:
 	tests/host/outside_project_test.sh
 
-.PHONY: bootdir-sync-test bootdir-test conformance-bootdir-test
-bootdir-sync-test:
-	tests/host/bootdir_sync_test.sh
-
+.PHONY: bootdir-test conformance-bootdir-test
 bootdir-test:
 	tests/host/bootdir_test.sh
 
@@ -310,14 +309,14 @@ $(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP
 # ---- Cards and QEMU -----------------------------------------------------
 
 # Runs after SDIMAGE_FILES are copied, before the card is packed. CARD_DIR
-# comes last, so card_dir.sh sees every standard file. check_stage.sh then
+# comes last, so stage-card-dir sees every standard file. check-stage then
 # checks the whole staged tree, the same check as make bootdir.
 sdimage-stage::
 	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(SDIMAGE_STAGE) \
 	    --kernel-name PIPOS.IMG --no-firmware
 	mkdir -p $(SDIMAGE_STAGE)/PIPBOY/HOLO
-	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(SDIMAGE_STAGE) $(CARD_DIR))
-	tools/check_stage.sh $(SDIMAGE_STAGE) $(CARD_DIR)
+	$(if $(strip $(CARD_DIR)),$(CARD) stage-card-dir $(SDIMAGE_STAGE) $(CARD_DIR))
+	$(CARD) check-stage $(SDIMAGE_STAGE) $(CARD_DIR)
 
 .PHONY: kernel run bootdir conformance-bootdir
 
@@ -331,9 +330,9 @@ run: sdimage
 
 # The files of `make sdimage`, with the same ROM, TAPE and CARD_DIR rules,
 # plus the firmware. They are staged in $(BUILD)/bootstage first, so a
-# CARD_DIR clash or a check_stage.sh error stops the build before DIR
+# CARD_DIR clash or a check-stage error stops the build before DIR
 # changes. A PIPBOY/PIPOS.CFG already in DIR stays: it holds the user's
-# settings. tools/bootdir_sync.sh keeps DIR/BOOTDIR.LST, the files the run
+# settings. tools/card.py sync-bootdir keeps DIR/BOOTDIR.LST, the files the run
 # wrote, and checks its whole plan against DIR before it changes anything.
 BOOT_STAGE := $(BUILD)/bootstage
 bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
@@ -345,9 +344,9 @@ bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 	cp boot/PIPOS.CFG $(BOOT_STAGE)/PIPBOY/PIPOS.CFG
 	$(if $(CARD_ROM),cp $(CARD_ROM) $(BOOT_STAGE)/PIPBOY/ROM1.ROM)
 	$(if $(CARD_TAPES),cp $(CARD_TAPES) $(BOOT_STAGE)/PIPBOY/HOLO/)
-	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(BOOT_STAGE) $(CARD_DIR))
-	tools/check_stage.sh $(BOOT_STAGE) $(CARD_DIR)
-	tools/bootdir_sync.sh $(BOOT_STAGE) $(DIR) $(if $(filter 1,$(CLEAN)),clean)
+	$(if $(strip $(CARD_DIR)),$(CARD) stage-card-dir $(BOOT_STAGE) $(CARD_DIR))
+	$(CARD) check-stage $(BOOT_STAGE) $(CARD_DIR)
+	$(CARD) sync-bootdir $(BOOT_STAGE) $(DIR) $(if $(filter 1,$(CLEAN)),--clean)
 
 # The same files as build/conformance.img, plus the firmware.
 conformance-bootdir: conformance

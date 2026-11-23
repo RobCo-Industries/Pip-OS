@@ -141,7 +141,7 @@ fi
 pm -n run ROM="$rom" TAPE=none CARD_DIR="$proj/content" BOARD=raspi0 >"$tmp/run"
 grep -q 'harness.run' "$tmp/run" || fail "make run does not start the runner"
 grep -q -- '--board raspi0' "$tmp/run" || fail "make run does not pass BOARD"
-grep -q 'card_dir.sh' "$tmp/run" || fail "make run does not copy CARD_DIR"
+grep -q 'stage-card-dir' "$tmp/run" || fail "make run does not copy CARD_DIR"
 if grep -q 'examples' "$tmp/run"; then
     fail "make run ROM=<file> TAPE=none would build the examples"
 fi
