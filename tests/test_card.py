@@ -84,6 +84,52 @@ def test_no_fat_partition(board, kernel_image, tmp_path, need_mtools):
         no_exception(vm)
 
 
+def test_marker_picks_second_fat_partition(board, kernel_image, tmp_path, need_mtools):
+    """The first FAT volume has no Pip-OS file, the second has the config."""
+    sd = make_multi_card(tmp_path / "sd.img", [(FAT16_LBA, 4, {"OTHER.TXT": b"x"}),
+                                               (FAT16_LBA, 8, {CFG: config("amber")})])
+    with booted(kernel_image, board, sd=sd) as vm:
+        m = one(vm, "mount")
+        assert (m["part"], m["marker"]) == ("1", "1"), vm.serial
+        assert config_summary(vm)["scheme"] == "amber"
+
+
+@pytest.mark.parametrize("fake", ["folder", "empty"])
+def test_marker_must_be_a_file_with_data(board, kernel_image, tmp_path, need_mtools, fake):
+    """A folder or an empty file named like a marker does not count."""
+    first = {ROM + "/": b""} if fake == "folder" else {ROM: b""}
+    sd = make_multi_card(tmp_path / "sd.img", [(FAT16_LBA, 4, first),
+                                               (FAT16_LBA, 8, {CFG: config("blue")})])
+    with booted(kernel_image, board, sd=sd) as vm:
+        m = one(vm, "mount")
+        assert (m["part"], m["marker"]) == ("1", "1"), vm.serial
+        assert config_summary(vm)["scheme"] == "blue"
+
+
+def test_no_marker_mounts_first_fat(board, kernel_image, tmp_path, need_mtools):
+    """Without a Pip-OS file anywhere, the first FAT volume still boots."""
+    sd = make_multi_card(tmp_path / "sd.img", [(FAT16_LBA, 4, {"A.TXT": b"a"}),
+                                               (FAT16_LBA, 8, {"B.TXT": b"b"})])
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert one(vm, "card")["rc"] == "ok", vm.serial
+        m = one(vm, "mount")
+        assert (m["part"], m["marker"]) == ("0", "0"), vm.serial
+        assert config_summary(vm)["rc"] == "nofile"
+
+
+@pytest.mark.parametrize("ptype,why", [(0x83, "nofat"), (0xEE, "gpt")])
+def test_card_without_fat_entry(board, kernel_image, tmp_path, need_mtools, ptype, why):
+    """No entry with a FAT type byte, and nothing mounts."""
+    sd = make_multi_card(tmp_path / "sd.img", [(ptype, 4, None)])
+    with booted(kernel_image, board, sd=sd) as vm:
+        m = one(vm, "card")
+        assert (m["rc"], m["why"]) == ("nomount", why), vm.serial
+        assert not pipos_markers(vm, "mount")
+        assert config_summary(vm)["rc"] == "nocard"
+        assert "ROM(1) NOT LOADED: NO SD CARD" in dump(vm)
+        no_exception(vm)
+
+
 def test_card_without_partition_table(board, kernel_image, tmp_path, need_mtools):
     sd = make_superfloppy_card(tmp_path / "sd.img", {CFG: config("blue")})
     with booted(kernel_image, board, sd=sd) as vm:

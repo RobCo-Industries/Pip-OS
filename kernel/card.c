@@ -2,11 +2,9 @@
  * The SD card: mount, configuration file, holotape directory, ROM file.
  * Each step prints one marker. No step fails the boot.
  */
-#include <robco/blk.h>
 #include <robco/fs.h>
 #include <robco/ini.h>
 #include <robco/klibc.h>
-#include <robco/part.h>
 #include <robco/rimg.h>
 #include <robco/sd.h>
 
@@ -16,81 +14,56 @@
 #define VOL(path)       PIPOS_VOLUME ":" path
 #define CFG_TEXT_MAX    4096u
 
-static part_info_t parts[PART_MAX];
-static blk_dev_t part_dev;
+static fs_boot_t boot_vol;
 static char cfg_text[CFG_TEXT_MAX];
 
-static int is_fat_type(uint8_t type)
-{
-    return type == PART_TYPE_FAT12 || type == PART_TYPE_FAT16_SM || type == PART_TYPE_FAT16 ||
-           type == PART_TYPE_FAT32 || type == PART_TYPE_FAT32_LBA || type == PART_TYPE_FAT16_LBA;
-}
-
-static int is_container_type(uint8_t type)
-{
-    return type == PART_TYPE_EXTENDED || type == PART_TYPE_EXT_LBA || type == PART_TYPE_GPT;
-}
-
-static int try_mount(part_info_t *p)
-{
-    int rc = part_open(sd_blkdev(), p, &part_dev);
-
-    if (rc == 0) {
-        rc = fs_mount(PIPOS_VOLUME, &part_dev);
-    }
-    return rc;
-}
+/*
+ * A volume that holds one of these as a non-empty file is the Pip-OS card.
+ * When no volume holds one, fs_mount_boot() mounts the first that mounts,
+ * so a card without them still boots as it did before.
+ */
+static const char *const card_markers[] = { PIPOS_CFG_PATH, PIPOS_ROM_PATH };
 
 /*
- * Mounts the first entry that holds a FAT volume. FAT type bytes go first,
- * in slot order, then the other entries, because some tools write a wrong
- * type byte. fs_mount() reads the boot sector, so a wrong guess just fails.
- * Extended and GPT entries never hold a FAT volume and are skipped.
+ * Mounts the boot volume with RobCo-Core's shared rule, see fs_mount_boot().
+ * A failed block 0 read is rc=nopart; every other failure is rc=nomount,
+ * with the rule's name for it in why.
  */
 int pipos_card_mount(void)
 {
-    part_info_t *used = NULL;
     int rc = sd_init();
-    int n, pass, i;
 
     if (rc != 0) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nocard sd=%d\n", rc);
         return 0;
     }
-    n = part_scan(sd_blkdev(), parts, PART_MAX);
-    if (n < 1) {
-        k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nopart part=%d\n", n);
+    rc = fs_mount_boot(PIPOS_VOLUME, sd_blkdev(), card_markers,
+                       sizeof(card_markers) / sizeof(card_markers[0]), &boot_vol);
+    if (rc == PART_BOOT_ERR_RELEASE) {
+        /* Only reads happened, so this volume is not the one to use: let it go. */
+        (void)fs_unmount(PIPOS_VOLUME);
+    }
+    if (rc == PART_BOOT_ERR_DEVICE) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nopart part=%d\n", boot_vol.last_err);
         return 0;
     }
-    rc = FS_ERR_NOFS;
-    for (pass = 0; pass < 2 && used == NULL; pass++) {
-        for (i = 0; i < n && used == NULL; i++) {
-            part_info_t *p = &parts[i];
-
-            int fat = p->superfloppy || is_fat_type(p->type);
-
-            if (is_container_type(p->type) || fat != (pass == 0)) {
-                continue;
-            }
-            rc = try_mount(p);
-            if (rc == 0) {
-                used = p;
-            }
-        }
-    }
-    if (used == NULL) {
-        k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nomount fs=%d\n", rc);
+    if (rc != PART_BOOT_OK) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nomount fs=%d why=%s\n",
+                 boot_vol.last_err, part_boot_strerror(rc));
         return 0;
     }
     k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=ok\n");
     /* part is the MBR slot 0 to 3, or "whole" for a card without a table. */
-    if (used->superfloppy) {
-        k_printf("@RC stage=" PIPOS_STAGE " ev=mount part=whole type=0x00 lba=%u blocks=%u\n",
-                 (unsigned)used->start_lba, (unsigned)used->block_count);
+    if (boot_vol.slot == FS_BOOT_WHOLE) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=mount part=whole type=0x00 lba=%u blocks=%u"
+                 " marker=%u\n",
+                 (unsigned)boot_vol.start_lba, (unsigned)boot_vol.block_count,
+                 (unsigned)boot_vol.marker);
     } else {
-        k_printf("@RC stage=" PIPOS_STAGE " ev=mount part=%u type=0x%02x lba=%u blocks=%u\n",
-                 (unsigned)used->index, (unsigned)used->type, (unsigned)used->start_lba,
-                 (unsigned)used->block_count);
+        k_printf("@RC stage=" PIPOS_STAGE " ev=mount part=%u type=0x%02x lba=%u blocks=%u"
+                 " marker=%u\n",
+                 (unsigned)boot_vol.slot, (unsigned)boot_vol.type, (unsigned)boot_vol.start_lba,
+                 (unsigned)boot_vol.block_count, (unsigned)boot_vol.marker);
     }
     return 1;
 }

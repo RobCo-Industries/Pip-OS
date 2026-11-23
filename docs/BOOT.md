@@ -16,7 +16,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 6 | Input: GPIO buttons and dial, serial console, script channel on the mini UART | `ev=input` |
 | 7 | Audio. QEMU has no PWM, so the trace backend is picked there. | `ev=audio_init` |
 | 8 | I2C and the RTC. A chip that answers sets the software clock. | `ev=clock` |
-| 9 | SD card and the first partition that mounts as FAT, see [The card](#the-card) | `ev=card`, `ev=mount` |
+| 9 | SD card and its boot volume, see [The card](#the-card) | `ev=card`, `ev=mount` |
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
@@ -27,12 +27,25 @@ A failed card, file or configuration step never stops the boot. A failure in ste
 
 ## The card
 
-The kernel reads the four primary MBR entries and mounts the first one that holds a FAT volume:
+The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
 
 1. Entries with a FAT type byte (`0x01`, `0x04`, `0x06`, `0x0B`, `0x0C`, `0x0E`), in slot order.
 2. Then the other entries, in slot order. Some tools write a wrong type byte, and the mount reads the boot sector anyway.
 
-Extended (`0x05`, `0x0F`) and GPT (`0xEE`) entries are skipped. A card with no partition table whose block 0 is a FAT boot sector mounts as a whole. When no entry mounts, `ev=card` reports `rc=nomount` with the last file system error.
+Extended (`0x05`, `0x0F`) and GPT (`0xEE`) entries are skipped. A card with no partition table whose block 0 is a FAT boot sector mounts as a whole.
+
+The kernel uses the first volume that holds `/PIPBOY/PIPOS.CFG` or `/PIPBOY/ROM1.ROM` as a file of at least one byte. A folder or an empty file of that name does not count. When no volume holds one, the kernel uses the first volume that mounts. So a card with one FAT volume boots whatever it holds.
+
+When nothing mounts, `ev=card` reports `rc=nomount` with the last file system error in `fs` and the reason in `why`:
+
+| `why` | Meaning |
+|---|---|
+| `mount` | FAT entries exist, none mounts |
+| `nofat` | No FAT entry, and no other entry mounts. Also a card with no table and no FAT boot sector. |
+| `gpt` | A GPT card. GPT is not supported. |
+| `release` | A probed volume did not unmount |
+
+When block 0 does not read, `ev=card` reports `rc=nopart` with the error in `part`. The screen shows `ROM(1) NOT LOADED: NO SD CARD` for every card failure.
 
 ## Boot text
 
@@ -77,11 +90,11 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
 
 ## Running the ROM
 
-After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/guide/api/umode.md) with the MMU on.
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/guide/api/umode.md) with the MMU on.
 
 1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
 2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
@@ -139,7 +152,7 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -150,8 +163,8 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `input` | `gpio serial mini script repeat` | Return codes of the input backends, `0` for success |
 | `audio_init` | `rc backend probe` | Audio backend, `pwm` or `trace` |
 | `clock` | `rtc time` | `rtc=present` or `absent`. `time` in ISO form, or `unset`. |
-| `card` | `rc` | `ok`, `nocard`, `nopart` or `nomount` |
-| `mount` | `part type lba blocks` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. |
+| `card` | `rc`, then `sd`, `part` or `fs why` | `ok`, `nocard`, `nopart` or `nomount`. See [The card](#the-card). |
+| `mount` | `part type lba blocks marker` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. `marker` is `1` when it holds a Pip-OS file. |
 | `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep` | A configuration problem, or the summary. See [CONFIG.md](CONFIG.md). |
 | `syscalls` | `served` | The calls the kernel serves: a 128-bit hex number, bit n set for call n |
 | `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/` |
@@ -190,7 +203,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|
