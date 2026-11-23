@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - After a holotape, the ROM keeps its open files and its input events.
 - `mem_info` reports the caller's own heap.
 - `read_buttons` stays right when RobCo-Core's input queue overflows, and an event's `time_ms` is the time it came in.
+- `ev=rom_exit` prints the exit status as 0 to 255, the low 8 bits, like `holo_launch` returns it.
 
 ### Removed
 - The old kernel sources in `src/` and `include/`, the old build in `build/` and the old test scripts.

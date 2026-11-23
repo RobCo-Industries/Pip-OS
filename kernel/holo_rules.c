@@ -6,6 +6,7 @@
 #include <robco/umode.h>
 
 #include "holo.h"
+#include "sysabi.h"
 
 static char upper(char c)
 {
@@ -138,7 +139,7 @@ void pipos_mem_info_holo(pip_mem_info_t *m)
 int32_t pipos_holo_result(unsigned reason, int code)
 {
     if (reason == UMODE_RETURNED || reason == UMODE_EXITED) {
-        return (int32_t)((unsigned)code & 0xffu);
+        return pipos_exit_status(code);
     }
     return -PIP_EFAULT;
 }

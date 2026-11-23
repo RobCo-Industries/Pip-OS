@@ -103,7 +103,7 @@ The ROM can touch two regions, both read-write: its slot, `0x00400000` to `0x007
 
 | End | Marker | Screen |
 |---|---|---|
-| `exit(n)` or return `n` | `ev=rom_exit status=<n>` | nothing |
+| `exit(n)` or return `n` | `ev=rom_exit status=<s>`, where `<s>` is the low 8 bits of `n` | nothing |
 | Fault | `ev=rom_kill reason=<undef\|prefetch_abort\|data_abort> pc=0x<pc>`, plus `dfar dfsr` or `ifar ifsr` for aborts | `ROM(1) <fault> AT 0x<pc>` |
 | `umode_run()` refused the task | `ev=error code=umode rc=<n>` | nothing |
 
@@ -161,7 +161,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `audio` | `op hz vol t_ms`, or `op rate len vol crc t_ms` and `op n last t_ms` for a sample | One sound change, trace backend only. Printed by RobCo-Core. See [API.md](API.md#audio). |
 | `audio_drop` | `n` | Trace records the audio driver dropped. Printed by RobCo-Core. |
 | `jump` | `entry` | The kernel enters the ROM |
-| `rom_exit` | `status` | The ROM called `exit` or returned |
+| `rom_exit` | `status` | The ROM called `exit` or returned. `status` is 0 to 255. |
 | `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr`, or `reason=killed code pc` | The ROM faulted, or the `kill` command ended it |
 | `holo_start` | `name` | The kernel enters a holotape |
 | `holo_exit` | `status` | The holotape called `exit` or returned. `status` is 0 to 255. |

@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -128,4 +129,14 @@ TEST(sleep_deadline)
     /* No 32-bit overflow: the largest sleep is about 24.8 days. */
     CHECK_EQ(pipos_sleep_deadline_us(0, 0x7fffffffu), 0x7fffffffull * 1000u);
     CHECK_EQ(pipos_sleep_deadline_us(0xffffffffull, 2), 0xffffffffull + 2000u);
+}
+
+TEST(exit_status)
+{
+    CHECK_EQ(pipos_exit_status(0), 0);
+    CHECK_EQ(pipos_exit_status(255), 255);
+    CHECK_EQ(pipos_exit_status(256), 0);
+    CHECK_EQ(pipos_exit_status(300), 44);
+    CHECK_EQ(pipos_exit_status(-1), 255);
+    CHECK_EQ(pipos_exit_status(INT_MIN), 0);
 }
