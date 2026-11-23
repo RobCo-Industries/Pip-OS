@@ -141,6 +141,8 @@ Before it changes anything, `bootdir` looks at each file in `DIR` that this run 
 - A file that `BOOTDIR.LST` does not name, at a path `bootdir` writes, also stops it, even with `CLEAN=1`. These paths are the firmware files, `PIPOS.IMG`, `config.txt`, `PIPBOY/ROM1.ROM` and `PIPBOY/HOLO/*.HTP`. This happens with a folder from before `BOOTDIR.LST` existed. `bootdir` cannot tell whether the file is stale, so delete or move it yourself, or use an empty folder.
 - Any other file is yours. `bootdir` leaves it and names it once.
 
+A file or folder in `DIR` whose name differs only in case from one `bootdir` writes, such as `pipos.img` or `pipboy/`, also stops it, even with `CLEAN=1`. Rename or remove it yourself, or use an empty folder.
+
 `CLEAN=1` removes only files that `BOOTDIR.LST` names and this run does not write. It never removes `PIPBOY/PIPOS.CFG`. `conformance-bootdir` follows the same rules.
 
 `config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/00d9a2d1efa10b08ea1c14f087f7e3316647d6a1/docs/spec/BOARD_SUPPORT.md#configtxt).

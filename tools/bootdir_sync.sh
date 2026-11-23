@@ -17,6 +17,9 @@
 #   tell whether it is stale, so it stops, even with clean.
 # - anything else: left alone and mentioned once.
 #
+# A path in <dir> spelled with other case than the path this run writes
+# also stops the script, even with clean. Nothing is renamed.
+#
 # PIPBOY/PIPOS.CFG is never in the manifest and never removed. One already
 # in <dir> is kept; the stage's copy only goes into an empty slot.
 set -eu
@@ -44,6 +47,31 @@ trap 'rm -rf "$tmp"' EXIT
 files() {
     (cd "$1" && find . -type f | sed 's|^\./||') | grep -v -x -i -F -e "$MANIFEST" -e "$CFG" | sort || true
 }
+
+# FAT ignores case, but the host file system may not. A path in <dir> that
+# matches a path this run writes only when case is ignored would end up
+# twice on a case-sensitive system, or keep its old spelling on a
+# case-insensitive one. Either way the script stops, even with clean, and
+# lists each pair. Only the outermost differing component is listed.
+paths() {
+    (cd "$1" && find . ! -name . | sed 's|^\./||')
+}
+if [ -d "$dir" ]; then
+    { paths "$stage"; echo "$MANIFEST"; } >"$tmp/newpaths"
+    paths "$dir" | awk '
+        FILENAME == ARGV[1] { want[toupper($0)] = $0; next }
+        {
+            for (p in bad) if (index($0, p "/") == 1) next
+            k = toupper($0)
+            if ((k in want) && want[k] != $0) { bad[$0] = 1; print "  " $0 " (this run writes " want[k] ")" }
+        }' "$tmp/newpaths" - >"$tmp/case"
+    if [ -s "$tmp/case" ]; then
+        echo "bootdir: $dir holds paths that differ only in case from paths bootdir writes. FAT ignores case, so they would clash on the card:" >&2
+        cat "$tmp/case" >&2
+        echo "bootdir: rename or remove them yourself, or use an empty folder. Nothing was changed." >&2
+        exit 1
+    fi
+fi
 
 files "$stage" >"$tmp/new"
 : >"$tmp/have"
