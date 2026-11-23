@@ -1,17 +1,16 @@
 """Boots with an SD card: ROM file checks, configuration, holotapes."""
 
-import os
 import pathlib
 import shutil
 import subprocess
 import time
 
 import pytest
-from PIL import Image
 
 from harness.boot import boot
 from harness.env import minimal_env
 
+import pipos_helpers
 from pipos_helpers import (READY, SCHEME_BG, TIMEOUT, booted, config, config_issues,
                            config_summary, corrupt, dump, make_big_rom, make_card,
                            make_rom_without_meta, make_multi_card, make_rom,
@@ -223,11 +222,7 @@ def serial_count(vm, text, count, timeout=TIMEOUT):
 
 def check_golden(img, name):
     """Compares the screen with tests/golden/<name>.png. PIPOS_UPDATE_GOLDEN=1 rewrites it."""
-    golden = GOLDEN_DIR / f"{name}.png"
-    if os.environ.get("PIPOS_UPDATE_GOLDEN"):
-        img.save(golden)
-    with Image.open(golden) as g:
-        assert g.convert("RGB").tobytes() == img.tobytes(), f"screen differs from {golden}"
+    pipos_helpers.check_golden(img, GOLDEN_DIR / f"{name}.png")
 
 
 MENU = "hello: menu, 1 tapes, tape 1 selected\n"

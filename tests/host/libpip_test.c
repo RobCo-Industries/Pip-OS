@@ -1,6 +1,7 @@
 /*
  * libpip.a on the host: pip_snprintf and pip_printf, the string
- * functions and the heap. The system calls are fakes below.
+ * functions, the heap and the self-check markers. The system calls are
+ * fakes below.
  */
 #include <stdarg.h>
 #include <stddef.h>
@@ -11,6 +12,7 @@
 #include "libpip_names.h"
 #include <pipos/heap.h>
 #include <pipos/printf.h>
+#include <pipos/selftest.h>
 #include <pipos/string.h>
 #include <pipos/syscall.h>
 #define LIBPIP_NAMES_UNDO
@@ -42,6 +44,11 @@ int32_t pip_log(const char *text)
         logged[logged_len] = '\0';
     }
     return 0;
+}
+
+int32_t pip_ticks_ms(void)
+{
+    return 1234;
 }
 
 /* Fails: a host address does not fit the 32-bit fields. */
@@ -449,4 +456,40 @@ TEST(heap_calloc)
     CHECK(pip_calloc((size_t)-1 / 2 + 2, 2) == NULL);   /* n * size overflows */
     CHECK(pip_calloc((size_t)1 << (sizeof(size_t) * 4), (size_t)1 << (sizeof(size_t) * 4)) == NULL);
     CHECK(pip_calloc(1024, 1024) == NULL);              /* fits size_t, not the heap */
+}
+
+/* ---- Self-check markers ---------------------------------------------- */
+
+TEST(selftest_lines)
+{
+    log_reset();
+    CHECK_EQ(pip_check("first", 1), 1);
+    CHECK_EQ(pip_check_eq("second", 5, 6), 0);
+    pip_marker_begin("mine");
+    pip_marker_hex("addr", 0xbeefu);
+    pip_marker_dec("n", -3);
+    pip_marker_end();
+    pip_marker_time("now");
+    CHECK_EQ(pip_checks_done(), 1);
+    CHECK_STR(logged,
+              "@RC stage=testrom ev=check name=first ok=1\n"
+              "@RC stage=testrom ev=check name=second ok=0 got=5 expected=6\n"
+              "@RC stage=testrom ev=mine addr=0x0000beef n=-3\n"
+              "@RC stage=testrom ev=now t_ms=1234\n"
+              "@RC stage=testrom ev=checks total=2 failed=1\n");
+    CHECK_EQ(log_calls, 5);
+}
+
+TEST(selftest_long_line_is_cut)
+{
+    char name[300];
+
+    memset(name, 'n', sizeof(name) - 1);
+    name[sizeof(name) - 1] = '\0';
+    log_reset();
+    pip_marker_begin(name);
+    pip_marker_end();
+    CHECK_EQ(log_calls, 1);
+    CHECK_EQ(log_longest, PIP_LOG_MAX - 1);
+    CHECK_EQ(logged[log_longest - 1], '\n');
 }

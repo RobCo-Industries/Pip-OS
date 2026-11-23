@@ -6,6 +6,7 @@
 #include <pipos/crt0.h>
 #include <pipos/heap.h>
 #include <pipos/printf.h>
+#include <pipos/selftest.h>
 #include <pipos/string.h>
 #include <pipos/syscall.h>
 

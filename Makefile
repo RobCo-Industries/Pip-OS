@@ -109,9 +109,10 @@ include $(ROBCO_CORE)/mk/host.mk
 # Every ROM builds through sdk/pipos-app.mk and libpip.a.
 #
 # Test ROMs, all found by wildcard:
-#   tests/roms/<name>.c       one ROM with rt.c, into $(ROM_BUILD)/<name>/<name>.rom
+#   tests/roms/<name>.c       one ROM, into $(ROM_BUILD)/<name>/<name>.rom
 #   tests/roms/<name>/Makefile a ROM project of its own, such as sdkcheck
-# fault.c builds once per fault case; rt.c is the shared runtime.
+# fault.c builds once per fault case. rt.h names libpip's self-check
+# markers, pipos/selftest.h.
 # calls also links regs.S. They share one libpip.a.
 ROM_BUILD    := $(BUILD)/roms
 TEST_ROMS    := $(filter-out rt fault,$(basename $(notdir $(wildcard tests/roms/*.c))))
@@ -128,15 +129,15 @@ test-roms: $(ROM_TARGETS) $(addprefix rom-,$(ROM_PROJECTS))
 
 $(addprefix rom-fault_,$(FAULT_CASES)): rom-fault_%:
 	$(PIP_APP) BUILD=$(ROM_BUILD)/fault_$* IMAGE=fault_$*.rom NAME=fault_$* \
-	    TITLE="Pip-OS test ROM fault_$*" SRCS="tests/roms/fault.c tests/roms/rt.c" \
+	    TITLE="Pip-OS test ROM fault_$*" SRCS="tests/roms/fault.c" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS) -DFAULT_$*"
 
 $(addprefix rom-,$(TEST_ROMS)): rom-%:
 	$(PIP_APP) BUILD=$(ROM_BUILD)/$* IMAGE=$*.rom NAME=$* TITLE="Pip-OS test ROM $*" \
-	    SRCS="tests/roms/$*.c tests/roms/rt.c $(if $(filter calls,$*),tests/roms/regs.S)" \
+	    SRCS="tests/roms/$*.c $(if $(filter calls,$*),tests/roms/regs.S)" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
-# Test holotapes: tests/roms/holo_tapes/<name>.c with rt.c, into
+# Test holotapes: tests/roms/holo_tapes/<name>.c, into
 # $(HOLO_BUILD)/<name>/<name>.htp. test_holo.py copies them to /PIPBOY/HOLO.
 HOLO_BUILD   := $(BUILD)/holotapes
 TEST_HOLOS   := $(basename $(notdir $(wildcard tests/roms/holo_tapes/*.c)))
@@ -146,7 +147,7 @@ test-roms: $(HOLO_TARGETS)
 
 $(HOLO_TARGETS): holo-%:
 	$(PIP_APP) KIND=holotape BUILD=$(HOLO_BUILD)/$* IMAGE=$*.htp NAME=$* \
-	    TITLE="Holotape_$*" SRCS="tests/roms/holo_tapes/$*.c tests/roms/rt.c" \
+	    TITLE="Holotape_$*" SRCS="tests/roms/holo_tapes/$*.c" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
 # tape_util: the tape source sealed as a utility, subtype 1.
@@ -154,7 +155,7 @@ $(HOLO_TARGETS): holo-%:
 test-roms: holo-tape_util
 holo-tape_util:
 	$(PIP_APP) KIND=holotape SUBTYPE=utility BUILD=$(HOLO_BUILD)/tape_util IMAGE=tape_util.htp \
-	    NAME=tape_util TITLE="Holotape_tape_util" SRCS="tests/roms/holo_tapes/tape.c tests/roms/rt.c" \
+	    NAME=tape_util TITLE="Holotape_tape_util" SRCS="tests/roms/holo_tapes/tape.c" \
 	    CFLAGS_EXTRA="$(ROM_CFLAGS)"
 
 $(addprefix rom-,$(ROM_PROJECTS)): rom-%:

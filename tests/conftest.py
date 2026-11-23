@@ -1,15 +1,15 @@
 import os, sys  # noqa: E401
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../external/robco-core/tests"))
-pytest_plugins = ["harness.plugin"]
 
-# Pip-OS: rimg for the ROM helpers, and --build-dir for the image under test.
-# robco_build() builds into build or build/<variant> only, so a BUILD flag
-# picks any other directory and image names the result inside it.
+# The SDK's test package, the way a ROM project loads it. Importing it puts
+# RobCo-Core's harness and tools (rimg) on sys.path. The plugin loads
+# RobCo-Core's harness.plugin. Pip-OS adds --build-dir for the image under
+# test. robco_build() builds into build or build/<variant> only, so a BUILD
+# flag picks any other directory and image names the result inside it.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "sdk", "testing"))
+pytest_plugins = ["pipos_testing.plugin"]
 
 import pytest  # noqa: E402
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "external", "robco-core", "tools"))
 
 
 def pytest_addoption(parser):
