@@ -3,7 +3,7 @@
 This folder builds ROMs and holotapes for Pip-OS.
 
 - `include/pipos/`: the public headers. Include `<pipos/pip.h>`.
-- `lib/`: the sources of `libpip.a`: the system-call wrappers, `printf`, the string functions, the heap and the self-check markers (`pipos/selftest.h`). The string, printf and heap code comes from RobCo-Core.
+- `lib/`: the sources of `libpip.a`: the system-call wrappers, `printf`, the string functions, the heap, the INI parser (`pipos/ini.h`), CRC-32 (`pipos/crc32.h`) and the self-check markers (`pipos/selftest.h`). The INI, CRC, string, printf and heap code comes from RobCo-Core.
 - `crt0.S`, `rom.ld`, `holotape.ld`: start-up code and link scripts.
 - `pipos-app.mk`: the make fragment a ROM project includes.
 - `examples/hello/`: a first ROM to copy.

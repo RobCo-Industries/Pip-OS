@@ -284,7 +284,8 @@ def test_scripts_stop_while_rom_spins(board, kernel_image, test_rom, tmp_path, n
 
 SDK_CHECKS = ["printf_conv", "printf_trunc", "printf_long", "printf_nul", "str_mem", "str_memmove",
               "str_len_cmp", "str_chr", "str_lcpy", "heap_align", "heap_calloc",
-              "heap_exhaust", "heap_recover", "heap_free"]
+              "heap_exhaust", "heap_recover", "heap_free", "ini_get", "ini_get_int",
+              "ini_get_bool", "ini_missing", "crc32_known", "crc32_stream"]
 
 
 def test_sdk_self_check(board, kernel_image, test_rom, tmp_path, need_mtools):

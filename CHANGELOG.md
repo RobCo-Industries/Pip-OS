@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The test helpers are an importable package, `sdk/testing/pipos_testing`, with a pytest plugin. A ROM project's `conftest.py` needs only the Pip-OS root. `tests/pipos_helpers.py` re-exports it.
 - `booted(..., wait="jump")` waits for the jump into the ROM, for a ROM that never exits. `check_golden`, `script` and `press` helpers.
 - `pipos/selftest.h` in `libpip.a`: `pip_check`, `pip_check_eq`, `pip_checks_done` and the marker functions the test ROMs used from `rt.c`.
+- `pipos/ini.h` and `pipos/crc32.h` in `libpip.a`: RobCo-Core's INI parser as `pip_ini_*` and CRC-32/ISO-HDLC as `pip_crc32` and `pip_crc32_update`.
 - The `rtc` script command prints the time the RTC chip holds, and `ev=rtc_set` reports each chip write.
 - `sample_queue` (0x26) plays a sample right after the one that plays, with no gap. One sample can wait; a second call returns `-PIP_EBUSY`. With no sample playing it acts as `sample`.
 - `pip_sample_queue()` in `libpip.a` and `PIP_SYS_SAMPLE_QUEUE` in `abi.h`.

@@ -1,6 +1,7 @@
 /*
  * Checks libpip.a on the target: printf through log, the string
- * functions, and the heap up to exhaustion and back. Prints
+ * functions, the heap up to exhaustion and back, the INI parser and the
+ * CRC. Prints
  * "@RC stage=testrom ev=check name=<name> ok=<0|1>" per check, then
  * "ev=checks total=<n> failed=<n>". Uses nothing but the SDK.
  */
@@ -133,12 +134,47 @@ static void heap_checks(void)
     check("heap_free", pip_heap_free() == start && start > 0x007e0000u);
 }
 
+/* A config file as a ROM would read it from the card. */
+static const char ini_text[] =
+    "# Deitrix settings\n"
+    "[display]\n"
+    "scheme = amber\n"
+    "brightness = 0x40\n"
+    "[audio]\r\n"
+    "beep = off ; quiet\n";
+
+static void ini_checks(void)
+{
+    char buf[16];
+    int32_t n = 0;
+    int b = 1;
+    size_t len = sizeof(ini_text) - 1;
+
+    check("ini_get", pip_ini_get(ini_text, len, "display", "scheme", buf, sizeof(buf)) == 0 &&
+          same(buf, "amber"));
+    check("ini_get_int", pip_ini_get_int(ini_text, len, "display", "brightness", 0, 255, &n) == 0 &&
+          n == 0x40);
+    check("ini_get_bool", pip_ini_get_bool(ini_text, len, "audio", "beep", &b) == 0 && b == 0);
+    check("ini_missing", pip_ini_get(ini_text, len, "audio", "volume", buf, sizeof(buf)) ==
+          PIP_INI_ERR_NOT_FOUND);
+}
+
+static void crc_checks(void)
+{
+    uint32_t c = pip_crc32_update(0, "1234", 4);
+
+    check("crc32_known", pip_crc32("123456789", 9) == 0xCBF43926u);
+    check("crc32_stream", pip_crc32_update(c, "56789", 5) == 0xCBF43926u);
+}
+
 int pip_main(const pipos_startup_t *startup)
 {
     (void)startup;
     printf_checks();
     string_checks();
     heap_checks();
+    ini_checks();
+    crc_checks();
     pip_printf("@RC stage=testrom ev=checks total=%d failed=%d\n", total, failed);
     return failed;
 }

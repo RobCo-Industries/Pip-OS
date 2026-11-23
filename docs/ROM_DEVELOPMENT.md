@@ -174,11 +174,17 @@ A 4096-byte chunk lasts 512 ms, so a 20 ms sleep leaves plenty of margin. If the
 | `pipos/string.h` | `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strnlen`, `strcmp`, `strncmp`, `strchr`, `strlcpy` |
 | `pipos/printf.h` | `pip_snprintf`, `pip_vsnprintf`, `pip_printf` |
 | `pipos/heap.h` | `pip_malloc`, `pip_calloc`, `pip_free`, `pip_heap_free`, `pip_heap_init` |
+| `pipos/ini.h` | `pip_ini_parse`, `pip_ini_get`, `pip_ini_get_int`, `pip_ini_get_bool`, `pip_ini_strerror` |
+| `pipos/crc32.h` | `pip_crc32`, `pip_crc32_update` |
 | `pipos/selftest.h` | `pip_check`, `pip_check_eq`, `pip_checks_done`, `pip_marker_begin`, `pip_marker_hex`, `pip_marker_dec`, `pip_marker_end`, `pip_marker_time` |
 
 The printf functions know `%d %u %x %X %c %s %p %%` with the `-` and `0` flags, a width and a precision, as in C. `*` takes the width or precision from an `int` argument. There are no `l` modifiers and no floating point. `pip_printf` prints up to 1023 bytes per call, split into `log` calls of 255 bytes.
 
 The heap sets itself up on the first call. Blocks are 8-byte aligned and cost 16 bytes of header each. `pip_malloc` returns NULL when no free block fits. The headers list every limit.
+
+The INI functions read a config file held in memory, such as one read with `file_read`. They allocate nothing. Keys before the first `[section]` belong to the section `""`. `pip_ini_get_int` takes decimal or `0x` hex within a range, and `pip_ini_get_bool` takes `true`, `yes`, `on`, `1` and their opposites. A line holds at most 255 bytes, a value 127. `pipos/ini.h` gives the full syntax and the error codes.
+
+`pip_crc32` is CRC-32/ISO-HDLC, the zlib `crc32()` and the CRC of the image header. `pip_crc32("123456789", 9)` is `0xCBF43926`. To checksum data in pieces, start `pip_crc32_update` with 0 and pass each result back in.
 
 The `selftest.h` functions print the check lines that the tests read, see [TESTING.md](TESTING.md#testing-a-rom-project).
 
