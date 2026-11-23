@@ -143,7 +143,7 @@ def conform(vm, ev=None):
 
 
 def steps(vm):
-    return [m for m in conform(vm) if m["ev"] in ("prompt", "page", "summary")]
+    return [m for m in conform(vm) if m["ev"] in ("intro", "prompt", "page", "summary")]
 
 
 # An answered step shows the next one within this. A lost answer waits for
@@ -168,6 +168,26 @@ def wait_conform(vm, ev, name, timeout=STEP_S):
     while not [m for m in conform(vm, ev) if m["name"] == name]:
         assert time.monotonic() < deadline, f"no {ev} {name} within {timeout} s\n{vm.serial}"
         time.sleep(0.005)
+
+
+def wait_conform_ev(vm, ev, timeout=STEP_S):
+    """Waits for an ev marker."""
+    deadline = time.monotonic() + timeout
+    while not conform(vm, ev):
+        assert time.monotonic() < deadline, f"no {ev} within {timeout} s\n{vm.serial}"
+        time.sleep(0.005)
+
+
+def finish_pages(vm, done):
+    """From step done + 1, the first page: turns every page with DOWN, then ends on the summary."""
+    while True:
+        step = next_step(vm, done)
+        done += 1
+        key = "key down" if step["ev"] == "page" else "key select"
+        reply = vm.script(key, timeout=TIMEOUT)
+        assert reply.status == "ok", reply
+        if step["ev"] == "summary":
+            return
 
 
 def wait_check(vm, name):
@@ -205,7 +225,7 @@ def one_conform(vm, ev):
 def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path, need_mtools):
     sd = card_copy(conformance_card, tmp_path)
     answered = []
-    page1 = summary = None
+    intro = page1 = summary = None
     # booted() waits for ev=ready, which comes after the ROM ends.
     with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
         # Each answer goes out as soon as its marker shows, with no screenshot
@@ -218,7 +238,11 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
             step = next_step(vm, done, timeout)
             done += 1
             timeout = STEP_S
-            if step["ev"] == "prompt":
+            if step["ev"] == "intro":
+                intro = screenshot(vm, tmp_path)
+                reply = vm.script("key select", timeout=TIMEOUT)
+                assert reply.status == "ok", reply
+            elif step["ev"] == "prompt":
                 answered.append(step["name"])
                 for line in ANSWERS[step["name"]]:
                     if isinstance(line, tuple) and line[0] == "retry":
@@ -246,6 +270,7 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
         vm.wait_for("@RC stage=pipos ev=rom_exit ", timeout=TIMEOUT)
         vm.wait_for("@RC stage=pipos ev=ready ", timeout=TIMEOUT)
         assert answered == list(ANSWERS), answered
+        assert one_conform(vm, "intro_answer")["start"] == "1", vm.serial
         assert_results(vm, skip=set())
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
         assert [m["name"] for m in conform(vm, "retry")] == ["btn_up"], vm.serial
@@ -256,6 +281,7 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
         assert [m["n"] for m in conform(vm, "page")] == [str(i) for i in range(1, pages + 1)]
         no_exception(vm)
     # After the results, so a FAIL shows its serial line first.
+    check_golden(intro, "conform_intro")
     check_golden(page1, "conform_page1")
     check_golden(summary, "conform_summary")
 
@@ -266,6 +292,28 @@ def test_conformance_auto(board, kernel_image, conformance_card, tmp_path, need_
     with booted(kernel_image, board, sd=sd) as vm:
         assert not conform(vm, "prompt"), vm.serial
         assert one_conform(vm, "start")["mode"] == "auto"
+        assert_results(vm, skip=set(INTERACTIVE))
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        no_exception(vm)
+
+
+def test_conformance_skip_interactive(board, kernel_image, conformance_card, tmp_path,
+                                      need_mtools):
+    """LEFT on the intro: no prompt, every interactive check SKIP."""
+    if board not in ("raspi0", "raspi2b"):
+        pytest.skip("the skip path is the same on every board")
+    sd = card_copy(conformance_card, tmp_path)
+    with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+        next_step(vm, 0)
+        assert steps(vm)[0]["ev"] == "intro", vm.serial
+        reply = vm.script("key left", timeout=TIMEOUT)
+        assert reply.status == "ok", reply
+        wait_conform_ev(vm, "intro_answer")
+        assert one_conform(vm, "intro_answer")["start"] == "0", vm.serial
+        finish_pages(vm, 1)
+        vm.wait_for("@RC stage=pipos ev=ready ", timeout=TIMEOUT)
+        assert not conform(vm, "prompt"), vm.serial
+        assert one_conform(vm, "start")["mode"] == "interactive"
         assert_results(vm, skip=set(INTERACTIVE))
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
         no_exception(vm)

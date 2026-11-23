@@ -70,7 +70,8 @@ static int32_t dial_baseline(void)
     return d;   /* the dial never stopped; the position check may be off */
 }
 
-/* Draws a prompt screen: up to three lines and a hint. Presents nothing. */
+/* Draws a prompt screen: up to three lines and a hint. Presents nothing.
+ * With no hint, the two bottom lines stay empty. */
 static void prompt_draw(const char *l1, const char *l2, const char *l3, const char *hint)
 {
     int32_t w;
@@ -88,9 +89,11 @@ static void prompt_draw(const char *l1, const char *l2, const char *l3, const ch
     if (l3 != NULL) {
         pip_draw_text(8, 120, l3, 1);
     }
-    pip_set_color(dim, PIP_COLOR_NONE);
-    pip_draw_text(8, 184, hint, 1);
-    pip_draw_text(8, 204, "No answer in 30 s: SKIP", 1);
+    if (hint != NULL) {
+        pip_set_color(dim, PIP_COLOR_NONE);
+        pip_draw_text(8, 184, hint, 1);
+        pip_draw_text(8, 204, "No answer in 30 s: SKIP", 1);
+    }
 }
 
 /*
@@ -392,6 +395,34 @@ static void play_sample(void)
     pip_sample(pcm, sizeof(pcm));
 }
 
+#define INTRO_MS 600000u   /* the intro waits 10 minutes, then the part is SKIP */
+
+/*
+ * Says what comes next and waits. Returns 1 for SELECT, 0 for LEFT or no
+ * answer: the whole interactive part is then SKIP. Other buttons are
+ * ignored.
+ */
+static int intro(void)
+{
+    int b;
+
+    prompt_draw("Next: press buttons, turn the dial,",
+                "hear three sounds, judge a picture.",
+                "Each step waits 30 s, then is SKIP.", NULL);
+    pip_set_color(fg, PIP_COLOR_NONE);
+    pip_draw_text(8, 160, "SELECT: start   LEFT: skip this part", 1);
+    pip_set_color(dim, PIP_COLOR_NONE);
+    pip_draw_text(8, 204, "No answer in 10 min: all SKIP", 1);
+    drain_events();
+    pip_present();
+    pip_printf("@RC stage=conform ev=intro\n");
+    do {
+        b = wait_press(INTRO_MS);
+    } while (b >= 0 && b != PIP_BTN_SELECT && b != PIP_BTN_LEFT);
+    pip_printf("@RC stage=conform ev=intro_answer start=%d\n", b == PIP_BTN_SELECT);
+    return b == PIP_BTN_SELECT;
+}
+
 void run_interactive(void)
 {
     static const char *const names[] = {
@@ -405,7 +436,11 @@ void run_interactive(void)
     pip_gfx_info_t gi;
     unsigned i;
 
-    if (auto_mode) {
+    if (pip_gfx_info(&gi) == 0) {
+        fg = gi.fg_default;
+    }
+    dim = (fg >> 1) & 0x7F7F7Fu;
+    if (auto_mode || !intro()) {
         for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
             cur_call = i < 18 ? (i % 3 ? "read_buttons" : "wait_event") :
                        i < 22 ? "read_dial" : i == 22 ? "tone" :
@@ -414,10 +449,6 @@ void run_interactive(void)
         }
         return;
     }
-    if (pip_gfx_info(&gi) == 0) {
-        fg = gi.fg_default;
-    }
-    dim = (fg >> 1) & 0x7F7F7Fu;
     cur_call = "wait_event";
     for (i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
         ask_button((int)i);

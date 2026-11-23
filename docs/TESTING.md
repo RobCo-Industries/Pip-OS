@@ -136,7 +136,7 @@ The automatic part needs no person. Each call runs on its main path and on the e
 
 `power` runs only `op` 2 and 3. Reboot and halt would end the run. `exit` is checked through the tape: the ROM's own exit ends the run.
 
-The interactive part asks a person to press and hold each button, turn the dial both ways, say whether a tone, a tune and a sample were heard and whether a test picture is right. SELECT is yes, LEFT is no. Each prompt waits 30 s, then the check is SKIP. While a button is held, `read_buttons` must show it down, and after the release up. A tap released before the ROM reads asks again: it proves nothing. A sound starts once its prompt shows, and UP plays it again.
+The interactive part starts with an intro screen. It says what comes next and waits 10 minutes for SELECT, which starts the part, or LEFT, which skips it. LEFT or no answer makes every interactive check SKIP. The interactive part asks a person to press and hold each button, turn the dial both ways, say whether a tone, a tune and a sample were heard and whether a test picture is right. SELECT is yes, LEFT is no. Each prompt waits 30 s, then the check is SKIP. While a button is held, `read_buttons` must show it down, and after the release up. A tap released before the ROM reads asks again: it proves nothing. A sound starts once its prompt shows, and UP plays it again.
 
 ### Mode
 
@@ -159,11 +159,11 @@ On the serial port, each check prints one line:
 @RC stage=conform ev=check n=86 call=get_time name=time_at_boot result=ABSENT got=-41 expected=0
 ```
 
-Then `ev=prompt name=<check>` when a prompt is on screen, `ev=page n=<n> of=<pages>` per results page, and `ev=summary total= pass= fail= skip= absent= mode=` at the end. The tape prints `ev=tape_check name=<name> ok=<0|1>` for each of its own checks.
+Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` once it is answered, `ev=prompt name=<check>` when a prompt is on screen, `ev=page n=<n> of=<pages>` per results page, and `ev=summary total= pass= fail= skip= absent= mode=` at the end. The tape prints `ev=tape_check name=<name> ok=<0|1>` for each of its own checks.
 
 ### Test
 
-`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run answers every prompt through the script channel and turns the pages. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, and golden screens of the first results page and of the summary, `tests/golden/conform_page1.png` and `tests/golden/conform_summary.png`. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A second run in auto mode must end by itself with every interactive check SKIP.
+`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel and turns the pages. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, and golden screens of the intro, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_page1.png` and `conform_summary.png`. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP.
 
 ## CI
 

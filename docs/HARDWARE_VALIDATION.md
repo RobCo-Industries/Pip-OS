@@ -30,14 +30,15 @@ For a run with no prompts, also write a file `PIPBOY/CONFORM.CFG` that holds the
 1. If you use the serial adapter, open a terminal on it at 115200 baud and start logging to a file.
 2. Put the card in the Pi and power it on.
 3. The automatic checks run first. The screen shows which call runs. This takes a few seconds.
-4. Answer the prompts. Each one waits 30 s, then moves on and marks its check SKIP.
+4. A screen then says what comes next. Press SELECT to start the checks by hand, or LEFT to skip them all. With no answer in 10 minutes, they are all SKIP.
+5. Answer the prompts. Each one waits 30 s, then moves on and marks its check SKIP.
    - "Press and hold UP" and the other buttons: press that button and keep it down until the screen says "Now let go", then let go. Other buttons are ignored. A tap that ends too soon shows "Too quick" and asks again.
    - "Turn the dial clockwise" and "counter-clockwise": turn it a few clicks that way.
    - "Did you hear it?" for a tone, a tune and a buzz: the sound starts once the prompt shows. UP plays it again. SELECT for yes, LEFT for no.
    - "Is the picture right?": SELECT for yes, LEFT for no. You should see a frame around the screen, a circle on the left, a filled square in the middle, a triangle on the right, and a line under them.
    - The serial terminal works as buttons too: arrow keys for UP, DOWN, LEFT and RIGHT, Enter for SELECT. It has no dial. Its keys cannot be held, so the hold checks of the buttons stay SKIP with it.
-5. Read the results pages. DOWN turns the page, UP goes back, SELECT jumps to the summary.
-6. The summary shows four counts. It stays for 10 minutes or until you press a button.
+6. Read the results pages. DOWN turns the page, UP goes back, SELECT jumps to the summary.
+7. The summary shows four counts. It stays for 10 minutes or until you press a button.
 
 ## What the results mean
 
