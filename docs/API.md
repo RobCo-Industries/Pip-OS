@@ -4,7 +4,7 @@ A running image calls the kernel with `svc #0`. The call number goes in r7, the 
 
 [`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers, the error codes, the structs and every limit. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for every call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
-The kernel serves all 50 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
+Pip-OS implements ABI 1.1, `PIP_ABI_VERSION` `0x00010001`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
 
 | Error | Value |
 |---|---|
@@ -14,6 +14,7 @@ The kernel serves all 50 calls of the spec's table. A number outside the table r
 | `-PIP_EBADF` | -9 |
 | `-PIP_ENOMEM` | -12 |
 | `-PIP_EFAULT` | -14 |
+| `-PIP_EBUSY` | -16 |
 | `-PIP_EINVAL` | -22 |
 | `-PIP_ENOSPC` | -28 |
 | `-PIP_ERANGE` | -34 |
@@ -53,7 +54,7 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 - `ticks_ms` moves in steps of 10 ms, the 100 Hz tick.
 - `sleep_ms` waits on the 1 MHz system timer, so it never ends early. The tick wakes it, so it can run up to 10 ms long. IRQs stay on, and the kernel runs its main-loop work while it waits.
 - The exit status is the low 8 bits of `status`. `exit` prints it as `ev=rom_exit status=<0 to 255>` for the ROM. For a holotape, `holo_launch` returns it.
-- `sys_info` writes `size` 32, `abi_version` `0x00010000`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, and two reserved words set to 0.
+- `sys_info` writes `size` 32, `abi_version` `0x00010001`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, and two reserved words set to 0.
 - `mem_info` reports the caller's own region. For the ROM: `heap_base` `0x01000000`, `heap_size` `0x007F0000`, `stack_top` `0x01800000`, `stack_size` `0x00010000`. For a holotape: `0x01800000`, `0x007F0000`, `0x02000000`, `0x00010000`.
 - `log` prints on the PL011 with no newline added. Printable ASCII, `\n` and `\t` print as they are, every other byte as `?`.
 
@@ -120,14 +121,17 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 | `0x21` | `sample` | `const uint8 *data`, `uint32 length` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EIO` |
 | `0x22` | `audio_stop` | none | 0, also when nothing plays | none |
 | `0x23` | `volume` | `uint32 level` | The previous level | `EINVAL` for `level` above 100 |
-| `0x24` | `audio_status` | none | 1 while a sound the image started plays, else 0 | none |
+| `0x24` | `audio_status` | none | 1 while a sound the image started plays or a queued sample waits, else 0 | none |
 | `0x25` | `play_seq` | `const pip_note_t *notes`, `uint32 count` | 0 | `EINVAL` for `count` outside 1 to 256 or any bad note, `EFAULT`, `EIO` |
+| `0x26` | `sample_queue` | `const uint8 *data`, `uint32 length` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EBUSY` when a sample already waits, `EIO` |
 
 `EIO` means the audio driver refused the sound. The rules are in the spec's [Audio](https://github.com/RobCo-Industries/RobCo-Core/blob/222f4e44f67cdca2a65da12c7b0a90ea0d9aa087/docs/spec/PIPOS_ABI.md#audio) section.
 
 - The level starts at the `volume` key of `PIPOS.CFG`, 100 without one. See [CONFIG.md](CONFIG.md). It is a percentage of the square wave's duty cycle for tones. For a sample it scales each byte around 128.
 - A ROM that wants its own level sets it and restores the old one before it exits.
 - `sample` stops the current sound before it copies the data. An argument error returns before that, so the current sound plays on.
+- `sample_queue` checks the length, then the pointer, then whether a sample waits. When a sample plays, it copies the data and queues it behind, with no gap. When none plays, it acts as `sample`. `sample_queue` is new in ABI 1.1. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#playing-long-audio) has a streaming loop.
+- `tone`, `sample`, `play_seq` and `audio_stop` drop the waiting sample with the one that plays. Image start and end stop both.
 - On PWM the sound goes out on the audio pins in [HARDWARE.md](HARDWARE.md). Samples are not tried on real hardware yet.
 
 QEMU has no PWM model. There Pip-OS uses RobCo-Core's trace backend: each change of sound prints one line on the UART instead of playing it.
@@ -137,7 +141,7 @@ QEMU has no PWM model. There Pip-OS uses RobCo-Core's trace backend: each change
 @RC stage=pipos ev=audio op=stop hz=0 vol=40 t_ms=508
 ```
 
-A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` marks the natural end. A stop or a replacement prints `op=stop` instead.
+A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` marks the natural end. A queued sample prints `op=pcm_next` with its `len` and `crc` when it takes over, and `op=pcm_end` comes once, after the last one. A stop or a replacement prints `op=stop` instead.
 
 ```
 @RC stage=pipos ev=audio op=pcm rate=8000 len=800 vol=70 crc=eb779ef4 t_ms=179
