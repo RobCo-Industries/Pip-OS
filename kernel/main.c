@@ -203,6 +203,7 @@ static void apply_settings(const pipos_settings_t *s)
 {
     console_set_scheme(s->scheme);
     audio_set_volume(s->volume);
+    pipos_audio_start_volume(s->volume);
     pipos_screen_delay(s->line_delay_ms);
     if (s->beep) {
         audio_beep();
