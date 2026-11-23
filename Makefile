@@ -52,7 +52,8 @@ PURE_SRCS  := \
 
 SRCS       := $(sort $(wildcard kernel/*.c))
 # The ABI header in sdk/include is shared with ROM code.
-EXTRA_CFLAGS += -Isdk/include
+# override: a command-line EXTRA_CFLAGS, such as a test build's, adds to it.
+override EXTRA_CFLAGS += -Isdk/include
 
 # Host unit tests: tests/host/test_<name>.c with the pure kernel files.
 HOST_TEST_DIR := tests/host

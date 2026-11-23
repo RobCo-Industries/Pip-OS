@@ -7,6 +7,7 @@
 #include <robco/timer.h>
 #include <robco/uart.h>
 
+#include "display.h"
 #include "pipos.h"
 
 static uint32_t line_delay_ms;
@@ -25,6 +26,7 @@ void pipos_screen_line(const char *text)
     audio_poll(); /* prints audio trace records queued so far */
     console_puts(text);
     console_putc('\n');
+    pipos_display_line(text);
     uart_puts(text);
     uart_putc('\n');
 }
