@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
 
 ### Changed
+- `make check-pins` uses RobCo-Core's shared `tools/check_doc_links.sh` through the new `make check-doc-links`. A short hash in a RobCo-Core link is now an error. Pip-OS's own copy is gone.
 - `set_time` writes the RTC chip when one answers, so the time survives a reboot. A failed chip write returns `-PIP_EIO`; the clock keeps the new value. A time outside 2000 to 2099 sets the clock only.
 - ABI 1.1: `PIP_ABI_VERSION` is `0x00010001`. The SDK seals images with it, and `sys_info` and the startup block report it. Images sealed for 1.0 still run.
 - `tone`, `sample`, `play_seq`, `audio_stop` and image start and end drop a waiting sample too. `audio_status` is 1 while one waits.
