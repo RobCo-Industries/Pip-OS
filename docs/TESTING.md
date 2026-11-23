@@ -46,6 +46,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
+| `tests/tools/test_card_tool.py` | `tools/card.py` on its own, without a build or QEMU: the `TAPE` and `CARD_DIR` rules, the staged-card check and each `bootdir` stop, links at every position in `DIR` and in the sources, `BOOTDIR.LST` lines, read-only folders, and a sweep of 300 random trees from a fixed seed. Either a run stops and `DIR` is unchanged, or it holds exactly the staged files plus the files it left alone, and a file outside `DIR` that links point at never changes. Cases that need two spellings of a name run only on a case-sensitive temp folder; the run prints which branch it took. The read-only cases skip as root, as in the CI container. |
 | `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers and in auto mode. See [Conformance ROM](#conformance-rom). |
 
