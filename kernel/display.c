@@ -252,6 +252,16 @@ int32_t pipos_display_send(const uint32_t *bb)
     rc = tft_present_px32_rect(bb, FRAME_W * 4u, TFT_SRC_XRGB, r.x, r.y, r.w, r.h);
     send_end(why, &r);
     if (rc != 0) {
+        /* Part of the rectangle may be on the panel: one more try, whole frame. */
+        fail("present", rc);
+        r.x = r.y = 0;
+        r.w = panel_w;
+        r.h = panel_h;
+        send_begin();
+        rc = tft_present_px32_rect(bb, FRAME_W * 4u, TFT_SRC_XRGB, 0, 0, r.w, r.h);
+        send_end("retry", &r);
+    }
+    if (rc != 0) {
         fail("present", rc);
         full = 1;
         return -PIP_EIO;
@@ -363,6 +373,10 @@ void pipos_display_start(const pipos_settings_t *s)
     tft_set_tap(tap);
 #endif
     rc = tft_init(&cfg);
+    /* A bus error can be a one-off: one more try. */
+    if (rc == TFT_ERR_BUS) {
+        rc = tft_init(&cfg);
+    }
     if (rc == 0) {
         /* No answer can also be a module without MISO: the panel stays in use. */
         state = tft_read_id(&id) == 0 ? "ok" : "absent";

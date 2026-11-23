@@ -63,7 +63,7 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 `tests/test_tft.py` builds a second kernel into `<build-dir>/tft` with `EXTRA_CFLAGS=-DPIPOS_TFT_TEST`. That build:
 
-- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full` or `diff`. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
+- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full`, `diff`, or `retry` for the whole frame sent again after a failed send. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
 - keeps every byte since `tft_init()` from `0x00D80000`, up to 2.5 MiB.
 - answers the `tftdump` script command with that transcript. `C` lines hold command bytes. `D` lines hold data as 16-bit words in hex, with `*<count>` for repeats. An `end bytes=<n> full=<0|1>` line closes it.
 - waits after each send until the bytes would have left the wire at the rate set, so timing is not shorter than on a panel.
@@ -71,7 +71,7 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 `test_shipped_image_has_no_hook` checks that `build/pipos.img` holds none of this and answers `tftdump` with an error.
 
-`build/host/panel_model`, from `tests/host/panel_model.c`, feeds the transcript to RobCo-Core's ILI9341 model, `external/robco-core/tests/host/ili9341_model.h`, and prints the picture as the panel shows it. The test compares it with the HDMI screenshot of the same frame: every pixel, after scaling down by 2 and conversion to RGB565.
+`build/host/panel_model`, from `tests/host/panel_model.c`, feeds the transcript to RobCo-Core's ILI9341 model, `external/robco-core/tests/host/ili9341_model.h`, and prints the picture as the panel shows it. It fails when the byte count differs from the dump's `end` line. The test compares it with the HDMI screenshot of the same frame: every pixel, after scaling down by 2 and conversion to RGB565.
 
 A whole frame is about 150 KiB on the wire. The repeat counts shrink flat colours. After a boot with `backend = both`, the transcript holds 189861 bytes, the boot console frames, and the dump is about 85 KB of text. It takes about 0.4 s in QEMU, whose serial ports have no baud rate. At 115200 baud it would take about 7.4 s. A frame with no repeats would be about 300 KB of hex, about 27 s.
 

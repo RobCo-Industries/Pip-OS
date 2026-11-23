@@ -45,7 +45,7 @@ That line is from QEMU, where nothing answers and the core clock gives 9.72 MHz.
 | `asked` | The `backend` key of `PIPOS.CFG` |
 | `bad` | How many `backend` and `tft_*` values the kernel refused |
 
-When `tft_init()` fails, the kernel uses HDMI only and shows `SPI DISPLAY FAILED, USING HDMI` on the boot console and the PL011. A panel that gives no id may still work: a module without its MISO line wired reads the same. So the panel stays in use. With `backend = tft` HDMI then also takes the frames, as with `both`, so a device with a dead panel stays usable on HDMI.
+`tft_init()` runs a second time after `TFT_ERR_BUS`. When it fails, the kernel uses HDMI only and shows `SPI DISPLAY FAILED, USING HDMI` on the boot console and the PL011. A panel that gives no id may still work: a module without its MISO line wired reads the same. So the panel stays in use. With `backend = tft` HDMI then also takes the frames, as with `both`, so a device with a dead panel stays usable on HDMI.
 
 With the default `backend = hdmi` the kernel prints no `ev=display` marker and does not touch SPI0.
 

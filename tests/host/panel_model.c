@@ -17,6 +17,7 @@
 #include "ili9341_model.h"
 
 static model_t m;
+static unsigned long fed;   /* bytes fed to the model */
 static uint16_t view[MODEL_W * MODEL_H];
 
 static unsigned hex(const char *p, unsigned n)
@@ -44,18 +45,27 @@ int main(int argc, char **argv)
 
         line[strcspn(line, "\r\n")] = '\0';
         if (strncmp(line, "end ", 4) == 0) {
+            unsigned long want = 0;
+
+            /* A dump that lost a byte on the way must not pass. */
+            if (sscanf(line, "end bytes=%lu", &want) != 1 || want != fed) {
+                fprintf(stderr, "panel_model: %lu bytes read, the dump says %s\n", fed, line);
+                return 1;
+            }
             ended = 1;
             break;
         }
         if (line[0] == 'C') {
             for (; p[0] != '\0' && p[1] != '\0'; p += 2) {
                 model_byte(&m, 0, (uint8_t)hex(p, 2));
+                fed++;
             }
         } else if (line[0] == 'D') {
             while (*p == ' ') {
                 p++;
                 if (*p == '=') {
                     model_byte(&m, 1, (uint8_t)hex(p + 1, 2));
+                    fed++;
                     p += 3;
                     continue;
                 }
@@ -70,6 +80,7 @@ int main(int argc, char **argv)
                     model_byte(&m, 1, (uint8_t)(w >> 8));
                     model_byte(&m, 1, (uint8_t)w);
                 }
+                fed += 2ul * n;
             }
         } else {
             fprintf(stderr, "panel_model: bad line: %s\n", line);

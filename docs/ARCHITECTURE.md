@@ -171,7 +171,7 @@ Cost on the wire: a rectangle of w by h pixels takes 11 bytes of window commands
 
 The panel console: with the panel in use, boot text and panic text also reach the panel. `display.c` keeps the last 15 lines, cut at 40 characters, and draws them with the 8x16 font into the console frame at `0x00D00000`. It sends that frame the same way, against the shadow. Lines before `pipos_display_start()` and a panic before it never reach the panel. With `backend = tft` HDMI keeps the boot console and shows no frame.
 
-A panel call that fails after boot is counted. The first prints `ev=display_error`. The kernel keeps running and sends the whole frame next time.
+A panel call that fails after boot is counted. The first prints `ev=display_error`. A failed send may leave part of a rectangle on the panel, so the kernel tries once more with the whole frame. If that fails too, `present` returns `-PIP_EIO`, the kernel keeps running and sends the whole frame next time. In QEMU on `raspi3b` a loaded host can stall the SPI model past RobCo-Core's 20 ms SPI deadline, so the retry is not only for hardware.
 
 ### input
 
