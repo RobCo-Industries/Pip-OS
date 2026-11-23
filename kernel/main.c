@@ -202,7 +202,12 @@ static void start_audio(void)
 {
     int rc = audio_init();
 
-    pipos_audio_driver_result(rc);
+    /*
+     * A probe or pin error still leaves the trace backend, which plays every
+     * sound. The spec sets PIP_HW_AUDIO when the sound calls can play, so the
+     * backend decides, not rc.
+     */
+    pipos_audio_driver_result(k_strcmp(audio_backend(), "none") != 0);
 
     k_printf("@RC stage=" PIPOS_STAGE " ev=audio_init rc=%d backend=%s probe=%s\n", rc,
              audio_backend(), audio_probe_name(audio_probe_result()));

@@ -360,6 +360,34 @@ def test_conformance_auto_rtc(board, kernel_image, conformance_card, tmp_path, n
         no_exception(vm)
 
 
+@pytest.fixture(scope="session")
+def pwm_kernel_image(request, robco_build):
+    """The kernel with the PWM audio backend forced. On raspi0 and raspi1ap
+    QEMU's PWM registers abort, so audio_init() returns AUDIO_ERR_NO_PWM and
+    stays on the trace backend. On raspi2b and raspi3b PWM starts."""
+    path = os.path.join(ROOT, request.config.getoption("--build-dir"), "audio-pwm")
+    return robco_build(ROOT, flags=(f"BUILD={path}",
+                                    "EXTRA_CFLAGS=-Isdk/include -DROBCO_AUDIO_BACKEND=1"),
+                       image=os.path.join(path, "pipos.img"))
+
+
+def test_conformance_auto_audio_fallback(board, pwm_kernel_image, conformance_card, tmp_path,
+                                         need_mtools):
+    """Auto mode when audio_init() fails but a backend still plays: the sound
+    calls work, so sys_info sets PIP_HW_AUDIO and every check passes."""
+    sd = card_copy(conformance_card, tmp_path, auto=True)
+    with booted(pwm_kernel_image, board, sd=sd) as vm:
+        init = one(vm, "audio_init")
+        if board in ("raspi0", "raspi1ap"):
+            assert (init["rc"], init["backend"]) == ("-5", "trace"), vm.serial
+        else:
+            assert (init["rc"], init["backend"]) == ("0", "pwm"), vm.serial
+        assert_results(vm, skip=set(INTERACTIVE))
+        assert hw_flags(vm) == HW_AUDIO, vm.serial
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        no_exception(vm)
+
+
 def test_conformance_skip_interactive(board, kernel_image, conformance_card, tmp_path,
                                       need_mtools):
     """LEFT on the intro: no prompt, every interactive check SKIP."""

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- ABI 1.3: `sys_info` reports `hw_flags` at offset `0x18`. `PIP_HW_RTC`, bit 0, is set when a clock chip answered at boot. `PIP_HW_AUDIO`, bit 2, is set when the audio driver started. The conformance ROM checks the flags, and a new conformance run uses QEMU's clock chip.
+- ABI 1.3: `sys_info` reports `hw_flags` at offset `0x18`. `PIP_HW_RTC`, bit 0, is set when a clock chip answered at boot. `PIP_HW_AUDIO`, bit 2, is set when the audio driver started, also on the trace backend after a PWM error. The conformance ROM checks the flags, and a new conformance run uses QEMU's clock chip.
 - `make kernel` builds only the kernel image and its ELF, for a ROM project that calls Pip-OS's Makefile from another repository.
 - `CARD_DIR=<dir>` copies a folder tree onto the card for `make sdimage`, `run` and `bootdir`. A file at the path of a standard card file stops the build. `TAPE` takes several files.
 - "Using Pip-OS from another repository" in `docs/ROM_DEVELOPMENT.md`, with a complete Makefile, and `tests/host/outside_project_test.sh`.
