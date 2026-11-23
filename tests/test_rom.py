@@ -60,6 +60,13 @@ def test_return_from_main(board, kernel_image, test_rom, tmp_path, need_mtools):
         assert one(vm, "ready")["rom"] == "1"
 
 
+@pytest.mark.parametrize("rom, status", [("exit300", "44"), ("retneg", "255")])
+def test_exit_status_low_byte(board, kernel_image, test_rom, tmp_path, need_mtools, rom, status):
+    with booted(kernel_image, board, sd=card(tmp_path, test_rom(rom))) as vm:
+        assert one(vm, "rom_exit")["status"] == status, vm.serial
+        assert one(vm, "ready")["rom"] == "1"
+
+
 def test_return_through_trampoline(board, kernel_image, test_rom, tmp_path, need_mtools):
     with booted(kernel_image, board, sd=card(tmp_path, test_rom("tramp"))) as vm:
         assert one(vm, "rom_exit")["status"] == "9", vm.serial

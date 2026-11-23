@@ -25,6 +25,12 @@ void pipos_mem_info_rom(pip_mem_info_t *m);
 void pipos_sys_info_fill(pip_sys_info_t *s, uint32_t pipos_version, uint32_t board_rev,
                          uint32_t soc, uint32_t mem_size);
 
+/*
+ * An image's exit status: the low 8 bits of the value it passed to exit
+ * or returned from its entry function. Both ev=rom_exit and holo_launch use it.
+ */
+int32_t pipos_exit_status(int code);
+
 /* The byte log prints for c: printable ASCII, '\n' and '\t' stay, the rest is '?'. */
 char pipos_log_char(char c);
 

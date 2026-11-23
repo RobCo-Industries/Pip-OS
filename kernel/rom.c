@@ -92,7 +92,8 @@ void pipos_rom_run(const loader_result_t *res)
     switch (ex.reason) {
     case UMODE_RETURNED:
     case UMODE_EXITED:
-        k_printf("@RC stage=" PIPOS_STAGE " ev=rom_exit status=%d\n", ex.code);
+        k_printf("@RC stage=" PIPOS_STAGE " ev=rom_exit status=%d\n",
+                 (int)pipos_exit_status(ex.code));
         break;
     default:
         pipos_image_report_kill("rom", &ex, ex.reason == UMODE_FAULT);

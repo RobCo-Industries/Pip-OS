@@ -39,12 +39,13 @@ include $(PIPOS_SDK)/pipos-app.mk
 |---|---|
 | `PIPOS_SDK` | The `sdk/` folder, relative or absolute. Required. |
 | `IMAGE` | Output file name inside `BUILD`. Required. |
-| `KIND` | `rom` or `holotape`. Sets the magic, `ROM1` or `ROBCO78`, the link script and the slot. The subtype is always 0, game: the fragment has no `SUBTYPE` setting. |
+| `KIND` | `rom` or `holotape`. Sets the magic, `ROM1` or `ROBCO78`, the link script and the slot. |
 | `NAME` | Name in the header, at most 16 bytes. Required. |
 | `SRCS` | C and assembly sources. Required. |
 | `TITLE` | META title, ASCII, at most 64 bytes |
 | `ICON` | META icon: a 32x32 PBM, P1 or P4, or 128 raw bytes |
 | `VERSION` | Image version, such as `1.2.0` |
+| `SUBTYPE` | Holotape subtype: `game` or `0`, the default, or `utility` or `1`. A data tape, `2`, has no slot, so the build refuses it. A ROM takes only `0`. A change reseals the image. |
 | `BUILD` | Output folder, `build` by default |
 | `CFLAGS_EXTRA` | More compiler flags |
 | `ROBCO_CORE` | RobCo-Core, `$(PIPOS_SDK)/../external/robco-core` by default |
@@ -62,7 +63,7 @@ A holotape is a small program the ROM starts. Start from [`sdk/examples/tape`](.
 
 What differs from a ROM:
 
-- `KIND=holotape` in the Makefile. The image gets the `ROBCO78` magic, subtype 0 (game), and links at `0x00800000` in the 4 MiB holotape slot.
+- `KIND=holotape` in the Makefile. The image gets the `ROBCO78` magic and links at `0x00800000` in the 4 MiB holotape slot. Its subtype is game, 0, unless `SUBTYPE=utility` makes it a utility, 1. `holo_enumerate` reports it.
 - It starts with sp at `0x02000000` and its own heap from `0x01800000`. `pip_mem_info()` reports them.
 - It can read the ROM slot but not write it. The ROM's heap, stack and file handles are out of reach.
 - `holo_launch`, `power` and `set_time` return `-PIP_EPERM`.

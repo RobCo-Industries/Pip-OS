@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- `SUBTYPE` in `sdk/pipos-app.mk` seals a holotape as a game, 0, or a utility, 1. It refuses data tapes and any non-zero subtype for a ROM.
 - Graphics calls `0x01` to `0x0F`: lines, points, text, rectangles, polylines, arcs, 1-bit and RGB blits, clip, colours, font and `present`. They draw on a 320x240 back buffer in kernel-only memory at `0x00C00000`, and `present` scales it by 2 onto the 640x480 framebuffer.
 - The console redraws the boot screen when a ROM ends, so the ROM's last frame never stays on screen.
 - Input calls `read_buttons`, `read_dial`, `poll_event` and `wait_event`. Events come from a 32-event queue that drops the oldest event when full. Input that happens before a ROM starts never reaches it.
@@ -72,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - After a holotape, the ROM keeps its open files and its input events.
 - `mem_info` reports the caller's own heap.
 - `read_buttons` stays right when RobCo-Core's input queue overflows, and an event's `time_ms` is the time it came in.
+- `ev=rom_exit` prints the exit status as 0 to 255, the low 8 bits, like `holo_launch` returns it.
 
 ### Removed
 - The old kernel sources in `src/` and `include/`, the old build in `build/` and the old test scripts.
