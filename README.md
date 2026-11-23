@@ -48,7 +48,7 @@ make test
 make test BOARD=raspi0
 ```
 
-`make test` runs the host unit tests, then boots the kernel in QEMU on all four boards. See [docs/TESTING.md](docs/TESTING.md).
+`make test` runs the host unit tests, then boots the kernel in QEMU on all four boards. See [docs/TESTING.md](docs/TESTING.md). The [conformance ROM](docs/TESTING.md#conformance-rom) checks every system call in QEMU or on a real board.
 
 ## Run in QEMU
 
