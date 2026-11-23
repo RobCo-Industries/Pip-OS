@@ -8,7 +8,7 @@ wrong phase.
 
 The kernel reads the UARTs only when it polls. Two steps put bytes in the
 UART FIFOs while nothing polls, so that one poll reads them all: before
-the ROM starts (the boot screen) and the "stale" phase (the ROM spins).
+the ROM starts (the boot screen) and the "flood" phase (the ROM spins).
 The mini UART FIFO holds 8 bytes and the console FIFO 16, so each of
 these steps sends at most that much. Bytes beyond a FIFO wait in QEMU and
 come in at some later poll.
@@ -41,11 +41,15 @@ CHECKS = [
     # overflow
     "overflow_count", "overflow_first", "overflow_last_dial", "overflow_in_order",
     "overflow_last_type", "overflow_last_code", "overflow_empty",
-    # stale
-    "stale_select_rc", "stale_select_value", "stale_press_seen", "stale_release_lost",
-    "stale_released",
+    # flood
+    "flood_select_rc", "flood_select_value", "flood_count", "flood_in_order",
+    "flood_last_type", "flood_last_value", "flood_released",
     # stamp
     "stamp_rc", "stamp_not_before", "stamp_not_after",
+    # repeat
+    "repeat_press_rc", "repeat_press_value", "repeat_codes", "repeat_count",
+    "repeat_not_early", "repeat_not_late", "repeat_release_value", "repeat_quiet",
+    "repeat_released",
 ]
 
 # Before the ROM starts: Enter on the console (select, pressed and
@@ -54,11 +58,11 @@ EARLY_CONSOLE = "\r"
 EARLY_LINE = "dial 2"
 EARLY = [("key", "select", "1"), ("key", "select", "0"), ("dial", "0", "2")]
 
-# The stale phase: 15 DELs (back, pressed and released) and one character
-# are 31 events in 16 bytes. Then "key up" (7 bytes) pushes a press, which
-# fills RobCo-Core's queue of 32, and a release, which the queue drops.
-STALE_CONSOLE = "\x7f" * 15 + "x"
-STALE_LINE = "key up"
+# The flood phase: 16 CRs (select, pressed and released) are 32 events in
+# 16 bytes. Then "dial 1" (7 bytes) is the 33rd: RobCo-Core's queue drops
+# its oldest event, the first press, and keeps the newest 32.
+FLOOD_CONSOLE = "\r" * 16
+FLOOD_LINE = "dial 1"
 
 # Kept and dropped keys mixed: back, f1 and characters never reach the ROM.
 SEQ_LINES = ["key up", "key back", "key down", "key left", "key f1", "key right", "char x",
@@ -135,19 +139,25 @@ def test_input_calls(board, kernel_image, test_rom, tmp_path, need_mtools):
             script_ok(vm, f"dial {i}")
         script_ok(vm, "key select 1")
 
-        at_phase(vm, "stale_press")
+        at_phase(vm, "flood_press")
         script_ok(vm, "key select 0")
-        at_phase(vm, "stale")
+        at_phase(vm, "flood")
         # The ROM spins without polling. Its next poll reads both FIFOs in one
-        # pass, the console first: RobCo-Core drops the release of "key up".
-        vm.send(STALE_CONSOLE)
-        reply = vm.script(STALE_LINE, timeout=TIMEOUT)
-        assert reply.status == "err full", (
-            "the stale bytes did not all reach the UART FIFOs while the ROM spun: "
+        # pass, the console first: the dial step drops the oldest event.
+        vm.send(FLOOD_CONSOLE)
+        reply = vm.script(FLOOD_LINE, timeout=TIMEOUT)
+        assert reply.status == "ok dropped", (
+            "the flood bytes did not all reach the UART FIFOs while the ROM spun: "
             f"{reply}\n{vm.serial}")
 
         at_phase(vm, "stamp")
         script_ok(vm, "dial 1")
+
+        # Held until the ROM saw three repeats.
+        at_phase(vm, "repeat")
+        script_ok(vm, "key down 1")
+        at_phase(vm, "repeat_release")
+        script_ok(vm, "key down 0")
 
         vm.wait_for("ev=rom_exit", timeout=TIMEOUT, line=True)
         assert_rom_checks(vm, CHECKS)

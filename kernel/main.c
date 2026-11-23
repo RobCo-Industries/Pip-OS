@@ -143,9 +143,13 @@ static void start_input(void)
     int gpio = 0;
     int serial;
     int script = INPUT_ERR_NO_UART;
+    int repeat;
     unsigned i;
 
+    /* input_init() sets INPUT_DROP_NEWEST: choose the policy after it. */
     input_init();
+    input_set_overflow(INPUT_DROP_OLDEST);
+    repeat = input_set_repeat(PIPOS_REPEAT_DELAY_MS, PIPOS_REPEAT_RATE_MS);
     for (i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
         if (gpio == 0) {
             gpio = input_gpio_add_button(buttons[i].pin, buttons[i].code, 0, GPIO_PULL_UP);
@@ -166,8 +170,8 @@ static void start_input(void)
     if (script == 0) {
         uart_mini_puts("ready\n");
     }
-    k_printf("@RC stage=" PIPOS_STAGE " ev=input gpio=%d serial=%d mini=%d script=%d\n",
-             gpio, serial, mini, script);
+    k_printf("@RC stage=" PIPOS_STAGE " ev=input gpio=%d serial=%d mini=%d script=%d repeat=%d\n",
+             gpio, serial, mini, script, repeat);
 }
 
 static void start_audio(void)
@@ -199,6 +203,7 @@ static void apply_settings(const pipos_settings_t *s)
 {
     console_set_scheme(s->scheme);
     audio_set_volume(s->volume);
+    pipos_audio_start_volume(s->volume);
     pipos_screen_delay(s->line_delay_ms);
     if (s->beep) {
         audio_beep();

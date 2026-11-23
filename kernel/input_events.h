@@ -1,7 +1,8 @@
 /*
  * The input group's pure state: the mapping from RobCo-Core events to
- * pip_event_t, the image's event queue, the event timestamps and the dial
- * position. The button mask comes from RobCo-Core's held-key state.
+ * pip_event_t, the image's event queue and the event timestamps. The
+ * button mask comes from RobCo-Core's held-key state and the dial position
+ * from its dial total.
  * sys_input.c feeds it; the host tests drive it directly.
  */
 #ifndef PIPOS_INPUT_EVENTS_H
@@ -19,10 +20,9 @@ typedef struct pipos_input_state {
     uint32_t dropped;                       /* events lost to a full queue */
     uint32_t last_ms;                       /* last stamp given, tick_ms() clock */
     uint32_t stamped;                       /* last_ms is valid */
-    uint32_t dial_deg;                      /* 0 to 359 */
 } pipos_input_state_t;
 
-/* Empty queue, no stamp given yet, dial at 0. */
+/* Empty queue, no stamp given yet. */
 void pipos_input_state_init(pipos_input_state_t *s);
 
 /*
@@ -42,8 +42,7 @@ uint32_t pipos_input_stamp(pipos_input_state_t *s, uint32_t ev_ms, uint32_t time
                            uint32_t tick_now);
 
 /*
- * Takes one RobCo-Core event: always updates the dial, and queues the
- * mapped event when `deliver` is set, stamped with pipos_input_stamp()
+ * Takes one RobCo-Core event: queues the mapped event when `deliver` is set, stamped with pipos_input_stamp()
  * masked to 31 bits. Returns 1 when it queued an event. A full queue drops
  * its oldest event.
  */
@@ -53,7 +52,7 @@ int pipos_input_feed(pipos_input_state_t *s, const input_event_t *ev, int delive
 /* Removes the oldest event into *out. Returns 1, or 0 when empty. */
 int pipos_input_pop(pipos_input_state_t *s, pip_event_t *out);
 
-/* Empties the queue. Buttons and dial stay. */
+/* Empties the queue. */
 void pipos_input_queue_flush(pipos_input_state_t *s);
 
 /*
@@ -64,7 +63,10 @@ void pipos_input_queue_flush(pipos_input_state_t *s);
  */
 uint32_t pipos_input_buttons(int (*key_down)(unsigned code));
 
-/* The dial position after `steps` detents from `deg`: 0 to 359. */
-uint32_t pipos_input_dial_step(uint32_t deg, int32_t steps);
+/*
+ * The dial position, 0 to 359, for RobCo-Core's input_dial_total(): the
+ * signed sum of detents since boot, PIP_DIAL_DETENT_DEG degrees each.
+ */
+uint32_t pipos_input_dial_deg(int32_t total);
 
 #endif

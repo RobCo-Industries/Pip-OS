@@ -9,16 +9,13 @@
  * own state on top.
  */
 #include <robco/audio.h>
-#include <robco/fs.h>
 #include <robco/irq.h>
 
 #include "audio_rules.h"
 #include "pipos.h"
 #include "sys.h"
 
-#define CFG_TEXT_MAX    4096u
-
-/* The level every call sees; the library has no getter. Per boot. */
+/* The level every call sees; the library has no getter. Set once by main.c at boot. */
 static unsigned level;
 /* 1 after the image started a tone or a sequence, until it stops or ends. */
 static int owned;
@@ -26,7 +23,6 @@ static int owned;
 static audio_note_t seq_buf[PIP_SEQ_MAX];
 /* play_seq's copy of the caller's notes. Main context only. */
 static pip_note_t user_notes[PIP_SEQ_MAX];
-static char cfg_text[CFG_TEXT_MAX];
 
 static void stop_owned(void)
 {
@@ -130,22 +126,14 @@ static const pipos_sys_entry_t audio_calls[] = {
 
 const pipos_sys_table_t pipos_audio_table = PIPOS_SYS_TABLE(AUDIO, "audio", audio_calls);
 
-/*
- * The start level is the volume setting main.c gave the library. The
- * library has no getter, so this reads PIPOS.CFG again with the same
- * parser and no reports: the same text gives the same value.
- */
+void pipos_audio_start_volume(unsigned start)
+{
+    level = start;
+}
+
+/* Runs after main.c set the start level: keeps it. */
 void pipos_audio_init(void)
 {
-    pipos_settings_t s;
-    size_t len = 0;
-    unsigned line = 0;
-
-    pipos_settings_default(&s);
-    if (fs_read_file(PIPOS_VOLUME ":" PIPOS_CFG_PATH, cfg_text, sizeof(cfg_text), &len) == FS_OK) {
-        pipos_settings_parse(cfg_text, len, &s, NULL, NULL, &line);
-    }
-    level = s.volume;
     owned = 0;
 }
 

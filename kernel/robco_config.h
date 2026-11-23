@@ -26,6 +26,10 @@
 #define PIPOS_TICK_HZ           100
 #define PIPOS_DEBOUNCE_MS       20
 
+/* Key repeat: the first repeat event 500 ms after a press, then one every 100 ms. */
+#define PIPOS_REPEAT_DELAY_MS   500
+#define PIPOS_REPEAT_RATE_MS    100
+
 /*
  * Button and dial pins (BCM numbers). Each button ties its pin to ground
  * and uses the internal pull-up. The defaults are the example mapping of

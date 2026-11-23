@@ -35,6 +35,9 @@ void pipos_rom_run(const loader_result_t *res);
 /* main.c: one pass of the main loop's work: audio, input, script commands, group polls. */
 void pipos_poll(void);
 
+/* sys_audio.c: the level main.c gave audio_set_volume() at boot; the volume call starts from it. */
+void pipos_audio_start_volume(unsigned level);
+
 /* sys_input.c: every RobCo-Core event main.c takes; empties the image's event queue. */
 void pipos_input_event(const input_event_t *ev);
 void pipos_input_flush(void);
