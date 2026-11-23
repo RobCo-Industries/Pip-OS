@@ -1,6 +1,6 @@
 # Saves and files
 
-The rules come from the spec's [Save files and Files](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/spec/PIPOS_ABI.md#save-files) sections. This page lists what Pip-OS does on top of them.
+The rules come from the spec's [Save files and Files](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/spec/PIPOS_ABI.md#save-files) sections. This page lists what Pip-OS does on top of them.
 
 | Number | Name | Arguments | Result | Errors |
 |---|---|---|---|---|
@@ -17,7 +17,7 @@ The rules come from the spec's [Save files and Files](https://github.com/RobCo-I
 
 - A save is `/PIPBOY/SAVE/<NAME>.SAV`. `NAME` is 1 to 8 characters from `A-Z`, `0-9` and `_`. Lower case works and is upper-cased. The name must end with a NUL within 9 bytes.
 - `write_save` takes 0 to 65536 bytes. A larger `size` returns `-PIP_ERANGE`. Pip-OS copies the data first, creates `/PIPBOY/SAVE` if it is missing, then writes with RobCo-Core's atomic write.
-- `read_save`, `save_info` and `save_delete` first recover from the work files `~NAME.SAV` and `#NAME.SAV` that a power cut can leave. See the [recovery table](https://github.com/RobCo-Industries/RobCo-Core/blob/78c9d9e91c78292ccad668b9593602e4c9f467ff/docs/guide/api/storage.md#whole-files).
+- `read_save`, `save_info` and `save_delete` first recover from the work files `~NAME.SAV` and `#NAME.SAV` that a power cut can leave. See the [recovery table](https://github.com/RobCo-Industries/RobCo-Core/blob/891b3a25a1e38f88c214ef171f9c05c2f36bc6a1/docs/guide/api/storage.md#whole-files).
 - `read_save` checks the whole `size` bytes of `buf` before it reads.
 - A file over 64 KiB is not a valid save, even when a PC put it on the card. `read_save` and `save_info` return `-PIP_ERANGE` for it and write nothing; `save_delete` removes it and `write_save` replaces it.
 - `save_delete` removes the save and both work files.
