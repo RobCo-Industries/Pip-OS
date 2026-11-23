@@ -307,12 +307,14 @@ $(HOST_BUILD)/libpip_test: tests/host/libpip_test.c $(LIBPIP_HOST_OBJS) $(LIBPIP
 # ---- Cards and QEMU -----------------------------------------------------
 
 # Runs after SDIMAGE_FILES are copied, before the card is packed. CARD_DIR
-# comes last, so card_dir.sh sees every standard file.
+# comes last, so card_dir.sh sees every standard file. check_stage.sh then
+# checks the whole staged tree, the same check as make bootdir.
 sdimage-stage::
 	$(ROBCO_CORE)/tools/mkbootdir.sh $(BUILD)/$(IMAGE).img $(SDIMAGE_STAGE) \
 	    --kernel-name PIPOS.IMG --no-firmware
 	mkdir -p $(SDIMAGE_STAGE)/PIPBOY/HOLO
 	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(SDIMAGE_STAGE) $(CARD_DIR))
+	tools/check_stage.sh $(SDIMAGE_STAGE) $(CARD_DIR)
 
 .PHONY: kernel run bootdir conformance-bootdir
 
@@ -326,10 +328,10 @@ run: sdimage
 
 # The files of `make sdimage`, with the same ROM, TAPE and CARD_DIR rules,
 # plus the firmware. They are staged in $(BUILD)/bootstage first, so a
-# CARD_DIR clash stops the build before DIR changes. A PIPBOY/PIPOS.CFG
-# already in DIR stays: it holds the user's settings. tools/bootdir_sync.sh
-# keeps DIR/BOOTDIR.LST, the files the run wrote, and stops when DIR holds
-# one this run would not write; CLEAN=1 removes those the list names.
+# CARD_DIR clash or a check_stage.sh error stops the build before DIR
+# changes. A PIPBOY/PIPOS.CFG already in DIR stays: it holds the user's
+# settings. tools/bootdir_sync.sh keeps DIR/BOOTDIR.LST, the files the run
+# wrote, and checks its whole plan against DIR before it changes anything.
 BOOT_STAGE := $(BUILD)/bootstage
 bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 	$(if $(strip $(DIR)),,$(error DIR is not set: make bootdir DIR=<path>))
@@ -341,6 +343,7 @@ bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 	$(if $(CARD_ROM),cp $(CARD_ROM) $(BOOT_STAGE)/PIPBOY/ROM1.ROM)
 	$(if $(CARD_TAPES),cp $(CARD_TAPES) $(BOOT_STAGE)/PIPBOY/HOLO/)
 	$(if $(strip $(CARD_DIR)),tools/card_dir.sh $(BOOT_STAGE) $(CARD_DIR))
+	tools/check_stage.sh $(BOOT_STAGE) $(CARD_DIR)
 	tools/bootdir_sync.sh $(BOOT_STAGE) $(DIR) $(if $(filter 1,$(CLEAN)),clean)
 
 # The same files as build/conformance.img, plus the firmware.
