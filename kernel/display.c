@@ -25,6 +25,7 @@ static unsigned backend = PIPOS_BACKEND_HDMI;  /* what is in use */
 static int panel;               /* the panel takes frames */
 static int full;                /* the next send covers the whole frame */
 static int failed;              /* panel calls that failed at run time */
+static int dark;                /* blanked, or a wake that failed */
 static uint32_t panel_w, panel_h;   /* the part of the frame the panel shows */
 static uint32_t *const shadow = (uint32_t *)(uintptr_t)GFX_SHADOW_BASE;
 
@@ -235,14 +236,9 @@ int32_t pipos_display_send(const uint32_t *bb)
         return 0;
     }
     send_begin();
-    if (!full && !gfx_dirty_rect(bb, shadow, FRAME_W, panel_h, &r)) {
+    /* Only the part the panel shows counts: changes outside it are never sent. */
+    if (!full && !gfx_dirty_rect(bb, shadow, FRAME_W, panel_w, panel_h, &r)) {
         r.w = r.h = 0;
-    }
-    /* The dirty rectangle spans the frame's 320 columns: keep what the panel shows. */
-    if (r.x >= panel_w) {
-        r.w = 0;
-    } else if (r.x + r.w > panel_w) {
-        r.w = panel_w - r.x;
     }
     if (r.w == 0 || r.h == 0) {
         r.x = r.y = r.w = r.h = 0;
@@ -279,6 +275,7 @@ void pipos_display_blank(int on)
         return;
     }
     if (on) {
+        dark = 1;
         rc = tft_display(0);
         if (rc == 0) {
             rc = tft_sleep(1);
@@ -288,6 +285,7 @@ void pipos_display_blank(int on)
         if (rc == 0) {
             rc = tft_display(1);
         }
+        dark = rc != 0;
         full = 1;
     }
     if (rc != 0) {
@@ -331,8 +329,29 @@ void pipos_display_line(const char *t)
     pipos_display_console();
 }
 
+/*
+ * A panic after power blanked the screen must still show: wake the panel
+ * first, then send the whole console frame. tft_sleep() returns at once
+ * when the timer has stopped, and every SPI wait has a deadline, so this
+ * stays bounded. A failed call skips the rest; the frame still goes out.
+ */
 void pipos_display_panic(const char *why)
 {
+    gfx_rect_t none = { 0, 0, 0, 0 };
+    int rc;
+
+    if (panel && dark) {
+        send_begin();
+        rc = tft_sleep(0);
+        if (rc == 0) {
+            rc = tft_display(1);
+        }
+        send_end("wake", &none);
+        if (rc != 0) {
+            fail("wake", rc);
+        }
+        full = 1;
+    }
     add_line("");
     add_line("KERNEL PANIC:");
     add_line(why);

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
-- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. `power` drives the panel's display and sleep and the backlight.
+- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. At `tft_rotation = 0` or `180` it looks only at the left 240 columns and top 240 rows the panel shows. `power` drives the panel's display and sleep and the backlight. A panic wakes a blanked panel before it shows.
 - With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
 - `gfx_info` reports `backend` 1 while the panel takes frames.
 - A test build with `-DPIPOS_TFT_TEST`, the `tftdump` script command in it, and `tests/test_tft.py`, which compares the panel picture rebuilt by RobCo-Core's ILI9341 model with HDMI.

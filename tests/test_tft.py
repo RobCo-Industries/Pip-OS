@@ -65,14 +65,17 @@ def sends(vm):
 
 
 def panel_view(vm, model, rotation=90):
-    """The panel picture rebuilt from the transcript: rows of RGB565 values."""
+    """The panel picture rebuilt from the transcript: rows of RGB565 values.
+
+    320x240 at 90 and 270 degrees, 240x320 at 0 and 180.
+    """
     reply = script(vm, "tftdump")
     assert reply.lines[-1].startswith("end ") and reply.lines[-1].endswith(" full=0"), reply.lines[-1]
     out = subprocess.run([model, str(rotation)], input=("\n".join(reply.lines) + "\n").encode(),
                          capture_output=True, check=True, env=minimal_env())
     head, _, data = out.stdout.partition(b"\n")
     w, h = map(int, head.split())
-    assert (w, h) == (W, H)
+    assert (w, h) == ((W, H) if rotation in (90, 270) else (H, W))
     return [[data[2 * (y * w + x)] | data[2 * (y * w + x) + 1] << 8 for x in range(w)]
             for y in range(h)]
 
@@ -276,3 +279,73 @@ def test_stream_while_redrawing(board, tft_build, test_rom, tmp_path, need_mtool
     for i in range(1, CHUNKS + 1):
         assert chunk_ms * i <= t[i] - t[0] <= chunk_ms * i + 500, (i, t)
     assert frames >= CHUNKS and len(full) >= CHUNKS, (frames, len(full))
+
+
+def test_rotation_0_sends_only_the_visible_window(board, tft_build, test_rom, tmp_path,
+                                                  need_mtools):
+    """At 0 degrees the panel shows the left 240x240: changes right of it are never sent."""
+    image, model = tft_build
+    sd = card(tmp_path, display_cfg("backend = both\ntft_rotation = 0"),
+              {ROM: test_rom("tft_window")})
+    with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+        wait_rom(vm, "shown", 1)
+        for n in range(1, 3):
+            press(vm, "select")
+            wait_rom(vm, "shown", n + 1)
+        img = screenshot(vm, tmp_path)
+        view = panel_view(vm, model, rotation=0)
+        no_exception(vm)
+    first = sends_of_step(vm, 0)
+    # The ROM's scene covers the whole window, and no more.
+    assert [rect(m) for m in first] == [(0, 0, H, H)], first
+    hidden = sends_of_step(vm, 1)
+    assert [(rect(m), m["bytes"]) for m in hidden] == [((0, 0, 0, 0), "0")], hidden
+    pixel = sends_of_step(vm, 2)
+    assert [(m["why"], rect(m)) for m in pixel] == [("diff", (10, 20, 1, 1))], pixel
+    # CASET, PASET and RAMWR with their parameters, then one pixel.
+    assert int(pixel[0]["bytes"]) == 11 + 2, pixel
+    small = img.resize((W, H), Image.NEAREST)
+    assert small.resize((640, 480), Image.NEAREST).tobytes() == img.tobytes()
+    px = small.load()
+    assert px[10, 20] == (0xFF, 0x00, 0xFF) and px[300, 200] == (0x00, 0xFF, 0x00)
+    bad = [(x, y) for y in range(H) for x in range(H) if view[y][x] != rgb565(*px[x, y])]
+    assert not bad, f"{len(bad)} pixels differ, first {bad[:5]}"
+
+
+def test_panic_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, need_mtools):
+    """A panic after power blanked the screen wakes the panel, then sends the whole console."""
+    image, _ = tft_build
+    sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_window")})
+    with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+        wait_rom(vm, "shown", 1)
+        for n in range(1, 3):
+            press(vm, "select")
+            wait_rom(vm, "shown", n + 1)
+        press(vm, "select")
+        wait_rom(vm, "dark", 1)
+        assert_rom_checks(vm, ["off"])
+        assert screenshot(vm, tmp_path).getcolors() == [(640 * 480, (0, 0, 0))]
+        vm.send("panic DARK\n", port=1)
+        vm.wait_for("ev=panic msg=DARK", timeout=TIMEOUT)
+        wait_until(lambda: any(m["why"] == "full" for m in after_panic(vm)), vm)
+        # HDMI: the panic text lands on the black screen.
+        img = screenshot(vm, tmp_path)
+        assert len(img.getcolors(640 * 480)) > 1, img.getcolors(640 * 480)
+    seq = after_panic(vm)
+    assert [m["why"] for m in seq] == ["wake", "full"], seq
+    # SLPOUT, then DISPON: one command byte each, DC low.
+    want = zlib.crc32(bytes([0, 0x11, 0, 0x29]))
+    assert (rect(seq[0]), seq[0]["bytes"], seq[0]["crc"]) == \
+        ((0, 0, 0, 0), "2", f"{want:08x}"), seq[0]
+    assert rect(seq[1]) == (0, 0, W, H) and int(seq[1]["bytes"]) >= FULL_BYTES, seq[1]
+
+
+def after_panic(vm):
+    """The sends after the panic marker."""
+    out, seen = [], False
+    for m in vm.markers():
+        if m.get("stage") == "pipos" and m.get("ev") == "panic":
+            seen = True
+        elif seen and m.get("stage") == "pipos" and m.get("ev") == "tft_send":
+            out.append(m)
+    return out

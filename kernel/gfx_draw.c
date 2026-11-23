@@ -548,25 +548,25 @@ static int row_same(const uint32_t *a, const uint32_t *b, uint32_t w)
     return 1;
 }
 
-int gfx_dirty_rect(const uint32_t *cur, const uint32_t *last, uint32_t w, uint32_t h,
-                   gfx_rect_t *r)
+int gfx_dirty_rect(const uint32_t *cur, const uint32_t *last, uint32_t stride, uint32_t w,
+                   uint32_t h, gfx_rect_t *r)
 {
     uint32_t y0 = 0, y1 = h, x0 = w, x1 = 0;
     uint32_t x, y;
 
-    while (y0 < h && row_same(cur + y0 * w, last + y0 * w, w)) {
+    while (y0 < h && row_same(cur + y0 * stride, last + y0 * stride, w)) {
         y0++;
     }
     if (y0 == h) {
         return 0;
     }
-    while (row_same(cur + (y1 - 1u) * w, last + (y1 - 1u) * w, w)) {
+    while (row_same(cur + (y1 - 1u) * stride, last + (y1 - 1u) * stride, w)) {
         y1--;
     }
     /* Each row only needs a look left of x0 and right of x1. */
     for (y = y0; y < y1; y++) {
-        const uint32_t *a = cur + y * w;
-        const uint32_t *b = last + y * w;
+        const uint32_t *a = cur + y * stride;
+        const uint32_t *b = last + y * stride;
 
         for (x = 0; x < x0; x++) {
             if (a[x] != b[x]) {

@@ -172,7 +172,7 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Panic
 
-`pipos_panic(why)` masks interrupts, prints `ev=panic msg=<why>` with spaces turned into `_`, writes `KERNEL PANIC: <why>` and `SYSTEM HALTED` on the screen and halts. CPU exceptions print `ev=exception` through RobCo-Core and halt.
+`pipos_panic(why)` masks interrupts, prints `ev=panic msg=<why>` with spaces turned into `_`, writes `KERNEL PANIC: <why>` and `SYSTEM HALTED` on the screen and halts. A panel that `power` blanked is woken first, see [ARCHITECTURE.md](ARCHITECTURE.md#display-path). CPU exceptions print `ev=exception` through RobCo-Core and halt.
 
 ## Markers
 

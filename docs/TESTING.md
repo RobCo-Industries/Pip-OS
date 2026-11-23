@@ -63,7 +63,7 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 `tests/test_tft.py` builds a second kernel into `<build-dir>/tft` with `EXTRA_CFLAGS=-DPIPOS_TFT_TEST`. That build:
 
-- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full`, `diff`, or `retry` for the whole frame sent again after a failed send. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
+- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full`, `diff`, `retry` for the whole frame sent again after a failed send, or `wake` for the sleep out and display on commands a panic sends to a blanked panel. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
 - keeps every byte since `tft_init()` from `0x00D80000`, up to 2.5 MiB.
 - answers the `tftdump` script command with that transcript. `C` lines hold command bytes. `D` lines hold data as 16-bit words in hex, with `*<count>` for repeats. An `end bytes=<n> full=<0|1>` line closes it.
 - waits after each send until the bytes would have left the wire at the rate set, so timing is not shorter than on a panel.
@@ -95,6 +95,7 @@ QEMU's SPI model is slower than the wire. A full-frame `present` takes about 230
 | `gfx_*` | The graphics calls, the scenes of the screen goldens, a ROM that never presents, and exit and fault after drawing |
 | `input` | The input calls, driven step by step from `test_input_calls.py` |
 | `audio_*` | The audio calls and `sample`, and sounds the kernel must stop at exit |
+| `tft_*` | Panel frames for `test_tft.py`: a scene, small changes and `power`, streaming while redrawing, and changes outside the window the panel shows at 0 degrees |
 | `time_*` | The clock with and without an RTC, `power` reboot, halt and screen off and on |
 | `storage_*` | Saves, recovery, files, aliases of the save folder, saves over 64 KiB, a card that goes away, a save kept across two boots |
 | `holo_*` | Holotape listing, launch, card errors and the state handover. `holo_tapes/tape.c` is the test holotape. |

@@ -105,11 +105,12 @@ typedef struct gfx_rect {
 
 /*
  * The smallest rectangle that holds every pixel where cur and last
- * differ, both w x h with no padding. Returns 1 and fills *r, or 0 when
- * the two are the same.
+ * differ, looking only at the top left w x h of two frames with rows
+ * stride pixels apart. Returns 1 and fills *r, or 0 when that part of
+ * the two is the same.
  */
-int gfx_dirty_rect(const uint32_t *cur, const uint32_t *last, uint32_t w, uint32_t h,
-                   gfx_rect_t *r);
+int gfx_dirty_rect(const uint32_t *cur, const uint32_t *last, uint32_t stride, uint32_t w,
+                   uint32_t h, gfx_rect_t *r);
 
 /* Copies rectangle r of src into dst, both w pixels wide. */
 void gfx_copy_rect(const uint32_t *src, uint32_t *dst, uint32_t w, const gfx_rect_t *r);

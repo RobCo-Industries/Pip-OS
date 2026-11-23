@@ -57,7 +57,7 @@ GPIO 0, 1, 4, 12, 13, 19, 20, 21 and 25 are the header pins that the buttons, th
 
 The SPI clock is 10 MHz by default, the fastest write clock in the ILI9341 data sheet. The divider rounds it down: 9.62 MHz with a 250 MHz core clock. `tft_hz` accepts 1 to 64 MHz. A rate above 10 MHz is outside the data sheet.
 
-How the picture sits on the glass depends on the module. `tft_rotation` turns it, `tft_bgr` swaps red and blue, and `tft_invert` inverts the colours. At 90 and 270 degrees, the default, the panel is 320x240 and shows the whole surface. At 0 and 180 degrees it is 240x320 and shows the left 240 columns and the top 240 rows.
+How the picture sits on the glass depends on the module. `tft_rotation` turns it, `tft_bgr` swaps red and blue, and `tft_invert` inverts the colours. At 90 and 270 degrees, the default, the panel is 320x240 and shows the whole surface. At 0 and 180 degrees it is 240x320 and shows the left 240 columns and the top 240 rows. The rest of the surface never reaches the panel, and changes there send nothing.
 
 What is validated: nothing on hardware. In QEMU the SPI controller works but no panel answers, so the kernel reports the panel `absent`. The tests rebuild the panel picture from the bytes sent with RobCo-Core's ILI9341 model, see [TESTING.md](TESTING.md#spi-panel). Orientation, colour order, timing and the backlight are not checked.
 
