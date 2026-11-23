@@ -6,7 +6,7 @@
 set -eu
 # Build settings from the caller's environment or an outer make
 # (make CI=1 passes CI=1 down in MAKEFLAGS) must not change the builds here.
-unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE
+unset CI MAKEFLAGS MFLAGS MAKELEVEL BUILD ROM BOARD PIPOS_SDK ROBCO_CORE CFLAGS_EXTRA KIND WINDOW TAPE DIR FIRMWARE CLEAN CARD_DIR
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -70,6 +70,19 @@ if make -s sdimage BUILD="$b" TAPE="$tmp/NOTES.TXT" >"$tmp/out" 2>&1; then
     fail "TAPE=NOTES.TXT did not stop"
 fi
 grep -q "$tmp/NOTES.TXT does not end in .HTP" "$tmp/out" || fail "the .HTP message does not name the file"
+
+# A folder given as TAPE or ROM stops sdimage and bootdir alike.
+mkdir -p "$tmp/X.HTP/sub"
+for args in "TAPE=$tmp/X.HTP" "ROM=$tmp/X.HTP"; do
+    for target in sdimage "bootdir DIR=$tmp/bootdir FIRMWARE=0"; do
+        # shellcheck disable=SC2086
+        if make -s $target BUILD="$b" "$args" >"$tmp/out" 2>&1; then
+            fail "$target $args with a folder did not stop"
+        fi
+        grep -q "$tmp/X.HTP is a folder: use a regular file" "$tmp/out" || fail "$target $args: the folder message does not name it"
+    done
+done
+[ ! -e "$tmp/bootdir" ] || fail "bootdir with a folder TAPE or ROM wrote DIR"
 
 mkdir -p "$tmp/content/pipboy/holo"
 printf 'clash\n' >"$tmp/content/pipboy/holo/other.htp"

@@ -17,8 +17,10 @@ check-tapes
   T2. A TAPE name that does not end in .HTP: error (holo_enumerate would
       never list it).
   T3. A NAME.HTP that is not a plain 8.3 name: warning, on stderr.
-  T4. A TAPE file or the ROM that is a symbolic link, a device, a FIFO or
-      a socket: error. A file that does not exist yet is left to make.
+  T4. A TAPE file or the ROM that is a folder, a symbolic link, a device,
+      a FIFO or a socket: error. sdimage would copy a folder as a tree and
+      bootdir's cp would fail on it. A file that does not exist yet is
+      left to make.
   Errors go to stdout on one line, joined by "; ", for the Makefile's
   $(error). The exit status is always 0.
 
@@ -221,7 +223,7 @@ def check_tapes(args):
     errors, seen = [], {}
     for what, path in ([("ROM", rom)] if rom else []) + [("TAPE", t) for t in args]:
         k = lkind(path)
-        if k not in (None, "file", "folder"):
+        if k not in (None, "file"):
             errors.append(f"{what} file {path} is a {'symbolic link' if k == 'link' else k}: "
                           "use a regular file")
     for t in args:

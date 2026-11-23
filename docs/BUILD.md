@@ -151,7 +151,7 @@ A file or folder in `DIR` whose name differs only in case from one `bootdir` wri
 
 FAT holds only files and folders. `tools/card.py` does all the card staging and checks, and it never follows a symbolic link it did not get on the command line:
 
-- The sources hold regular files and folders only. A `TAPE` file, the `ROM`, or anything inside `CARD_DIR` or the staged card that is a symbolic link, a device, a FIFO or a socket stops the build and is named. A link could copy a file from outside the project onto the card. `CARD_DIR` itself may be a link to a folder.
+- The sources hold regular files and folders only. A `TAPE` file, the `ROM`, or anything inside `CARD_DIR` or the staged card that is a symbolic link, a device, a FIFO or a socket stops the build and is named. A link could copy a file from outside the project onto the card. A `ROM` or `TAPE` that is a folder also stops the build, for `sdimage`, `run` and `bootdir` alike. `CARD_DIR` itself may be a link to a folder.
 - In `DIR`, a link at any path `bootdir` writes or removes stops it, and nothing changes. That covers the files and folders it writes, every folder on the way to them, the stale files `CLEAN=1` removes and `BOOTDIR.LST`. A link elsewhere in `DIR` is left alone. A `PIPBOY/PIPOS.CFG` that exists, even as a link, is kept and never written.
 - `DIR` itself may be a link to a folder, for example when you keep the card folder somewhere else. `bootdir` resolves it once, says so, and writes into the real folder.
 

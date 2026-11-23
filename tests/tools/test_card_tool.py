@@ -163,6 +163,14 @@ def test_tapes_and_rom_refuse_special_files(tmp_path, canary, what):
     assert f"ROM file {p} is a " in out, out
 
 
+def test_tapes_and_rom_refuse_folders(tmp_path):
+    # Review finding P2: sdimage copied a folder source, bootdir's cp failed.
+    make(str(tmp_path), {"X.HTP/A": b"a", "R.ROM/B": b"b"})
+    _, out, _ = run("check-tapes", "--rom", tmp_path / "R.ROM", "--", tmp_path / "X.HTP")
+    assert f"ROM file {tmp_path}/R.ROM is a folder: use a regular file" in out, out
+    assert f"TAPE file {tmp_path}/X.HTP is a folder: use a regular file" in out, out
+
+
 def test_tapes_missing_file_left_to_make(tmp_path):
     assert run("check-tapes", "--rom", tmp_path / "NONE.ROM", tmp_path / "NONE.HTP") == (0, "", "")
 
