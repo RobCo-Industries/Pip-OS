@@ -228,7 +228,7 @@ def one_conform(vm, ev):
 def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path, need_mtools):
     sd = card_copy(conformance_card, tmp_path)
     answered = []
-    intro = page1 = summary = None
+    intro = picture = page1 = summary = None
     # booted() waits for ev=ready, which comes after the ROM ends.
     with boot(kernel_image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
         # Each answer goes out as soon as its marker shows, with no screenshot
@@ -247,6 +247,8 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
                 assert reply.status == "ok", reply
             elif step["ev"] == "prompt":
                 answered.append(step["name"])
+                if step["name"] == "picture_right":
+                    picture = screenshot(vm, tmp_path)
                 for line in ANSWERS[step["name"]]:
                     if isinstance(line, tuple) and line[0] == "retry":
                         wait_conform(vm, "retry", line[1])
@@ -292,6 +294,7 @@ def test_conformance_interactive(board, kernel_image, conformance_card, tmp_path
         no_exception(vm)
     # After the results, so a FAIL shows its serial line first.
     check_golden(intro, "conform_intro")
+    check_golden(picture, "conform_picture")
     check_golden(page1, "conform_page1")
     check_golden(summary, "conform_summary")
 

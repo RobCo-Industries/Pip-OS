@@ -336,21 +336,22 @@ static void ask_heard(const char *name, const char *l1, void (*play)(void))
 
 void draw_scene(void)
 {
-    static const int16_t tri[] = { 230, 150, 290, 150, 260, 100 };
-    pip_arc_t circle = { 80, 120, 40, 0, 360, PIP_ARC_OUTLINE };
+    static const int16_t tri[] = { 230, 130, 290, 130, 260, 80 };
+    pip_arc_t circle = { 80, 100, 40, 0, 360, PIP_ARC_OUTLINE };
 
     pip_clear(0);
     pip_set_color(fg, PIP_COLOR_NONE);
     pip_rect_xywh(0, 0, PIP_SCREEN_W, PIP_SCREEN_H, PIP_RECT_OUTLINE);
     pip_arc(&circle);
-    pip_rect_xywh(140, 100, 50, 50, PIP_RECT_FILLED);
+    pip_rect_xywh(140, 80, 50, 50, PIP_RECT_FILLED);
     pip_polyline(tri, 3, 1);
-    pip_draw_line(10, 170, 309, 170);
+    pip_draw_line(10, 150, 309, 150);
     pip_draw_text(8, 8, "Is the picture right?", 1);
     pip_set_color(dim, PIP_COLOR_NONE);
-    pip_draw_text(8, 180, "A frame, a circle, a filled square", 1);
-    pip_draw_text(8, 196, "and a triangle above one line.", 1);
-    pip_draw_text(8, 216, "SELECT = yes    LEFT = no", 1);
+    pip_draw_text(8, 156, "A frame, a circle, a filled square", 1);
+    pip_draw_text(8, 172, "and a triangle above one line.", 1);
+    pip_draw_text(8, 196, "SELECT = yes    LEFT = no", 1);
+    pip_draw_text(8, 214, "No answer in 30 s: SKIP", 1);
 }
 
 static void ask_picture(void)
