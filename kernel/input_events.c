@@ -87,6 +87,17 @@ uint32_t pipos_input_stamp(pipos_input_state_t *s, uint32_t ev_ms, uint32_t time
     return t;
 }
 
+static void push(pipos_input_state_t *s, const pip_event_t *pe)
+{
+    if (s->count == PIP_EVENT_QUEUE) {
+        s->head = (s->head + 1) % PIP_EVENT_QUEUE;
+        s->count--;
+        s->dropped++;
+    }
+    s->queue[(s->head + s->count) % PIP_EVENT_QUEUE] = *pe;
+    s->count++;
+}
+
 int pipos_input_feed(pipos_input_state_t *s, const input_event_t *ev, int deliver,
                      uint32_t timer_now, uint32_t tick_now)
 {
@@ -99,14 +110,20 @@ int pipos_input_feed(pipos_input_state_t *s, const input_event_t *ev, int delive
         return 0;
     }
     pe.time_ms = pipos_input_stamp(s, ev->t_ms, timer_now, tick_now) & 0x7fffffffu;
-    if (s->count == PIP_EVENT_QUEUE) {
-        s->head = (s->head + 1) % PIP_EVENT_QUEUE;
-        s->count--;
-        s->dropped++;
-    }
-    s->queue[(s->head + s->count) % PIP_EVENT_QUEUE] = pe;
-    s->count++;
+    push(s, &pe);
     return 1;
+}
+
+void pipos_input_push_tape(pipos_input_state_t *s, uint32_t bits, uint32_t tick_now)
+{
+    pip_event_t pe;
+
+    pe.type = PIP_EV_TAPE;
+    pe.code = 0;
+    pe.value = (int32_t)bits;
+    /* An event of age 0: the timer and tick clocks read the same instant. */
+    pe.time_ms = pipos_input_stamp(s, 0, 0, tick_now) & 0x7fffffffu;
+    push(s, &pe);
 }
 
 int pipos_input_pop(pipos_input_state_t *s, pip_event_t *out)

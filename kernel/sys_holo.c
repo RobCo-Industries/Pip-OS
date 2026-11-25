@@ -298,6 +298,8 @@ void pipos_holo_image_end(int kind)
     (void)kind;
 }
 
+/* Slot work runs in every pass of main-loop work. */
 void pipos_holo_poll(void)
 {
+    pipos_slot_work();
 }

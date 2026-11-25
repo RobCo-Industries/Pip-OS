@@ -38,6 +38,15 @@ static void on_svc(exc_frame_t *f, void *ctx)
     pipos_sys_ctx_t c = { current_kind, f, &umode_mem };
 
     (void)ctx;
+    /*
+     * A slot tape whose card left ends here, at its next call of any kind,
+     * before the call runs. umode_request_kill() ends it when this returns,
+     * through the same path as a fault; sys_holo.c reports reason=eject.
+     */
+    if (current_kind == PIP_KIND_HOLOTAPE && pipos_slot_eject_due()) {
+        umode_request_kill(PIPOS_KILL_EJECT);
+        return;
+    }
     f->r[0] = (uint32_t)pipos_sys_dispatch(&sys_index, &c, f->r[7], f->r[0], f->r[1], f->r[2],
                                            f->r[3]);
 }
