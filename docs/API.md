@@ -231,6 +231,7 @@ ABI 1.4 adds a second place for tapes: the root folder of the card in the holota
 - A slot tape whose card leaves ends at its next system call of any kind. The kernel prints `ev=holo_kill reason=eject pc=<pc>` and `holo_launch` returns `-PIP_ENODEV`. A tape from the boot card runs on.
 - `holo_eject_event` returns `PIP_HOLO_EV_INSERTED`, `PIP_HOLO_EV_REMOVED` and `PIP_HOLO_EV_BAD`. Each change also queues `PIP_EV_TAPE` for the ROM, never for a holotape.
 - Slot work runs inside `sleep_ms`, `poll_event`, `wait_event`, `read_buttons`, `read_dial`, `file_read`, `holo_enumerate` and `holo_eject_event`.
+- A card attaches in small steps, one per pass of that work, so these calls return at their usual pace while it attaches. Until `INSERTED`, the slot is settling: no slot tape is listed or launched and no bit is set. A slow card only takes longer to report. See [ARCHITECTURE.md](ARCHITECTURE.md#the-stepped-attach).
 - `file_open`, `dir_list` and the save calls never reach the slot card.
 - A folder named like a tape, such as `SLOT.HTP`, in the root of the slot card counts as missing, as on the boot card. `holo_enumerate` skips it and it shadows nothing, and `holo_launch` looks on the boot card next.
 

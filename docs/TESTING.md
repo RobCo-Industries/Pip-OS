@@ -91,14 +91,16 @@ QEMU has no SD card on SPI0, so the real slot driver cannot run there. A test bu
 | `holo pullin <ms>` | The card leaves `<ms>` from now. It reaches a tape that keeps the script channel from running. Replies `t_ms`. |
 | `holo readfail` | The next read fails with the card in |
 | `holo readpull` | The next read pulls the card |
-| `holo refuse` | The next attach returns `SD_ERR_CMD` |
-| `holo again <k>` | The next `k` attaches return `SD_ERR_AGAIN` |
-| `holo attachpull` | The next attach pulls the card and returns `BLK_ERR_NOMEDIA` |
-| `holo delay <ms>` | Every attach blocks `<ms>` first, as a slow card |
+| `holo refuse` | The next attach ends in `SD_ERR_CMD` |
+| `holo slow` | The next attach ends in `SD_ERR_SLOW` |
+| `holo again <k>` | The next `k` attach starts return `SD_ERR_AGAIN` |
+| `holo attachpull` | The next attach's first step pulls the card and returns `BLK_ERR_NOMEDIA` |
+| `holo delay <ms>` | Every attach steps for `<ms>` before its result, as a slow card. Each step returns at once. |
+| `holo pending` | Replies `attaching=<0\|1> t_ms`: 1 while an attach runs |
 
-Each attach prints `ev=holo_attach rc ms polls t0_ms t1_ms pcm0 pos0 pcm1 pos1`. `polls` counts the `pipos_poll()` passes during the attach. `t0_ms` and `t1_ms` are `tick_ms()` at its start and end, the clock of the audio trace's `t_ms` within one tick. `pcm0` and `pcm1` are `audio_busy()` at its start and end. `pos0` and `pos1` are the samples the current PCM play has output then. Each pair is read with IRQs masked. The slow attach tests judge the sound from these fields. Where they read the audio trace, they first wait for the ROM's `ev=wait` after a marker that comes after the records they need, then send a `holo` command. The trace prints at the start of each `pipos_poll()` pass, so the pass that answers has printed those records. `test_shipped_image_has_no_test_backend` checks that the shipped image holds none of it and answers `holo` with `err unknown command`.
+The backend's attach is stepped like the library's. A start that runs prints `ev=holo_attach_start t_ms`. Each attach, a refused start included, prints at its end `ev=holo_attach rc ms polls steps t0_ms t1_ms pcm0 pos0 pcm1 pos1`. `polls` counts the `pipos_poll()` passes after the start's pass, `steps` the step calls. One step per pass makes them equal. `t0_ms` and `t1_ms` are `tick_ms()` at its start and end, the clock of the audio trace's `t_ms` within one tick. `pcm0` and `pcm1` are `audio_busy()` at its start and end. `pos0` and `pos1` are the samples the current PCM play has output then. Each pair is read with IRQs masked. The slow attach tests judge the sound from these fields. Where they read the audio trace, they first wait for the ROM's `ev=wait` after a marker that comes after the records they need, then send a `holo` command. The trace prints at the start of each `pipos_poll()` pass, so the pass that answers has printed those records. `test_shipped_image_has_no_test_backend` checks that the shipped image holds none of it and answers `holo` with `err unknown command`.
 
-What the backend can fake: card detect, the debounce, each attach result, a read error, a pull at any read, a slow attach. What it cannot: the real `holo.h` driver, its pins, the bus buffer and supply, SPI0 timing and sharing with the panel, the lock tab, a card that answers slowly in the middle of a read. The real driver has met only RobCo-Core's card model in its own tests. No board with the slot exists yet, so the shipped path is unverified until hardware.
+What the backend can fake: card detect, the debounce, each attach result, a read error, a pull at any read or step, a slow attach. What it cannot: the real `holo.h` driver and its step bound, its pins, the bus buffer and supply, SPI0 timing and sharing with the panel, the lock tab, a card that answers slowly in the middle of a read. The real driver has met only RobCo-Core's card model in its own tests. No board with the slot exists yet, so the shipped path is unverified until hardware.
 
 ## Host timing
 
@@ -114,8 +116,9 @@ The slot tests in `tests/test_slot.py` raise `CannotJudge` themselves. Each chec
 
 - `test_pull_while_slot_tape_runs`: the pull must land while the tape runs. The ROM's `ev=launch` carries `t_ms`. A launch that returns before the pull was due fails. A pull before the load is excused only with `-PIP_ENOENT` or `-PIP_EIO` and no `holo_start`. A pull after `holo_start` and before the tape's `ev=tloop` is excused after the kill checks.
 - `test_pull_in_debounce`: the pull must land within the 250 ms debounce. An attach is excused only when the pull came 250 ms or more after the insert, by their `t_ms`.
-- `test_slow_attach_blocks_main_loop`: the sample must play at the attach's start and end, `pcm0` and `pcm1`. The trace's `pcm` gives the sample's start, and its 7.5 s length gives when it was due to end. A sample not playing at the start or the end is excused only when it was due to end by then. If it was due to play longer, the test fails.
-- `test_slow_attach_runs_a_stream_dry`: the stream must be live when the attach begins, `pcm0`. The ROM streams until the tape event, with no time cap, so the stream cannot end before the attach. A stream that ran dry before the attach is excused only when its trace `pcm_end` came a chunk or more after the ROM's last queue call, which the ROM reports as `ev=lastq t_ms`.
+- `test_slow_attach_keeps_main_loop`: strict in every run, the attach's own witness: `rc` 0, `ms` 1200 or more, `steps` 2 or more and `polls` equal to `steps`. A `holo pending` sent during the attach must reply `attaching=1`. A reply of 0 is excused only when its `t_ms` is past the attach's end. The sample must play at the attach's start and end, `pcm0` and `pcm1`. A sample not playing then is excused only when its 7.5 s length says it was due to end by then.
+- `test_slow_attach_keeps_a_stream_live`: strict, the same witness, an attach a debounce after the insert and at least 12 chunks queued. A play must run at both ends of the attach, with no `pcm_end` in it and a `pcm_next` every 100 ms through it. A stream that ran dry is excused only when the ROM's `ev=maxgap ms`, its longest time between two queue calls, plus one tick reaches a chunk.
+- `test_pending_attach_no_tape_yet` and `test_pull_in_pending_attach_then_second_card`: the attach steps for 3000 ms, and the listing, launch, mask and pull must land inside it. `holo pending` checks that afterwards. A reply of 0 is excused only when the attach's marker shows the stepped witness above and the reply's `t_ms` is 3000 ms or more after the start. A kernel that held the loop fails the witness.
 
 When the timed checks fail and each has its evidence, the test runs again, up to 4 runs. Then it skips with a reason that starts with `host timing:` and prints the numbers. Any other failure fails at once.
 
