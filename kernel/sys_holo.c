@@ -152,7 +152,8 @@ static int list_dir(const char *folder, int from_slot, int shadow, uint32_t *cou
     if (frc != FS_OK) {
         return frc;
     }
-    while ((frc = fs_readdir(&dir, &st)) == 1) {
+    /* A full listing reads no next entry: its error could only spoil it. */
+    while (!pipos_holo_list_full(*count, max) && (frc = fs_readdir(&dir, &st)) == 1) {
         int named = listed_entry(listed) && st.size >= PIPOS_HOLO_HEAD;
         int hidden = 0, ok = 0, rule;
 
@@ -163,7 +164,7 @@ static int list_dir(const char *folder, int from_slot, int shadow, uint32_t *cou
                 break;
             }
         }
-        if (named && !hidden && *count < max) {
+        if (named && !hidden) {
             /* A card error ends the listing. A short file is only skipped. */
             int hrc = read_head(folder, listed);
 
@@ -219,7 +220,8 @@ static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint
         slot_ok = 0;
         count = 0;
     }
-    for (;;) {
+    frc = 0;
+    while (!pipos_holo_list_full(count, max)) {
         frc = list_dir(HOLO_DIR, 0, slot_ok, &count, max);
         if (frc != SLOT_FAILED) {
             break;

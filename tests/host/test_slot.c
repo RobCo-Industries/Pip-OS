@@ -251,6 +251,12 @@ TEST(list_rule)
     /* A failed header or a name outside the rule is skipped. */
     CHECK_EQ(pipos_holo_list_rule(1, 0, 0, 0, 32), PIPOS_LIST_SKIP);
     CHECK_EQ(pipos_holo_list_rule(0, 1, 0, 0, 32), PIPOS_LIST_SKIP);
+    /* A full listing makes no more file system call. */
+    CHECK_EQ(pipos_holo_list_full(0, 1), 0);
+    CHECK_EQ(pipos_holo_list_full(31, 32), 0);
+    CHECK_EQ(pipos_holo_list_full(32, 32), 1);
+    CHECK_EQ(pipos_holo_list_full(1, 1), 1);
+    CHECK_EQ(pipos_holo_list_full(33, 32), 1);
     CHECK_EQ(pipos_holo_flags(1), PIP_HOLO_SLOT);
     CHECK_EQ(pipos_holo_flags(0), 0);
 }

@@ -7,7 +7,10 @@
  *
  *   holo insert <n> <blocks>  card n goes in, <blocks> of 512 bytes
  *   holo pull                 the card leaves
- *   holo readfail             the next read fails with BLK_ERR_IO, card in
+ *   holo readfail [k]         read k + 1 from now fails with BLK_ERR_IO, card
+ *                             in. Without k, the next read.
+ *   holo reads                replies reads=<n>, the reads served or failed
+ *                             since boot
  *   holo readpull             the next read pulls the card: BLK_ERR_NOMEDIA
  *   holo refuse               the next attach returns SD_ERR_CMD
  *   holo again <k>            the next k attaches return SD_ERR_AGAIN
@@ -44,8 +47,10 @@ static uint32_t card_since;     /* timer_now_ms() when it went in */
 static unsigned card_no;
 static uint32_t card_blocks;
 static int attached;
-static int read_fail, read_pull, refuse, attach_pull;
+static int read_pull, refuse, attach_pull;
 static unsigned again;
+static uint32_t read_fail;      /* 0, or 1 + the reads to serve first */
+static uint32_t reads;
 static uint32_t delay_ms;
 static int pull_armed;
 static uint32_t pull_at;
@@ -56,6 +61,7 @@ static int ram_read(blk_dev_t *dev, uint64_t lba, uint32_t count, void *buf)
                                                       card_no * PIPOS_TEST_CARD_STRIDE);
 
     (void)dev;
+    reads++;
     if (read_pull) {
         read_pull = 0;
         card_in = 0;
@@ -64,8 +70,7 @@ static int ram_read(blk_dev_t *dev, uint64_t lba, uint32_t count, void *buf)
         attached = 0;
         return BLK_ERR_NOMEDIA;
     }
-    if (read_fail) {
-        read_fail = 0;
+    if (read_fail != 0 && --read_fail == 0) {
         return BLK_ERR_IO;
     }
     k_memcpy(buf, src + (uint32_t)lba * BLK_SECTOR_SIZE, (size_t)count * BLK_SECTOR_SIZE);
@@ -182,6 +187,14 @@ int pipos_slot_test_command(int argc, char *argv[], struct input_script_reply *r
         card_in = 0;
     } else if (k_strcmp(op, "readfail") == 0 && argc == 2) {
         read_fail = 1;
+    } else if (k_strcmp(op, "readfail") == 0 && argc == 3 && number(argv[2], &a) == 0 &&
+               a < 100000u) {
+        read_fail = a + 1u;
+    } else if (k_strcmp(op, "reads") == 0 && argc == 2) {
+        char line[24];
+
+        k_snprintf(line, sizeof(line), "reads=%u\n", (unsigned)reads);
+        reply->write(line);
     } else if (k_strcmp(op, "readpull") == 0 && argc == 2) {
         read_pull = 1;
     } else if (k_strcmp(op, "refuse") == 0 && argc == 2) {

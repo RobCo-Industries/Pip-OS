@@ -270,6 +270,42 @@ def test_32_entries_over_both(board, holo_build, test_rom, test_holo, tmp_path, 
         no_exception(vm)
 
 
+def slot_reads(vm):
+    reply = vm.script("holo reads", timeout=TIMEOUT)
+    assert reply.status == "ok" and len(reply.lines) == 1, reply
+    return int(reply.lines[0].split("=")[1])
+
+
+def test_full_slot_reads_no_more(board, holo_build, test_rom, test_holo, tmp_path,
+                                 need_mtools):
+    """With 32 slot tapes, the listing stops: no next entry, no shadow lookup,
+    no boot card pass.
+
+    The boot card cannot be made to fail, so the test counts slot reads. A
+    full listing reads the slot card as much with boot card tapes as
+    without, and a read error armed on the read after them changes nothing.
+    """
+    tape = test_holo("tape")
+    card = tape_card(tmp_path, 0, {f"S{i:02d}.HTP": tape for i in range(32)})
+    want = [(f"S{i:02d}.HTP", 1) for i in range(32)]
+    need = []
+    for tapes in ({}, {"BOOT.HTP": tape, "S00.HTP": tape, "S31.HTP": tape}):
+        sd = boot_card(tmp_path, test_rom, tapes)
+        with run(holo_build, board, sd, {0: card}) as vm:
+            insert(vm)
+            assert mask(vm) == INS
+            assert listing(vm) == want
+            r0 = slot_reads(vm)
+            assert listing(vm) == want
+            need.append(slot_reads(vm) - r0)
+            holo(vm, "readfail", str(need[0]))
+            assert listing(vm) == want, vm.serial
+            assert mask(vm) == 0
+            assert not pipos_markers(vm, "holo_slot_error"), vm.serial
+            no_exception(vm)
+    assert need[0] == need[1], need
+
+
 def test_second_card(board, holo_build, test_rom, test_holo, tmp_path, need_mtools):
     tape = test_holo("tape")
     sd = boot_card(tmp_path, test_rom)

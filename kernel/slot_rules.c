@@ -111,6 +111,11 @@ int pipos_holo_list_rule(int named, int header_ok, int shadowed, uint32_t count,
     return PIPOS_LIST_ADD;
 }
 
+int pipos_holo_list_full(uint32_t count, uint32_t max)
+{
+    return count >= max;
+}
+
 uint16_t pipos_holo_flags(int from_slot)
 {
     return from_slot ? (uint16_t)PIP_HOLO_SLOT : 0u;

@@ -93,6 +93,12 @@ enum {
  */
 int pipos_holo_list_rule(int named, int header_ok, int shadowed, uint32_t count, uint32_t max);
 
+/*
+ * 1 when the listing holds `max` entries: holo_enumerate then makes no
+ * more file system call, no next entry, no shadow lookup, no boot card.
+ */
+int pipos_holo_list_full(uint32_t count, uint32_t max);
+
 /* pip_holo_info_t.flags for an entry from the slot (1) or the boot card (0). */
 uint16_t pipos_holo_flags(int from_slot);
 
