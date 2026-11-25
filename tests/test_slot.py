@@ -199,6 +199,27 @@ def test_slot_off(board, kernel_image, holo_build, test_rom, test_holo, tmp_path
             no_exception(vm)
 
 
+def test_slot_clash_with_panel_cs(board, holo_build, test_rom, test_holo, tmp_path,
+                                  need_mtools):
+    """A panel on CE1 clashes with the slot: the slot stays off and the boot goes on."""
+    cfg = config(beep="no", extra="[holotape]\nslot = on\n[display]\nbackend = both\n"
+                                  "tft_cs = 1\n")
+    sd = boot_card(tmp_path, test_rom, {"BOOT.HTP": test_holo("tape")}, cfg=cfg)
+    card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
+    with run(holo_build, board, sd, {0: card}) as vm:
+        flags, _ = hw(vm)
+        assert flags & HW_TAPE == 0, vm.serial
+        clash = [m for m in pipos_markers(vm, "config") if m.get("rc") == "slot_clash"]
+        assert [(m["key"], m["line"]) for m in clash] == [("display.tft_cs", "0")], vm.serial
+        assert not pipos_markers(vm, "holo_slot"), vm.serial
+        holo(vm, "insert", "0", str(CARD_BLOCKS))
+        time.sleep(0.6)
+        assert mask(vm) == 0
+        assert listing(vm) == [("BOOT.HTP", 0)]
+        assert vm.script("state", timeout=TIMEOUT).lines[0].endswith(" slot=off")
+        no_exception(vm)
+
+
 # ---- Insertion, listing, launch -------------------------------------------------
 
 

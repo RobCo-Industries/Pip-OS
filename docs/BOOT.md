@@ -20,7 +20,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
 | 11a | The SPI panel when `[display] backend` asks for it, see [The display backend](#the-display-backend) | `ev=display` |
-| 11b | The holotape slot when `[holotape] slot = on`. With `off`, the default, no slot pin is touched and no marker prints. A card in at boot is reported later, from the first slot work. | `ev=holo_slot` |
+| 11b | The holotape slot when `[holotape] slot = on`. With `off`, the default, no slot pin is touched and no marker prints. A panel setting that clashes with the slot keeps it off, see [CONFIG.md](CONFIG.md#slot-and-panel). A card in at boot is reported later, from the first slot work. | `ev=holo_slot` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
 | 13 | The ROM, if it passed the check, see [Running the ROM](#running-the-rom) | `ev=jump`, then `ev=rom_exit` or `ev=rom_kill` |
 | 14 | Main loop | `ev=ready` |

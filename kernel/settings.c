@@ -1,5 +1,6 @@
 #include "settings.h"
 
+#include <robco/holo.h>
 #include <robco/ini.h>
 #include <robco/klibc.h>
 
@@ -347,6 +348,60 @@ static void check_pins_apart(parse_ctx_t *p)
     }
 }
 
+/* The slot runs with RobCo-Core's HOLO_CONFIG_DEFAULT: kernel/slot_holo.c. */
+static const holo_config_t slot_pins = HOLO_CONFIG_DEFAULT;
+
+/* SPI0's CE0 and CE1 pins: a panel chip select index names one of them. */
+static int ce_pin(unsigned cs)
+{
+    return cs == 0u ? 8 : 7;
+}
+
+static int slot_pin(int pin)
+{
+    return pin == slot_pins.cd_pin || pin == slot_pins.wp_pin || pin == slot_pins.pwr_pin ||
+           pin == slot_pins.bus_pin || pin == slot_pins.cs_pin;
+}
+
+const char *pipos_slot_clash(const pipos_settings_t *s, unsigned which)
+{
+    const pipos_tft_settings_t *t = &s->tft;
+    unsigned n = 0;
+
+    /* The kernel reads the panel keys only for tft and both. */
+    if (s->backend == PIPOS_BACKEND_HDMI) {
+        return NULL;
+    }
+    if ((t->cs == slot_pins.spi_cs || slot_pin(ce_pin(t->cs))) && n++ == which) {
+        return "tft_cs";
+    }
+    if (slot_pin(t->dc) && n++ == which) {
+        return "tft_dc";
+    }
+    if (t->reset != PIPOS_PIN_NONE && slot_pin(t->reset) && n++ == which) {
+        return "tft_reset";
+    }
+    if (t->backlight != PIPOS_PIN_NONE && slot_pin(t->backlight) && n++ == which) {
+        return "tft_backlight";
+    }
+    return NULL;
+}
+
+/* A slot that clashes with the panel stays off: one report per panel key. */
+static void check_slot_apart(parse_ctx_t *p)
+{
+    const char *key;
+    unsigned i;
+
+    if (!p->s.holo_slot) {
+        return;
+    }
+    for (i = 0; (key = pipos_slot_clash(&p->s, i)) != NULL; i++) {
+        report(p, "slot_clash", "display", key, 0);
+        p->s.holo_slot = 0;
+    }
+}
+
 int pipos_settings_parse(const char *text, size_t len, pipos_settings_t *s,
                          pipos_config_report_t report_fn, void *ctx, unsigned *err_line)
 {
@@ -361,6 +416,7 @@ int pipos_settings_parse(const char *text, size_t len, pipos_settings_t *s,
         return rc;
     }
     check_pins_apart(&p);
+    check_slot_apart(&p);
     *s = p.s;
     return 0;
 }
