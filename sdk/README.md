@@ -8,6 +8,7 @@ This folder builds ROMs and holotapes for Pip-OS.
 - `pipos-app.mk`: the make fragment a ROM project includes.
 - `examples/hello/`: a first ROM to copy.
 - `examples/tape/`: a first holotape to copy.
+- `examples/runner/`: the runner ROM that `robco run` and `robco test` boot. It launches the tape named in `/PIPBOY/RUNNER.CFG` and prints how it ended.
 - `testing/pipos_testing/`: the Python test helpers and pytest plugin for a ROM project's QEMU tests.
 
 Read the guide: [docs/ROM_DEVELOPMENT.md](../docs/ROM_DEVELOPMENT.md).

@@ -16,8 +16,9 @@
 #   make run BOARD=raspi2b    boot build/sd.img in QEMU on this terminal
 #                             (WINDOW=1 also opens the display window)
 #   make test-roms            build/roms/<name>/<name>.rom from tests/roms/
-#   make sdk-example          build/examples/hello/ROM1.ROM and
-#                             build/examples/tape/BEACON.HTP from sdk/examples
+#   make sdk-example          build/examples/hello/ROM1.ROM,
+#                             build/examples/tape/BEACON.HTP and
+#                             build/examples/runner/RUNNER.ROM from sdk/examples
 #   make bootdir DIR=<path>   the files of build/sd.img for a real card,
 #                             firmware included (FIRMWARE=0 leaves it out,
 #                             CLEAN=1 removes files an earlier run wrote)
@@ -174,12 +175,15 @@ $(addprefix rom-,$(ROM_PROJECTS)): rom-%:
 # The hello and tape examples, the default ROM and holotape of the card.
 # Each builds only when the card uses it, so ROM=<file> TAPE=none builds
 # neither.
-.PHONY: example-hello example-tape
-sdk-example: example-hello example-tape
+.PHONY: example-hello example-tape example-runner
+sdk-example: example-hello example-tape example-runner
 example-hello:
 	$(MAKE) --no-print-directory -C sdk/examples/hello BUILD=$(EXAMPLE_BUILD)
 example-tape:
 	$(MAKE) --no-print-directory -C sdk/examples/tape BUILD=$(TAPE_BUILD)
+# The runner ROM of robco run and robco test. tests/test_runner.py boots it.
+example-runner:
+	$(MAKE) --no-print-directory -C sdk/examples/runner BUILD=$(abspath $(BUILD))/examples/runner
 
 $(EXAMPLE_ROM): example-hello
 $(EXAMPLE_TAPE): example-tape
