@@ -312,10 +312,18 @@ static void report_event(const input_event_t *ev)
     }
 }
 
+static uint32_t poll_passes;
+
+uint32_t pipos_poll_passes(void)
+{
+    return poll_passes;
+}
+
 void pipos_poll(void)
 {
     input_event_t ev;
 
+    poll_passes++;
     audio_poll();
     while (input_poll(&ev)) {
         report_event(&ev);

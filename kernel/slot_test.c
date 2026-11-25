@@ -21,8 +21,8 @@
  *                             keeps the script channel from running
  *
  * Each attach prints ev=holo_attach rc=<rc> ms=<ms blocked> samples=<PCM
- * samples output meanwhile>. The shipped image has none of this:
- * tests/test_slot.py checks it.
+ * samples output meanwhile> polls=<pipos_poll() passes meanwhile>. The
+ * shipped image has none of this: tests/test_slot.py checks it.
  */
 #ifdef PIPOS_HOLO_TEST
 
@@ -133,10 +133,12 @@ static int ram_attach(void)
 {
     uint32_t t0 = timer_now_ms();
     uint32_t s0 = audio_pcm_samples(NULL);
+    uint32_t p0 = pipos_poll_passes();
     int rc = ram_attach_inner();
 
-    k_printf("@RC stage=" PIPOS_STAGE " ev=holo_attach rc=%d ms=%u samples=%u\n", rc,
-             (unsigned)(timer_now_ms() - t0), (unsigned)(audio_pcm_samples(NULL) - s0));
+    k_printf("@RC stage=" PIPOS_STAGE " ev=holo_attach rc=%d ms=%u samples=%u polls=%u\n", rc,
+             (unsigned)(timer_now_ms() - t0), (unsigned)(audio_pcm_samples(NULL) - s0),
+             (unsigned)(pipos_poll_passes() - p0));
     return rc;
 }
 

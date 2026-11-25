@@ -228,16 +228,17 @@ When the card of a running slot tape leaves, `on_svc()` in `syscall.c` sees it a
 
 #### A slow attach
 
-`holo_attach()` blocks for up to about 1.2 s on a slow card, inside a work pass. `test_slow_attach_blocks_main_loop` measures it with the test backend and a 1200 ms delay, while the ROM plays a 7.5 s sample:
+`holo_attach()` blocks for up to about 1.2 s on a slow card, inside a work pass. `test_slow_attach_blocks_main_loop` measures it with the test backend and a 1200 ms delay, while the ROM plays a 7.5 s sample. The `holo_attach` marker reports three values for the attach:
 
-| Board | Attach | PCM samples output during it | Expected at 8 kHz |
-|---|---|---|---|
-| `raspi0` | 1200 ms | 966 | 9600 |
-| `raspi1ap` | 1200 ms | 1030 | 9600 |
-| `raspi2b` | 1200 ms | 945 | 9600 |
-| `raspi3b` | 1200 ms | 980 | 9600 |
+- `ms`: how long it blocked.
+- `polls`: the `pipos_poll()` passes that ran meanwhile. It is 0 on every run: the main loop's work stops for the whole attach. The test asserts it.
+- `samples`: the PCM samples the interrupt output meanwhile.
 
-The PCM interrupt plays what was already buffered, 120 to 130 ms, then the sound stops for the rest of the attach. `audio_poll()` and the buffer refill do not run while the work pass blocks. The display freezes for the whole attach too: the ROM waits inside its call, so it presents nothing, and the kernel draws nothing. Input is not lost: GPIO buttons and the dial are sampled by the tick and queued. A card that settles fast attaches in milliseconds, so this cost hits only a slow card, once per insertion. Nothing here is hidden from the ROM, and no fix is in place.
+The sound does not stop. `sample` copies the whole buffer into the kernel, and the channel 3 timer interrupt reads it with no refill from the main loop. So the PCM plays through the attach.
+
+`samples` does not measure the sound. It counts the PCM interrupts QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. How many arrive depends on the host. On a macOS host, QEMU delivers about 800 a second, idle or not: 940 to 1120 during the attach, and about 5800 for the whole 7.5 s sample. On the Linux CI runners it delivers all 8000 a second: 9602 during the attach. With `-icount` the count is 9600. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`.
+
+The display freezes for the whole attach: the ROM waits inside its call, so it presents nothing, and the kernel draws nothing. Input is not lost: GPIO buttons and the dial are sampled by the tick and queued. A card that settles fast attaches in milliseconds, so this cost hits only a slow card, once per insertion. Nothing here is hidden from the ROM, and no fix is in place.
 
 #### SPI0 and the panel
 

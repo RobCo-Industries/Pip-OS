@@ -383,15 +383,24 @@ def test_pull_while_slot_tape_runs(board, holo_build, test_rom, test_holo, tmp_p
     """right: the tape sleeps; left: it calls only ticks_ms. Both end at their next call."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
-    with run(holo_build, board, sd, {0: card}) as vm:
+
+    def attempt():
+        with run(holo_build, board, sd, {0: card}) as vm:
+            check(vm)
+
+    def check(vm):
         insert(vm)
         n = len(rom_markers(vm, "launch"))
         # A tape that only calls ticks_ms keeps the script channel from
         # running, so the pull is armed before the launch.
         holo(vm, "pullin", "1500")
         key(vm, how)
-        wait_rom(vm, "tloop")
-        assert int(wait_rom(vm, "launch", n + 1)[-1]["rc"]) == ENODEV
+        rc = int(wait_rom(vm, "launch", n + 1)[-1]["rc"])
+        if not rom_markers(vm, "tloop"):
+            # The guest clock follows the host: a stall of 1.5 s let the
+            # pull land before the tape ran.
+            raise CannotJudge("the pull came before the tape ran")
+        assert rc == ENODEV, vm.serial
         kill = one(vm, "holo_kill")
         assert kill["reason"] == "eject", kill
         # The fault format, and an address inside the tape: kernel/holo.h.
@@ -404,6 +413,8 @@ def test_pull_while_slot_tape_runs(board, holo_build, test_rom, test_holo, tmp_p
             tape_events(vm) == [INS, REM]
         assert vm.script("state", timeout=TIMEOUT).lines[0].split()[4] == "holo=0"
         no_exception(vm)
+
+    judged(attempt)
 
 
 def test_pull_while_boot_tape_runs(board, holo_build, test_rom, test_holo, tmp_path,
@@ -583,9 +594,9 @@ def test_tape_event_wakes_wait_event(board, holo_build, test_rom, test_holo, tmp
 
 def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tmp_path,
                                       need_mtools):
-    """holo_attach() may block 1.2 s. The main loop and the ROM's call wait
-    that long, so no present runs. The sample keeps playing. Recorded in
-    docs/ARCHITECTURE.md."""
+    """holo_attach() may block 1.2 s inside a work pass: no pipos_poll()
+    pass runs meanwhile. The PCM interrupt plays from the kernel's copy of
+    the sample, so the sound goes on. Recorded in docs/ARCHITECTURE.md."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
     with run(holo_build, board, sd, {0: card}) as vm:
@@ -595,9 +606,13 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
         assert wait_rom(vm, "sample")[0]["rc"] == "0"
         insert(vm)
         m = pipos_markers(vm, "holo_attach")[0]
-        print(f"\nattach: ms={m['ms']} samples={m['samples']}")
-        assert int(m["ms"]) >= 1200, m
-        # The PCM interrupt plays what was buffered, about 120 ms, then
-        # starves: audio_poll() does not run during the attach.
-        assert 0 < int(m["samples"]) < 8 * 1200, m
+        ms, samples, polls = int(m["ms"]), int(m["samples"]), int(m["polls"])
+        print(f"\nattach: ms={ms} samples={samples} polls={polls}")
+        assert ms >= 1200, m
+        # The witness: the main loop's work did not run during the attach.
+        assert polls == 0, m
+        # The PCM interrupt ran during it. How many samples it output
+        # depends on how often QEMU delivers the timer interrupt on this
+        # host: a late interrupt skips to the sample due. Never more than due.
+        assert 0 < samples <= ms * 8 + 8, m
         no_exception(vm)

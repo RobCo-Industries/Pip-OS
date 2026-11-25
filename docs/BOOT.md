@@ -213,7 +213,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `holo_slot` | `state bits` | One slot change: the new state and the `PIP_HOLO_EV_*` bits it set |
 | `holo_mount` | `rc` | The slot card's volume did not mount. `rc` is an `fs_strerror()` name. |
 | `holo_slot_error` | `rc` | A slot card read failed in `holo_enumerate`. `rc` is an `fs_strerror()` name. |
-| `holo_attach` | `rc ms samples` | Test builds only, one per attach. See [TESTING.md](TESTING.md#holotape-slot). |
+| `holo_attach` | `rc ms samples polls` | Test builds only, one per attach. See [TESTING.md](TESTING.md#holotape-slot). |
 | `reboot` | none | `power(0)`, right before the watchdog reset |
 | `halt` | none | `power(1)`, right before the halt |
 | `error` | `code=umode rc` | `umode_run()` refused the ROM or holotape task |

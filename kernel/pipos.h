@@ -34,6 +34,8 @@ void pipos_rom_run(const loader_result_t *res);
 
 /* main.c: one pass of the main loop's work: audio, input, script commands, group polls. */
 void pipos_poll(void);
+/* main.c: the pipos_poll() passes since boot. The test slot backend reports it. */
+uint32_t pipos_poll_passes(void);
 
 /* sys_audio.c: the level main.c gave audio_set_volume() at boot; the volume call starts from it. */
 void pipos_audio_start_volume(unsigned level);
