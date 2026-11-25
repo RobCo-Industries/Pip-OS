@@ -8,7 +8,10 @@
  *   left    holo_launch("SLOT.HTP", "ticks"), then ev=launch rc=
  *   down    holo_launch("SLOT.HTP", "eject"), then ev=launch rc=
  *   back    holo_launch("BOOT.HTP", "loop"), then ev=launch rc=
- *   dial    holo_launch("SLOT.HTP", ""), then ev=launch rc=
+ *   dial +n holo_launch("SLOT.HTP", ""), then ev=launch rc=
+ *   dial -n streams 4 s through sample_queue in 100 ms chunks: ev=stream
+ *           after the first chunk, then ev=streamed n=<chunks queued>.
+ *           It waits with sleep_ms(20) while a chunk already waits.
  *   dial_push  plays a 7.5 s sample, then ev=sample rc=
  *
  * It starts with ev=hw flags= abi= from sys_info and ev=wait before each
@@ -18,6 +21,35 @@
 
 static pip_holo_info_t all[PIP_HOLO_ENUM_MAX];
 static uint8_t pcm[60000];
+
+#define CHUNK       800u            /* 100 ms at 8 kHz */
+#define STREAM_MS   4000
+
+static uint8_t chunk[CHUNK];
+
+static void say(const char *ev, const char *k, int32_t v);
+
+static void stream(void)
+{
+    int32_t t0 = pip_ticks_ms();
+    int32_t n = 0;
+    uint32_t i;
+
+    for (i = 0; i < CHUNK; i++) {
+        chunk[i] = (uint8_t)(i & 0x20u ? 0xC0u : 0x40u);
+    }
+    while (pip_ticks_ms() - t0 < STREAM_MS) {
+        if (pip_sample_queue(chunk, CHUNK) == 0) {
+            if (n++ == 0) {
+                pip_log("@RC stage=testrom ev=stream\n");
+            }
+        } else {
+            pip_sleep_ms(20);
+        }
+    }
+    pip_audio_stop();
+    say("streamed", "n", n);
+}
 
 static void say(const char *ev, const char *k, int32_t v)
 {
@@ -64,6 +96,10 @@ int pip_main(const pipos_startup_t *startup)
         }
         if (ev.type == PIP_EV_TAPE) {
             say("tapeev", "value", ev.value);
+            continue;
+        }
+        if (ev.type == PIP_EV_DIAL && ev.value < 0) {
+            stream();
             continue;
         }
         if (ev.type == PIP_EV_DIAL) {

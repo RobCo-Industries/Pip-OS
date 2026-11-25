@@ -234,7 +234,12 @@ When the card of a running slot tape leaves, `on_svc()` in `syscall.c` sees it a
 - `polls`: the `pipos_poll()` passes that ran meanwhile. It is 0 on every run: the main loop's work stops for the whole attach. The test asserts it.
 - `samples`: the PCM samples the interrupt output meanwhile.
 
-The sound does not stop. `sample` copies the whole buffer into the kernel, and the channel 3 timer interrupt reads it with no refill from the main loop. So the PCM plays through the attach.
+The attach runs in `pipos_slot_work()`, inside whichever work call the ROM made: `sleep_ms`, `poll_event`, `wait_event`, `read_buttons`, `read_dial`, `file_read`, `holo_enumerate` or `holo_eject_event`. The ROM stays blocked in that call for the whole attach. What the listener hears depends on how the ROM plays sound:
+
+- `sample` plays through. The kernel copies the whole buffer, and the channel 3 timer interrupt reads it with no refill from the main loop.
+- A stream through `sample_queue` lasts only as long as what was queued. The kernel has two buffers: one plays and one waits. Each holds at most 65536 bytes, 8.192 s at 8 kHz. So at most the rest of the playing buffer plus one waiting buffer is queued ahead, up to 16.4 s. A ROM that queues less than the attach takes runs dry. The play ends with the trace marker `ev=audio op=pcm_end`, the output goes silent, and `audio_status` returns 0 when the ROM can call it again. After the attach, the ROM's next `sample_queue` starts a new play: `ev=audio op=pcm`.
+
+`test_slow_attach_runs_a_stream_dry` shows it. The ROM streams 100 ms chunks from a `sleep_ms` loop, so at most 200 ms are queued ahead. The 1200 ms attach leaves a silent gap from `pcm_end` to the next `pcm`. The test asserts the gap is at least 990 ms. Local runs measure about 1090 ms.
 
 `samples` does not measure the sound. It counts the PCM interrupts QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. How many arrive depends on the host. On a macOS host, QEMU delivers about 800 a second, idle or not: 940 to 1120 during the attach, and about 5800 for the whole 7.5 s sample. On the Linux CI runners it delivers all 8000 a second: 9602 during the attach. With `-icount` the count is 9600. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`.
 

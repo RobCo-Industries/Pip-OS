@@ -616,3 +616,37 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
         # host: a late interrupt skips to the sample due. Never more than due.
         assert 0 < samples <= ms * 8 + 8, m
         no_exception(vm)
+
+
+# The kernel holds two sample_queue buffers: one plays, one waits.
+STREAM_CHUNK_MS = 100
+STREAM_AHEAD_MS = 2 * STREAM_CHUNK_MS
+
+
+def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, tmp_path,
+                                       need_mtools):
+    """A ROM streams 100 ms chunks with sample_queue and sleeps in sleep_ms.
+    The attach runs inside that sleep_ms for 1200 ms. At most two chunks,
+    200 ms, were queued ahead, so the play ends during the attach and the
+    next chunk starts a new play after it. Recorded in docs/ARCHITECTURE.md."""
+    sd = boot_card(tmp_path, test_rom)
+    card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
+    with run(holo_build, board, sd, {0: card}) as vm:
+        holo(vm, "delay", "1200")
+        wait_rom(vm, "wait")
+        assert vm.script("dial -1", timeout=TIMEOUT).status == "ok"
+        wait_rom(vm, "stream")
+        holo(vm, "insert", "0", str(CARD_BLOCKS))
+        n = int(wait_rom(vm, "streamed")[0]["n"])
+        wait_rom(vm, "tapeev")
+        m = pipos_markers(vm, "holo_attach")[0]
+        assert int(m["ms"]) >= 1200 and m["polls"] == "0", m
+        tr = [(a["op"], int(a["t_ms"])) for a in pipos_markers(vm, "audio")]
+        # Each pcm_end followed by a pcm is a gap of silence: the play ran dry.
+        gaps = [tr[k + 1][1] - tr[k][1] for k in range(len(tr) - 1)
+                if tr[k][0] == "pcm_end" and tr[k + 1][0] == "pcm"]
+        print(f"\nstream: chunks={n} attach_ms={m['ms']} gaps_ms={gaps}")
+        # The attach blocked 1200 ms with at most 200 ms queued: one gap of
+        # at least 1000 ms, less one 10 ms tick for where the ROM's sleep stood.
+        assert max(gaps, default=0) >= 1200 - STREAM_AHEAD_MS - 10, (gaps, tr)
+        no_exception(vm)
