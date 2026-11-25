@@ -11,7 +11,7 @@
 #
 # Optional: TITLE (META title), ICON (32x32 PBM or 128 raw bytes),
 # VERSION (such as 1.2.3), SUBTYPE (holotape: game or 0, the default,
-# utility or 1), BUILD (output folder, default build), CFLAGS_EXTRA, ROBCO_CORE (default $(PIPOS_SDK)/../external/robco-core),
+# utility or 1), ABI (the target ABI, MAJOR.MINOR such as 1.3), BUILD (output folder, default build), CFLAGS_EXTRA, ROBCO_CORE (default $(PIPOS_SDK)/../external/robco-core),
 # LIBPIP_DIR (where libpip.a is built, default $(BUILD)/libpip), CROSS,
 # PYTHON, CI=1 (warnings are errors).
 #
@@ -72,6 +72,28 @@ else
 $(error KIND must be rom or holotape, not $(KIND))
 endif
 
+# ABI: the lowest Pip-OS ABI the project needs, MAJOR.MINOR. It goes to
+# crt0.S and every source as -DPIPOS_ABI_TARGET=0x000M000m: crt0.S writes
+# it into abi_version and the headers hide calls added after it. Not set,
+# no define is passed and the headers use their own ABI. libpip.a never
+# sees it.
+PIP_ABI_IN := $(strip $(ABI))
+ifneq ($(PIP_ABI_IN),)
+pip_nodigits = $(subst 0,,$(subst 1,,$(subst 2,,$(subst 3,,$(subst 4,,$(subst 5,,$(subst 6,,$(subst 7,,$(subst 8,,$(subst 9,,$(1)))))))))))
+PIP_ABI_PARTS := $(subst ., ,$(PIP_ABI_IN))
+PIP_ABI_MAJOR := $(word 1,$(PIP_ABI_PARTS))
+PIP_ABI_MINOR := $(word 2,$(PIP_ABI_PARTS))
+# MAJOR.MINOR, decimal digits only, one dot, MAJOR 1, MINOR with no
+# leading zero and at most 5 digits, then MINOR <= 65535.
+ifeq ($(PIP_ABI_IN)|$(PIP_ABI_MAJOR)|$(call pip_nodigits,$(PIP_ABI_MINOR))|$(if $(PIP_ABI_MINOR),set)|$(filter-out 0,$(filter 0%,$(PIP_ABI_MINOR)))|$(word 6,$(subst 0,0 ,$(subst 1,1 ,$(subst 2,2 ,$(subst 3,3 ,$(subst 4,4 ,$(subst 5,5 ,$(subst 6,6 ,$(subst 7,7 ,$(subst 8,8 ,$(subst 9,9 ,$(PIP_ABI_MINOR)))))))))))),1.$(PIP_ABI_MINOR)|1||set||)
+PIP_ABI_HEX := $(shell test '$(PIP_ABI_MINOR)' -le 65535 && printf '0x%04x%04x' 1 '$(PIP_ABI_MINOR)')
+endif
+ifeq ($(PIP_ABI_HEX),)
+$(error ABI=$(PIP_ABI_IN) is not valid: use MAJOR.MINOR in decimal with no leading zero, MAJOR 1, MINOR 0 to 65535, such as 1.3)
+endif
+PIP_ABI_DEF := -DPIPOS_ABI_TARGET=$(PIP_ABI_HEX)
+endif
+
 PIP_CC      := $(CROSS)gcc
 PIP_AR      := $(CROSS)ar
 PIP_LD      := $(CROSS)ld
@@ -87,7 +109,7 @@ PIP_BASEFLAGS := $(PIP_ARCHFLAGS) -std=gnu11 -ffreestanding -nostdlib \
 ifeq ($(CI),1)
 PIP_BASEFLAGS += -Werror
 endif
-PIP_CFLAGS   := $(PIP_BASEFLAGS) $(CFLAGS_EXTRA)
+PIP_CFLAGS   := $(PIP_BASEFLAGS) $(CFLAGS_EXTRA) $(PIP_ABI_DEF)
 # Only the library sees RobCo-Core's headers. The INI and CRC functions
 # get private names in the archive, so a ROM may define its own crc32 or
 # ini_parse next to pip_crc32 and pip_ini_parse.
@@ -164,9 +186,10 @@ $(PIP_CRT0): $(PIP_SDK)/crt0.S $(PIP_CFG)
 	@mkdir -p $(dir $@)
 	$(PIP_CC) $(PIP_CFLAGS) '-DPIP_IMG_MAGIC="$(PIP_MAGIC)"' -DPIP_IMG_SUBTYPE=$(PIP_SUBTYPE) -c -o $@ $<
 
+# ar D: zero dates and ids, so two builds give the same archive.
 $(LIBPIP): $(PIP_LIB_OBJS) $(PIP_LIBCFG)
 	rm -f $@
-	$(PIP_AR) rcs $@ $(PIP_LIB_OBJS)
+	$(PIP_AR) rcsD $@ $(PIP_LIB_OBJS)
 
 define pip_src_rule
 $(call pip_obj,$(1)): $(1) $(PIP_CFG)
