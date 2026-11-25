@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from hosttiming import CannotJudge, judged
+from hosttiming import TICK_MS, CannotJudge, judged
 
 from pipos_helpers import (TIMEOUT, booted, config, corrupt, make_card, no_exception, one,
                            pipos_markers, rom_markers)
@@ -592,6 +592,23 @@ def test_tape_event_wakes_wait_event(board, holo_build, test_rom, test_holo, tmp
 # ---- A slow card --------------------------------------------------------------
 
 
+def attach_span(vm):
+    """The attach marker's numbers, and its start and end on the tick clock."""
+    m = pipos_markers(vm, "holo_attach")[0]
+    return m, int(m["t0_ms"]), int(m["t1_ms"])
+
+
+def audio_trace(vm):
+    """(op, t_ms) of each audio trace line, on the audio clock."""
+    return [(a["op"], int(a["t_ms"])) for a in pipos_markers(vm, "audio")]
+
+
+# The attach marker's t0_ms and t1_ms are tick_ms(). The audio trace's t_ms
+# is the audio clock, seeded from tick_ms() and within one tick of it.
+CLOCKS_MS = TICK_MS
+SAMPLE_MS = 7500                # the ROM's dial_push sample: 60000 bytes at 8 kHz
+
+
 def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tmp_path,
                                       need_mtools):
     """holo_attach() may block 1.2 s inside a work pass: no pipos_poll()
@@ -599,28 +616,47 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
     the sample, so the sound goes on. Recorded in docs/ARCHITECTURE.md."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
-    with run(holo_build, board, sd, {0: card}) as vm:
-        holo(vm, "delay", "1200")
-        wait_rom(vm, "wait")
-        key(vm, "dial_push")
-        assert wait_rom(vm, "sample")[0]["rc"] == "0"
-        insert(vm)
-        m = pipos_markers(vm, "holo_attach")[0]
-        ms, samples, polls = int(m["ms"]), int(m["samples"]), int(m["polls"])
-        print(f"\nattach: ms={ms} samples={samples} polls={polls}")
-        assert ms >= 1200, m
-        # The witness: the main loop's work did not run during the attach.
-        assert polls == 0, m
-        # The PCM interrupt ran during it. How many samples it output
-        # depends on how often QEMU delivers the timer interrupt on this
-        # host: a late interrupt skips to the sample due. Never more than due.
-        assert 0 < samples <= ms * 8 + 8, m
-        no_exception(vm)
+
+    def attempt():
+        with run(holo_build, board, sd, {0: card}) as vm:
+            holo(vm, "delay", "1200")
+            wait_rom(vm, "wait")
+            key(vm, "dial_push")
+            assert wait_rom(vm, "sample")[0]["rc"] == "0"
+            insert(vm)
+            m, a0, a1 = attach_span(vm)
+            ms, samples, polls = int(m["ms"]), int(m["samples"]), int(m["polls"])
+            tr = audio_trace(vm)
+            print(f"\nattach: ms={ms} samples={samples} polls={polls} t0={a0} t1={a1} "
+                  f"audio={tr}")
+            assert ms >= 1200, m
+            # The witness: the main loop's work did not run during the attach.
+            assert polls == 0, m
+            # The sample was playing for the whole attach: it started before
+            # t0 and nothing ended it before t1.
+            assert tr and tr[0][0] == "pcm" and tr[0][1] <= a0 + CLOCKS_MS, (m, tr)
+            end = tr[1] if len(tr) > 1 else None
+            if end is not None and end[1] < a1 - CLOCKS_MS:
+                if end[0] == "pcm_end" and end[1] - tr[0][1] >= SAMPLE_MS - CLOCKS_MS:
+                    # The whole sample played out before the attach ended:
+                    # the insert came too late to judge.
+                    raise CannotJudge(f"the sample ended at {end[1]} ms, before the attach "
+                                      f"ended at {a1} ms")
+                raise AssertionError(f"the sound stopped during the attach: {m} {tr}")
+            # The PCM interrupt ran during it. How many samples it output
+            # depends on how often QEMU delivers the timer interrupt on this
+            # host: a late interrupt skips to the sample due. Never more than due.
+            assert 0 < samples <= ms * 8 + 8, m
+            no_exception(vm)
+
+    judged(attempt)
 
 
 # The kernel holds two sample_queue buffers: one plays, one waits.
 STREAM_CHUNK_MS = 100
 STREAM_AHEAD_MS = 2 * STREAM_CHUNK_MS
+# tests/roms/holo_slot.c: the stream stops here when no PIP_EV_TAPE comes.
+STREAM_MAX_MS = 10000
 
 
 def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, tmp_path,
@@ -628,25 +664,55 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
     """A ROM streams 100 ms chunks with sample_queue and sleeps in sleep_ms.
     The attach runs inside that sleep_ms for 1200 ms. At most two chunks,
     200 ms, were queued ahead, so the play ends during the attach and the
-    next chunk starts a new play after it. Recorded in docs/ARCHITECTURE.md."""
+    next chunk starts a new play after it. Recorded in docs/ARCHITECTURE.md.
+
+    The ROM streams until it gets the card's PIP_EV_TAPE, and the test
+    inserts the card after ev=stream. So the stream is live when the attach
+    begins and goes on after it ends: the kernel's order makes the overlap.
+    Only the ROM's 10 s cap could end the stream first."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
-    with run(holo_build, board, sd, {0: card}) as vm:
-        holo(vm, "delay", "1200")
-        wait_rom(vm, "wait")
-        assert vm.script("dial -1", timeout=TIMEOUT).status == "ok"
-        wait_rom(vm, "stream")
-        holo(vm, "insert", "0", str(CARD_BLOCKS))
-        n = int(wait_rom(vm, "streamed")[0]["n"])
-        wait_rom(vm, "tapeev")
-        m = pipos_markers(vm, "holo_attach")[0]
-        assert int(m["ms"]) >= 1200 and m["polls"] == "0", m
-        tr = [(a["op"], int(a["t_ms"])) for a in pipos_markers(vm, "audio")]
-        # Each pcm_end followed by a pcm is a gap of silence: the play ran dry.
-        gaps = [tr[k + 1][1] - tr[k][1] for k in range(len(tr) - 1)
-                if tr[k][0] == "pcm_end" and tr[k + 1][0] == "pcm"]
-        print(f"\nstream: chunks={n} attach_ms={m['ms']} gaps_ms={gaps}")
-        # The attach blocked 1200 ms with at most 200 ms queued: one gap of
-        # at least 1000 ms, less one 10 ms tick for where the ROM's sleep stood.
-        assert max(gaps, default=0) >= 1200 - STREAM_AHEAD_MS - 10, (gaps, tr)
-        no_exception(vm)
+
+    def attempt():
+        with run(holo_build, board, sd, {0: card}) as vm:
+            holo(vm, "delay", "1200")
+            wait_rom(vm, "wait")
+            assert vm.script("dial -1", timeout=TIMEOUT).status == "ok"
+            wait_rom(vm, "stream")
+            holo(vm, "insert", "0", str(CARD_BLOCKS))
+            n = int(wait_rom(vm, "streamed")[0]["n"])
+            assert tape_events(vm) == [INS], vm.serial
+            m, a0, a1 = attach_span(vm)
+            ms = int(m["ms"])
+            tr = audio_trace(vm)
+            print(f"\nstream: chunks={n} attach ms={ms} t0={a0} t1={a1} audio={tr}")
+            assert ms >= 1200 and m["polls"] == "0", m
+            assert tr and tr[0][0] == "pcm", tr
+            before = [k for k, (_, t) in enumerate(tr) if t < a0 - CLOCKS_MS]
+            if not before:
+                raise CannotJudge(f"the attach began at {a0} ms, before the stream at {tr[0][1]} ms")
+            last = before[-1]
+            if tr[last][0] in ("pcm_end", "stop") and last == len(tr) - 1 and \
+                    tr[last][1] - tr[0][1] >= STREAM_MAX_MS - 2 * CLOCKS_MS:
+                raise CannotJudge(f"the stream hit its cap at {tr[last][1]} ms, before the attach "
+                                  f"at {a0} ms")
+            # 1. Live: a chunk was playing when the attach began.
+            assert tr[last][0] in ("pcm", "pcm_next"), (m, tr)
+            # 2. The play ends inside the attach. At its start at most the
+            # rest of the playing chunk and one waiting chunk were queued,
+            # STREAM_AHEAD_MS, so it ends by t0 + 200 ms, one tick between
+            # the clocks.
+            end = next((k for k in range(last + 1, len(tr)) if tr[k][0] != "pcm_next"), None)
+            assert end is not None and tr[end][0] == "pcm_end", (m, tr)
+            assert a0 - CLOCKS_MS <= tr[end][1] <= a0 + STREAM_AHEAD_MS + CLOCKS_MS, (m, tr)
+            # 3. The next chunk starts a new play after the attach ends.
+            assert end + 1 < len(tr) and tr[end + 1][0] == "pcm", (m, tr)
+            assert tr[end + 1][1] >= a1 - CLOCKS_MS, (m, tr)
+            # 4. The silence lasts the attach less what was queued at its
+            # start, less one tick: the new play's t_ms is the audio clock,
+            # which moves at each 10 ms tick.
+            gap = tr[end + 1][1] - tr[end][1]
+            assert gap >= ms - STREAM_AHEAD_MS - TICK_MS, (gap, m, tr)
+            no_exception(vm)
+
+    judged(attempt)

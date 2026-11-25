@@ -96,7 +96,7 @@ QEMU has no SD card on SPI0, so the real slot driver cannot run there. A test bu
 | `holo attachpull` | The next attach pulls the card and returns `BLK_ERR_NOMEDIA` |
 | `holo delay <ms>` | Every attach blocks `<ms>` first, as a slow card |
 
-Each attach prints `ev=holo_attach rc ms samples polls`. `polls` counts the `pipos_poll()` passes during the attach. `test_shipped_image_has_no_test_backend` checks that the shipped image holds none of it and answers `holo` with `err unknown command`.
+Each attach prints `ev=holo_attach rc ms samples polls t0_ms t1_ms`. `polls` counts the `pipos_poll()` passes during the attach. `t0_ms` and `t1_ms` are `tick_ms()` at its start and end, the clock of the audio trace's `t_ms` within one tick. `test_shipped_image_has_no_test_backend` checks that the shipped image holds none of it and answers `holo` with `err unknown command`.
 
 What the backend can fake: card detect, the debounce, each attach result, a read error, a pull at any read, a slow attach. What it cannot: the real `holo.h` driver, its pins, the bus buffer and supply, SPI0 timing and sharing with the panel, the lock tab, a card that answers slowly in the middle of a read. The real driver has met only RobCo-Core's card model in its own tests. No board with the slot exists yet, so the shipped path is unverified until hardware.
 
