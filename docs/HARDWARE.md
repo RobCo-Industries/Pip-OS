@@ -1,6 +1,6 @@
 # Hardware
 
-Pip-OS runs on the Pi Zero, Zero W, Pi 1, Pi 2 and Pi 3 in 32-bit mode. Every test runs in QEMU. Nothing is validated on real hardware yet.
+Pip-OS runs on the Pi Zero, Zero W, Pi 1, Pi 2 and Pi 3 in 32-bit mode. The automated tests run in QEMU. One board run so far: Pip-OS `2d10c2c` on a Pi Zero W 1.1, with only a serial adapter wired. See [Hardware results](TESTING.md#hardware-results).
 
 ## What the kernel drives
 

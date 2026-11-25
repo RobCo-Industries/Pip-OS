@@ -24,9 +24,9 @@ What works now:
 
 What does not work yet:
 
-- Real hardware. Every test runs in QEMU.
-- The SPI display, battery monitoring and sensors other than the clock.
-- PCM streaming. `sample` plays one buffer of at most 64 KiB.
+- Real hardware, apart from one run. The automated tests run in QEMU. Pip-OS `2d10c2c` booted on a Pi Zero W 1.1 and ran a ROM with serial keys as input. The screen, GPIO buttons, the dial, sound and the RTC chip are untried. See [Hardware results](docs/TESTING.md#hardware-results).
+- Battery monitoring and sensors other than the clock.
+- The SPI panel on real hardware. It runs only in QEMU, where no panel answers.
 
 ## Build
 

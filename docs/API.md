@@ -223,4 +223,4 @@ The listing, the launch steps, the name rules and what a holotape may touch are 
 
 - An image can run forever. The kernel sets no time limit.
 - The kernel runs its main-loop work, such as script commands, only inside `sleep_ms`, the input calls, `file_read` and `holo_enumerate`. An image that calls none of them blocks the maintenance commands. See [BOOT.md](BOOT.md#running-the-rom).
-- Nothing is validated on real hardware. Every test runs in QEMU.
+- The automated tests run in QEMU. On a Pi Zero W 1.1, Pip-OS `2d10c2c` ran a ROM and one holotape with serial keys as input, see [Hardware results](TESTING.md#hardware-results).

@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sample_queue` (0x26) plays a sample right after the one that plays, with no gap. One sample can wait; a second call returns `-PIP_EBUSY`. With no sample playing it acts as `sample`.
 - `pip_sample_queue()` in `libpip.a` and `PIP_SYS_SAMPLE_QUEUE` in `abi.h`.
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
+- "Hardware results" in `docs/TESTING.md`: the first board run, Pip-OS `2d10c2c` with Deitrix on a Pi Zero W 1.1, and a hardware checklist.
+- A second Zero W 1.1 run in "Hardware results": the save read back at the next boot and a holotape that ran and returned to the ROM.
 - `SUBTYPE` in `sdk/pipos-app.mk` seals a holotape as a game, 0, or a utility, 1. It refuses data tapes and any non-zero subtype for a ROM.
 - Graphics calls `0x01` to `0x0F`: lines, points, text, rectangles, polylines, arcs, 1-bit and RGB blits, clip, colours, font and `present`. They draw on a 320x240 back buffer in kernel-only memory at `0x00C00000`, and `present` scales it by 2 onto the 640x480 framebuffer.
 - The console redraws the boot screen when a ROM ends, so the ROM's last frame never stays on screen.
