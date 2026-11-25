@@ -50,4 +50,23 @@ TEST(reserved_bits)
     CHECK_EQ(conform_hw_reserved_ok(0), 1);
     CHECK_EQ(conform_hw_reserved_ok(1u << 1), 0);
     CHECK_EQ(conform_hw_reserved_ok(1u << 31), 0);
+    CHECK_EQ(conform_hw_reserved_ok(PIP_HW_TAPE), 1);
+    CHECK_EQ(conform_hw_reserved_ok(1u << 4), 0);
+}
+
+TEST(holo_flags)
+{
+    CHECK_EQ(conform_holo_flags_ok(0, 0), 1);
+    CHECK_EQ(conform_holo_flags_ok(PIP_HOLO_SLOT, PIP_HW_TAPE), 1);
+    CHECK_EQ(conform_holo_flags_ok(PIP_HOLO_SLOT, 0), 0);
+    CHECK_EQ(conform_holo_flags_ok(2, PIP_HW_TAPE), 0);
+}
+
+TEST(eject_mask)
+{
+    CHECK_EQ(conform_eject_mask_ok(0, 0), 1);
+    CHECK_EQ(conform_eject_mask_ok(1, 0), 0);
+    CHECK_EQ(conform_eject_mask_ok(7, PIP_HW_TAPE), 1);
+    CHECK_EQ(conform_eject_mask_ok(8, PIP_HW_TAPE), 0);
+    CHECK_EQ(conform_eject_mask_ok(-1, PIP_HW_TAPE), 0);
 }
