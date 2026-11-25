@@ -1,0 +1,95 @@
+/*
+ * The ROM of tests/test_slot.py: a ROM's slot loop, driven by keys.
+ * It logs every PIP_EV_TAPE it gets and acts on a press:
+ *
+ *   up      ev=mask bits=<holo_eject_event()>
+ *   select  ev=entry i= file= flags= for each tape, then ev=list n=
+ *   right   holo_launch("SLOT.HTP", "loop"), then ev=launch rc=
+ *   left    holo_launch("SLOT.HTP", "ticks"), then ev=launch rc=
+ *   down    holo_launch("SLOT.HTP", "eject"), then ev=launch rc=
+ *   back    holo_launch("BOOT.HTP", "loop"), then ev=launch rc=
+ *   dial    holo_launch("SLOT.HTP", ""), then ev=launch rc=
+ *   dial_push  plays a 7.5 s sample, then ev=sample rc=
+ *
+ * It starts with ev=hw flags= abi= from sys_info and ev=wait before each
+ * wait_event.
+ */
+#include "rt.h"
+
+static pip_holo_info_t all[PIP_HOLO_ENUM_MAX];
+static uint8_t pcm[60000];
+
+static void say(const char *ev, const char *k, int32_t v)
+{
+    char line[96];
+
+    pip_snprintf(line, sizeof(line), "@RC stage=testrom ev=%s %s=%d\n", ev, k, (int)v);
+    pip_log(line);
+}
+
+static void launch(const char *name, const char *args)
+{
+    say("launch", "rc", pip_holo_launch(name, args));
+}
+
+static void list(void)
+{
+    char line[96];
+    int32_t n = pip_holo_enumerate(all, PIP_HOLO_ENUM_MAX);
+    int32_t i;
+
+    for (i = 0; i < n; i++) {
+        pip_snprintf(line, sizeof(line), "@RC stage=testrom ev=entry i=%d file=%s flags=%u\n",
+                     (int)i, all[i].file, (unsigned)all[i].flags);
+        pip_log(line);
+    }
+    say("list", "n", n);
+}
+
+int pip_main(const pipos_startup_t *startup)
+{
+    pip_sys_info_t si;
+    pip_event_t ev;
+    char line[96];
+
+    (void)startup;
+    pip_sys_info(&si);
+    pip_snprintf(line, sizeof(line), "@RC stage=testrom ev=hw flags=%u abi=0x%08x\n",
+                 (unsigned)si.hw_flags, (unsigned)si.abi_version);
+    pip_log(line);
+    for (;;) {
+        pip_log("@RC stage=testrom ev=wait\n");
+        if (pip_wait_event(&ev, PIP_WAIT_FOREVER) != 1) {
+            continue;
+        }
+        if (ev.type == PIP_EV_TAPE) {
+            say("tapeev", "value", ev.value);
+            continue;
+        }
+        if (ev.type == PIP_EV_DIAL) {
+            launch("SLOT.HTP", "");
+            continue;
+        }
+        if (ev.type != PIP_EV_BUTTON || ev.value != PIP_EV_PRESS) {
+            continue;
+        }
+        switch (ev.code) {
+        case PIP_BTN_UP:     say("mask", "bits", pip_holo_eject_event()); break;
+        case PIP_BTN_SELECT: list(); break;
+        case PIP_BTN_RIGHT:  launch("SLOT.HTP", "loop"); break;
+        case PIP_BTN_LEFT:   launch("SLOT.HTP", "ticks"); break;
+        case PIP_BTN_DOWN:   launch("SLOT.HTP", "eject"); break;
+        case PIP_BTN_BACK:   launch("BOOT.HTP", "loop"); break;
+        case PIP_BTN_DIAL: {
+            uint32_t i;
+
+            for (i = 0; i < sizeof(pcm); i++) {
+                pcm[i] = (uint8_t)(i & 0x40u ? 0xC0u : 0x40u);
+            }
+            say("sample", "rc", pip_sample(pcm, sizeof(pcm)));
+            break;
+        }
+        default: break;
+        }
+    }
+}

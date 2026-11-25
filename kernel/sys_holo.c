@@ -26,7 +26,7 @@
 #define PATH_SIZE       (sizeof(HOLO_DIR "/") + PIPOS_HOLO_NAME_SIZE)
 
 /* list_dir() and has_slot_file(): the slot card failed, drop its entries. */
-#define SLOT_FAILED     1
+#define SLOT_FAILED     2
 
 /*
  * The Sandbox table of PIPOS_ABI.md: the holotape's own slot and heap
@@ -130,6 +130,7 @@ static int has_slot_file(const char *listed)
         return 0;
     }
     if (frc != FS_OK) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=holo_slot_error rc=%s\n", fs_strerror(frc));
         return SLOT_FAILED;
     }
     return listed_entry_of(&shadow_st, name) && k_strcmp(name, listed) == 0;
@@ -211,7 +212,9 @@ static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint
     }
     pipos_poll();
     slot_ok = pipos_slot_mounted_now();
-    if (slot_ok && list_dir(TAPE_DIR, 1, 0, &count, max) != 0) {
+    frc = slot_ok ? list_dir(TAPE_DIR, 1, 0, &count, max) : 0;
+    if (frc != 0) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=holo_slot_error rc=%s\n", fs_strerror(frc));
         pipos_slot_read_error();
         slot_ok = 0;
         count = 0;

@@ -13,6 +13,9 @@
  *   holo again <k>            the next k attaches return SD_ERR_AGAIN
  *   holo attachpull           the next attach pulls the card: BLK_ERR_NOMEDIA
  *   holo delay <ms>           every attach blocks <ms> first, as a slow card
+ *   holo pullin <ms>          the card leaves <ms> from now, seen by the
+ *                             next card detect read, even while a tape
+ *                             keeps the script channel from running
  *
  * Each attach prints ev=holo_attach rc=<rc> ms=<ms blocked> samples=<PCM
  * samples output meanwhile>. The shipped image has none of this:
@@ -44,6 +47,8 @@ static int attached;
 static int read_fail, read_pull, refuse, attach_pull;
 static unsigned again;
 static uint32_t delay_ms;
+static int pull_armed;
+static uint32_t pull_at;
 
 static int ram_read(blk_dev_t *dev, uint64_t lba, uint32_t count, void *buf)
 {
@@ -78,12 +83,16 @@ static int ram_init(void)
 
 static int ram_card(void)
 {
+    if (pull_armed && (int32_t)(timer_now_ms() - pull_at) >= 0) {
+        pull_armed = 0;
+        card_in = 0;
+    }
     return card_in;
 }
 
 static int ram_present(void)
 {
-    if (!card_in) {
+    if (!ram_card()) {
         attached = 0;
         return 0;
     }
@@ -181,6 +190,9 @@ int pipos_slot_test_command(int argc, char *argv[], struct input_script_reply *r
         attach_pull = 1;
     } else if (k_strcmp(op, "again") == 0 && argc == 3 && number(argv[2], &a) == 0) {
         again = a;
+    } else if (k_strcmp(op, "pullin") == 0 && argc == 3 && number(argv[2], &a) == 0) {
+        pull_at = timer_now_ms() + a;
+        pull_armed = 1;
     } else if (k_strcmp(op, "delay") == 0 && argc == 3 && number(argv[2], &a) == 0 &&
                a <= 5000u) {
         delay_ms = a;
