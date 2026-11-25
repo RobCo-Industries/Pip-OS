@@ -91,18 +91,6 @@ def gap_too_long(gap_ms, limit_ms):
     return gap_ms + TICK_MS >= limit_ms
 
 
-def spi_retried(markers):
-    """The retried sends that follow a present failure, as the kernel marks them.
-
-    The kernel retries a failed present once, with the whole frame, and prints
-    ev=display_error op=present before the retry. In QEMU the only way a
-    present fails is the SPI deadline, which a stalled host expires.
-    """
-    failed = any(m.get("ev") == "display_error" and m.get("op") == "present" for m in markers)
-    retries = [m for m in markers if m.get("ev") == "tft_send" and m.get("why") == "retry"]
-    return retries if failed else []
-
-
 def chain_align(got, want, end, fresh):
     """Lines a chunk chain up with want: one (j, i, dry) per want item.
 
@@ -243,14 +231,6 @@ def judge_stream(stream, tr, full, chunks, chunk_len, rate, crcs):
 def restart(key):
     """The fresh start of a chained chunk's key, for chain_underruns()."""
     return ("pcm",) + key[1:] if key[0] == "pcm_next" else None
-
-
-def retry_evidence(vms):
-    """The slow host reason of a panel run: SPI sends the kernel retried, or None."""
-    retried = [m for vm in vms for m in spi_retried(vm.markers())]
-    if not retried:
-        return None
-    return f"{len(retried)} SPI sends retried after the deadline"
 
 
 # ---- the session rule ----------------------------------------------------------

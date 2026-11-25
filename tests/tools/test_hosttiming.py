@@ -19,7 +19,9 @@ sys.path.insert(0, os.path.join(ROOT, "external", "robco-core", "tests"))
 sys.path.insert(0, TESTS)
 import hosttiming  # noqa: E402
 from hosttiming import (CannotJudge, Timed, chain_underruns, judge_chain, judge_stream,  # noqa: E402
-                        judged, judged_split, retry_evidence, spi_retried, split_checks)
+                        judged, split_checks)
+from panelsends import (FULL_BYTES, H, W, both_sends, judged_sends, retried_bytes,  # noqa: E402
+                        window_sends, without_retries)
 from harness.env import minimal_env  # noqa: E402
 
 # tests/roms/tft_stream.c
@@ -172,19 +174,6 @@ def test_judged_does_not_retry_a_failure():
     assert len(runs) == 1
 
 
-# ---- spi_retried() ------------------------------------------------------------------------
-
-def send(why):
-    return {"stage": "pipos", "ev": "tft_send", "why": why}
-
-
-def test_spi_retry_counts_only_after_a_present_failure():
-    err = {"stage": "pipos", "ev": "display_error", "op": "present", "rc": "-4"}
-    assert spi_retried([send("full"), err, send("retry")]) == [send("retry")]
-    assert spi_retried([send("full"), send("retry")]) == []
-    assert spi_retried([send("full"), err]) == []
-
-
 # ---- split_checks() ---------------------------------------------------------------------
 
 def fails(msg):
@@ -219,42 +208,114 @@ def test_evidence_of_one_check_does_not_excuse_another():
         split_checks(lambda: 1, explained, passing)
 
 
-# ---- the panel tests: SPI retry evidence ------------------------------------------------
+# ---- the panel tests: the kernel's retries ----------------------------------------------
 
-class FakeVM:
-    def __init__(self, markers):
-        self._markers = markers
-
-    def markers(self):
-        return self._markers
-
-
+FULL = (0, 0, W, H)
 ERR = {"stage": "pipos", "ev": "display_error", "op": "present", "rc": "-4"}
-RETRIED = FakeVM([{"stage": "pipos", "ev": "tft_send", "why": "full"}, ERR,
-                  {"stage": "pipos", "ev": "tft_send", "why": "retry"}])
 
 
-def test_retry_evidence():
-    assert retry_evidence([RETRIED]) == "1 SPI sends retried after the deadline"
-    assert retry_evidence([FakeVM([])]) is None
+def send(why, r, n):
+    x, y, w, h = r
+    return {"stage": "pipos", "ev": "tft_send", "why": why, "x": str(x), "y": str(y),
+            "w": str(w), "h": str(h), "bytes": str(n), "crc": "0"}
 
 
-def test_retry_with_a_pixel_mismatch_fails():
-    def strict():
-        assert False, "12 pixels differ"
+def rom(ev, n=None):
+    m = {"stage": "testrom", "ev": ev}
+    if n is not None:
+        m["n"] = str(n)
+    return m
 
+
+def retry(panel=(W, H)):
+    return [ERR, send("retry", (0, 0) + panel, 11 + panel[0] * panel[1] * 2)]
+
+
+def both_run(small=((101, 57, 3, 2), 23), boot_retry=False, step2_retry=False):
+    """The markers of test_both_panel_matches_hdmi; small is step 2's (rect, bytes)."""
+    full = send("full", FULL, 11 + FULL_BYTES)
+    out = [send("full", FULL, 4000)] + retry() if boot_retry else [full]
+    out += [rom("shown"), rom("step", 1), send("diff", (0, 0, 0, 0), 0), rom("shown"),
+            rom("step", 2), send("diff", *small)]
+    if step2_retry:
+        out += retry()
+    out += [rom("shown"), rom("step", 3), full, rom("shown"), full,
+            rom("step", 4), send("diff", (0, 0, 0, 0), 0), rom("shown")]
+    return out
+
+
+def judge_sends(check, markers):
+    return split_checks(lambda: check(markers), retried_bytes())
+
+
+def test_panel_runs_without_or_with_a_boot_retry_pass():
+    judge_sends(both_sends, both_run())
+    judge_sends(both_sends, both_run(boot_retry=True))
+
+
+def test_boot_retry_with_a_wrong_rectangle_later_fails():
     with pytest.raises(AssertionError) as e:
-        judged_split(strict, Timed("sends", lambda vm: None, lambda vm: retry_evidence([vm])))
-    assert "12 pixels differ" in str(e.value)
+        judge_sends(both_sends, both_run(((101, 57, 4, 2), 27), boot_retry=True))
+    assert "'w': '4'" in str(e.value), e.value
 
 
-def test_retry_with_wrong_sends_cannot_judge():
-    def timed(vm):
-        assert False, "sends"
+def test_boot_retry_with_a_wrong_byte_count_later_fails():
+    with pytest.raises(AssertionError) as e:
+        judge_sends(both_sends, both_run(((101, 57, 3, 2), 24), boot_retry=True))
+    assert "the small change" in str(e.value), e.value
+    with pytest.raises(AssertionError):
+        judged_sends(lambda: both_sends(both_run(((101, 57, 3, 2), 24), boot_retry=True)))
 
+
+def test_retry_in_the_step_with_the_right_contents_cannot_judge():
+    # The deadline cut the small change short, the kernel sent the whole frame again.
+    run = both_run(((101, 57, 3, 2), 11), step2_retry=True)
+    with pytest.raises(CannotJudge) as e:
+        judge_sends(both_sends, run)
+    assert str(e.value).startswith("bytes of a retried present: retry 1 after (101, 57, 3, 2)"), \
+        e.value
     with pytest.raises(pytest.skip.Exception) as e:
-        judged_split(lambda: RETRIED, Timed("sends", timed, lambda vm: retry_evidence([vm])))
-    assert str(e.value).startswith("host timing: 4 runs, sends: 1 SPI sends retried"), e.value
+        judged_sends(lambda: both_sends(run))
+    assert str(e.value).startswith("host timing: 4 runs, bytes of a retried present"), e.value
+    # An exact count needs no excuse.
+    judge_sends(both_sends, both_run(step2_retry=True))
+
+
+def test_retry_in_the_step_with_a_wrong_rectangle_fails():
+    with pytest.raises(AssertionError):
+        judge_sends(both_sends, both_run(((101, 57, 4, 2), 11), step2_retry=True))
+
+
+def test_retry_in_the_window_step():
+    def run(n):
+        return [rom("step", 0), send("full", (0, 0, H, H), 11 + H * H * 2), rom("shown"),
+                rom("step", 1), send("diff", (0, 0, 0, 0), 0), rom("shown"),
+                rom("step", 2), send("diff", (10, 20, 1, 1), n)] + retry((H, H)) + [rom("shown")]
+
+    with pytest.raises(CannotJudge):
+        judge_sends(window_sends, run(5))
+    judge_sends(window_sends, run(13))
+    with pytest.raises(AssertionError):
+        judge_sends(window_sends, run(5)[:-3] + [rom("shown")])
+
+
+def test_retry_rules():
+    full = send("full", FULL, 11 + FULL_BYTES)
+    # A retry needs the error first, then a send before it, and covers the panel.
+    with pytest.raises(AssertionError):
+        without_retries([full, retry()[1]])
+    with pytest.raises(AssertionError):
+        without_retries(retry())
+    with pytest.raises(AssertionError):
+        without_retries([full, ERR, send("retry", (0, 0, 10, 10), 211)])
+    with pytest.raises(AssertionError):
+        without_retries([full, ERR, send("retry", FULL, 100)])
+    with pytest.raises(AssertionError):
+        without_retries([full] + retry() + [retry()[1]])
+    # The kernel prints the error once: a later retry has none of its own.
+    out = without_retries([full] + retry() + [full, retry()[1]])
+    assert [m.get("retried") for m in out if m["ev"] == "tft_send"] == \
+        [f"retry 1 after {FULL}", f"retry 2 after {FULL}"], out
 
 
 # ---- the long sample_queue chain ---------------------------------------------------------
