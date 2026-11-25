@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- ABI 1.3: `sys_info` reports `hw_flags` at offset `0x18`. `PIP_HW_RTC`, bit 0, is set when a clock chip answered at boot. `PIP_HW_AUDIO`, bit 2, is set when the audio driver started, also on the trace backend after a PWM error. The conformance ROM checks the flags, and a new conformance run uses QEMU's clock chip.
 - The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
 - `present` on the panel sends only the smallest rectangle that changed since the last frame sent. At `tft_rotation = 0` or `180` it looks only at the left 240 columns and top 240 rows the panel shows. `power` drives the panel's display and sleep and the backlight. A panic wakes a blanked panel before it shows.
 - With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
@@ -26,50 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
 - "Hardware results" in `docs/TESTING.md`: the first board run, Pip-OS `2d10c2c` with Deitrix on a Pi Zero W 1.1, and a hardware checklist.
 - A second Zero W 1.1 run in "Hardware results": the save read back at the next boot and a holotape that ran and returned to the ROM.
-
-### Changed
-- `test_stream_while_redrawing` and the panel tests that count sends park cores 1 to 3 of `raspi3b`. They spun in an exception loop and made a full present take 8.8 s on a GitHub runner.
-- Tests with a time limit judge their claim only when the run's own numbers show the host kept up. Otherwise they run again, up to 4 runs, then skip with a `host timing:` reason. The session fails on more than one such skip per board. `--timing-skips-max` sets the limit, and `make test-target` prints skip reasons.
-- RobCo-Core moved to `b2774bf` for the ILI9341 driver. Its audio trace now prints one `op=stop` for every sound cut by another one, so the audio tests expect it. Its console scrolls and clears only its grid, and memory copies run a word at a time.
-- A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
-- The kernel finds the card's volume with RobCo-Core's `fs_mount_boot()`. It prefers the first FAT volume that holds `/PIPBOY/PIPOS.CFG` or `/PIPBOY/ROM1.ROM`, and falls back to the first that mounts. `ev=mount` gains `marker`. `ev=card rc=nomount` gains `why`. A card with an empty partition table now reports `rc=nomount why=nofat` instead of `rc=nopart`.
-- `PIP_ABI_VERSION` is `0x00010002`. Images sealed for 1.0 and 1.1 still run.
-- RobCo-Core moved to `f5bba36` for `fs_mount_boot()`, `board_model_name()`, `rimg_self_check()` and a console backend that leaves bytes in the UART while the input queue is full.
-- `make bootdir` writes the same files as `make sdimage`, the example ROM and tape included, plus the firmware. It builds only the kernel and the files it copies, not `all`.
-- With `ROM=<file>`, `make sdimage`, `run` and `bootdir` no longer build the hello example. The tape example builds only when `TAPE` is left at its default.
-- `SDIMAGE_DIR` stops the build: use `CARD_DIR`.
-- The tests build subprocess environments with RobCo-Core's `minimal_env()` instead of a copy of the host environment, so a failing test cannot print it. `tests/test_env_hygiene.py` guards the rule.
-- `make check-pins` uses RobCo-Core's shared `tools/check_doc_links.sh` through the new `make check-doc-links`. A short hash in a RobCo-Core link is now an error. Pip-OS's own copy is gone.
-- `set_time` writes the RTC chip when one answers, so the time survives a reboot. A failed chip write returns `-PIP_EIO`; the clock keeps the new value. A time outside 2000 to 2099 sets the clock only.
-- ABI 1.1: `PIP_ABI_VERSION` is `0x00010001`. The SDK seals images with it, and `sys_info` and the startup block report it. Images sealed for 1.0 still run.
-- `tone`, `sample`, `play_seq`, `audio_stop` and image start and end drop a waiting sample too. `audio_status` is 1 while one waits.
-- `docs/API.md` is the full system-call reference. The `docs/pending/` fragments are gone.
-- RobCo-Core moved to `d6f756d` for the `-` flag, precision and `*` in `k_printf` and the printf functions of `libpip.a`, and the updated `set_time` spec.
-- RobCo-Core moved to `222f4e4` for queued PCM playback and the `sample_queue` spec (ABI 1.1).
-- RobCo-Core moved to `06316cd` for the updated Pip-OS ABI spec.
-- RobCo-Core moved to `891b3a2` for 8-bit PCM playback with `audio_play_pcm()`.
-- RobCo-Core moved to `78c9d9e` for nested user tasks, dial totals, a drop-oldest input queue, and a test harness that keeps QEMU awake and dumps guest state when a wait times out.
-- The kernel serves system calls from one table per group, in `kernel/sys_<group>.c`. `kernel/syscall.c` keeps the dispatcher. A number listed twice or by the wrong group stops the boot.
-- The pure pointer checks for system calls are shared helpers in `kernel/sysdispatch.c`.
-- `sleep_ms` returns `-PIP_ERANGE` at once for `ms` above `0x7FFFFFFF`. Before, a value near `UINT32_MAX` slept forever.
-- The `pip_*` syscall wrappers are functions in `libpip.a` instead of `static inline` functions in `syscall.h`.
-- The test ROMs build through `pipos-app.mk` into `build/roms/<name>/<name>.rom`.
-- `ev=ready` now means the kernel reached its main loop. With a ROM, it comes after the ROM ends.
-- RobCo-Core moved to `1e0fb65` for user-mode tasks and the full Pip-OS ABI spec.
-- Rebuilt the kernel on the RobCo-Core library, added as a git submodule in `external/robco-core`.
-- One 32-bit image for the Pi Zero, Pi 1, Pi 2 and Pi 3. The `BCM=` option and the AArch64 build are gone.
-- New layout: a top-level `Makefile`, `kernel/` for the sources, `tests/` for the tests.
-- The boot text now appears on the HDMI framebuffer and the serial console. The holotape and ROM lines report real checks.
-- CI calls the RobCo-Core reusable workflow and tests all four QEMU boards.
-- RobCo-Core moved to `061f224`. The host tests, the SD image, the target test setup, `make run` and the pin check now use the library's facilities instead of Pip-OS copies.
-- The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
-
-### Added
-- The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
-- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. `power` drives the panel's display and sleep and the backlight.
-- With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
-- `gfx_info` reports `backend` 1 while the panel takes frames.
-- A test build with `-DPIPOS_TFT_TEST`, the `tftdump` script command in it, and `tests/test_tft.py`, which compares the panel picture rebuilt by RobCo-Core's ILI9341 model with HDMI.
 - `SUBTYPE` in `sdk/pipos-app.mk` seals a holotape as a game, 0, or a utility, 1. It refuses data tapes and any non-zero subtype for a ROM.
 - Graphics calls `0x01` to `0x0F`: lines, points, text, rectangles, polylines, arcs, 1-bit and RGB blits, clip, colours, font and `present`. They draw on a 320x240 back buffer in kernel-only memory at `0x00C00000`, and `present` scales it by 2 onto the 640x480 framebuffer.
 - The console redraws the boot screen when a ROM ends, so the ROM's last frame never stays on screen.
@@ -113,6 +70,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Host unit tests and QEMU target tests with the RobCo-Core harness.
 - `make sdimage`, `make run` and `make bootdir`.
 
+### Changed
+- `test_stream_while_redrawing` and the panel tests that count sends park cores 1 to 3 of `raspi3b`. They spun in an exception loop and made a full present take 8.8 s on a GitHub runner.
+- Tests with a time limit judge their claim only when the run's own numbers show the host kept up. Otherwise they run again, up to 4 runs, then skip with a `host timing:` reason. The session fails on more than one such skip per board. `--timing-skips-max` sets the limit, and `make test-target` prints skip reasons.
+- A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
+- The kernel finds the card's volume with RobCo-Core's `fs_mount_boot()`. It prefers the first FAT volume that holds `/PIPBOY/PIPOS.CFG` or `/PIPBOY/ROM1.ROM`, and falls back to the first that mounts. `ev=mount` gains `marker`. `ev=card rc=nomount` gains `why`. A card with an empty partition table now reports `rc=nomount why=nofat` instead of `rc=nopart`.
+- `PIP_ABI_VERSION` is `0x00010003`. Images sealed for 1.0, 1.1 and 1.2 still run.
+- `pip_sys_info_t.reserved` is one word, not an array of two. Code that read `reserved[0]` reads `hw_flags` now.
+- RobCo-Core moved to `796607f` for ABI 1.3 in the spec, the ILI9341 panel driver, screen adopt calls and `ini_parse_sections()`. Its audio trace now prints one `op=stop` line when a start replaces a playing sound, so the audio tests expect it. Its console scrolls and clears only its grid, and memory copies run a word at a time.
+- RobCo-Core moved to `f5bba36` for `fs_mount_boot()`, `board_model_name()`, `rimg_self_check()` and a console backend that leaves bytes in the UART while the input queue is full.
+- `make bootdir` writes the same files as `make sdimage`, the example ROM and tape included, plus the firmware. It builds only the kernel and the files it copies, not `all`.
+- With `ROM=<file>`, `make sdimage`, `run` and `bootdir` no longer build the hello example. The tape example builds only when `TAPE` is left at its default.
+- `SDIMAGE_DIR` stops the build: use `CARD_DIR`.
+- The tests build subprocess environments with RobCo-Core's `minimal_env()` instead of a copy of the host environment, so a failing test cannot print it. `tests/test_env_hygiene.py` guards the rule.
+- `make check-pins` uses RobCo-Core's shared `tools/check_doc_links.sh` through the new `make check-doc-links`. A short hash in a RobCo-Core link is now an error. Pip-OS's own copy is gone.
+- `set_time` writes the RTC chip when one answers, so the time survives a reboot. A failed chip write returns `-PIP_EIO`; the clock keeps the new value. A time outside 2000 to 2099 sets the clock only.
+- ABI 1.1: `PIP_ABI_VERSION` is `0x00010001`. The SDK seals images with it, and `sys_info` and the startup block report it. Images sealed for 1.0 still run.
+- `tone`, `sample`, `play_seq`, `audio_stop` and image start and end drop a waiting sample too. `audio_status` is 1 while one waits.
+- `docs/API.md` is the full system-call reference. The `docs/pending/` fragments are gone.
+- RobCo-Core moved to `d6f756d` for the `-` flag, precision and `*` in `k_printf` and the printf functions of `libpip.a`, and the updated `set_time` spec.
+- RobCo-Core moved to `222f4e4` for queued PCM playback and the `sample_queue` spec (ABI 1.1).
+- RobCo-Core moved to `06316cd` for the updated Pip-OS ABI spec.
+- RobCo-Core moved to `891b3a2` for 8-bit PCM playback with `audio_play_pcm()`.
+- RobCo-Core moved to `78c9d9e` for nested user tasks, dial totals, a drop-oldest input queue, and a test harness that keeps QEMU awake and dumps guest state when a wait times out.
+- The kernel serves system calls from one table per group, in `kernel/sys_<group>.c`. `kernel/syscall.c` keeps the dispatcher. A number listed twice or by the wrong group stops the boot.
+- The pure pointer checks for system calls are shared helpers in `kernel/sysdispatch.c`.
+- `sleep_ms` returns `-PIP_ERANGE` at once for `ms` above `0x7FFFFFFF`. Before, a value near `UINT32_MAX` slept forever.
+- The `pip_*` syscall wrappers are functions in `libpip.a` instead of `static inline` functions in `syscall.h`.
+- The test ROMs build through `pipos-app.mk` into `build/roms/<name>/<name>.rom`.
+- `ev=ready` now means the kernel reached its main loop. With a ROM, it comes after the ROM ends.
+- RobCo-Core moved to `1e0fb65` for user-mode tasks and the full Pip-OS ABI spec.
+- Rebuilt the kernel on the RobCo-Core library, added as a git submodule in `external/robco-core`.
+- One 32-bit image for the Pi Zero, Pi 1, Pi 2 and Pi 3. The `BCM=` option and the AArch64 build are gone.
+- New layout: a top-level `Makefile`, `kernel/` for the sources, `tests/` for the tests.
+- The boot text now appears on the HDMI framebuffer and the serial console. The holotape and ROM lines report real checks.
+- CI calls the RobCo-Core reusable workflow and tests all four QEMU boards.
+- RobCo-Core moved to `061f224`. The host tests, the SD image, the target test setup, `make run` and the pin check now use the library's facilities instead of Pip-OS copies.
+- The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
+
+
 ### Fixed
 - After a holotape, the ROM keeps its open files and its input events.
 - `mem_info` reports the caller's own heap.
@@ -128,11 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: this entry overstated the state of the code. Most listed items are stubs. See the Status section in [README.md](README.md#status).
 
 ### Added
-- The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
-- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. `power` drives the panel's display and sleep and the backlight.
-- With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
-- `gfx_info` reports `backend` 1 while the panel takes frames.
-- A test build with `-DPIPOS_TFT_TEST`, the `tftdump` script command in it, and `tests/test_tft.py`, which compares the panel picture rebuilt by RobCo-Core's ILI9341 model with HDMI.
 - Complete PIP-OS V7.1.0.8 implementation from scratch
 - Matrix-style boot display with cascading characters
 - Boot audio sequence (power-on beep, data stream, relay clicks, ready chime)
@@ -166,8 +157,6 @@ Note: this entry overstated the state of the code. Most listed items are stubs. 
 - Added k_memcmp to kernel libc for ROM verification
 
 ### Changed
-- RobCo-Core moved to `b2774bf` for the ILI9341 driver. Its audio trace now prints one `op=stop` for every sound cut by another one, so the audio tests expect it. Its console scrolls and clears only its grid, and memory copies run a word at a time.
-- A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
 - Updated version from V0.1.0.0 to V7.1.0.8 (matching Fallout canon)
 - Boot messages now display authentic PIP-OS format
   - LOADER V1.1

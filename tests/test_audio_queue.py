@@ -25,7 +25,8 @@ LONG_LEN = 2000
 
 CHECKS = [
     "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "idle_status",
-    "b_play", "b_queue", "b_busy", "b_len0", "b_kernel", "b_busy_max", "b_status", "b_wait",
+    "b_play", "b_queue", "b_busy", "b_len0", "b_kernel", "b_len0_kernel", "b_len65537",
+    "b_null", "b_busy_max", "b_status", "b_wait",
     "c_first", "c_second", "c_status", "c_third", "c_third_waited", "c_status2", "c_wait",
     "c_done",
     "t_tone", "t_queue", "t_wait",
@@ -172,6 +173,8 @@ def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
         span(tr, 3, 4, play_ms(2400))
         span(tr, 3, 5, play_ms(4000))
         span(tr, 3, 6, play_ms(4800))
+        # Strict: one tick prints the stop and the start from one clock_ms, in IRQ context.
+        assert tr[8][1] == tr[9][1], tr  # the sample replaces the tone on one tick
         span(tr, 9, 10, play_ms(400))
         for i in (11, 15, 19, 23):  # cut after about 50 ms, nothing chained
             cut(tr, i, 50)

@@ -23,7 +23,13 @@ void pipos_startup_rom(pipos_startup_t *s);
 /* mem_info and sys_info contents. */
 void pipos_mem_info_rom(pip_mem_info_t *m);
 void pipos_sys_info_fill(pip_sys_info_t *s, uint32_t pipos_version, uint32_t board_rev,
-                         uint32_t soc, uint32_t mem_size);
+                         uint32_t soc, uint32_t mem_size, uint32_t hw_flags);
+
+/*
+ * sys_info's hw_flags: PIP_HW_RTC when a clock chip answered at boot,
+ * PIP_HW_AUDIO when the audio driver started. Every other bit is 0.
+ */
+uint32_t pipos_hw_flags(int rtc_present, int audio_ok);
 
 /*
  * An image's exit status: the low 8 bits of the value it passed to exit

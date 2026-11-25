@@ -20,6 +20,7 @@ CALL_CHECKS = [
     "tone_hz19", "tone_hz20001", "tone_ms0", "tone_ms60001", "volume_101",
     "seq_count0", "seq_bad_hz19", "seq_bad_hz20001", "seq_bad_ms0", "seq_bad_ms60001",
     "seq_bad_rest0", "seq_kernel", "seq_mmio", "seq_slot_end",
+    "seq_count0_kernel", "seq_count257_kernel",
     "idle_status", "idle_stop",
     "vol_start", "tone_1050", "tone_busy", "tone_wait", "tone_done",
     "vol_90", "tone_1100", "tone_1200", "replace_wait",
@@ -29,8 +30,8 @@ CALL_CHECKS = [
 ]
 
 # (op, hz, vol) of every marker, in order: the boot beep at the configured
-# volume, then each sound of audio_calls.c. A rest is a stop, and so is
-# a sound cut by the next one.
+# volume, then each sound of audio_calls.c. A rest is a stop. A start that
+# replaces a playing sound prints one stop first, at the same tick.
 CALL_TRACE = [
     ("tone", 1000, 70), ("stop", 0, 70),
     ("tone", 1050, 40), ("stop", 0, 40),
@@ -98,6 +99,7 @@ def test_calls(board, kernel_image, test_rom, tmp_path, need_mtools):
     lasted(tr, 2, 100)      # tone(1050, 100)
     # The 1100 Hz tone was replaced after about 50 ms, not after 5 s.
     cut(tr, 4, 50)
+    assert tr[5][3] == tr[6][3], tr     # the replacement's stop and start share a tick
     lasted(tr, 6, 100)      # tone(1200, 100)
     cut(tr, 8, 50)          # stopped after about 50 ms
     for i, ms in zip(range(10, 14), (60, 40, 60, 50)):

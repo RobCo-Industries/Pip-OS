@@ -67,6 +67,8 @@ static void errors(void)
     CK("mmio", pip_sample(at(MMIO_ADDR), 16), -PIP_EFAULT);
     CK("slot_end", pip_sample(at(SLOT_END - 8), 16), -PIP_EFAULT);
     CK("null", pip_sample(at(0), 16), -PIP_EFAULT);
+    /* Two errors at once: the length comes before the pointer. */
+    CK("len0_kernel", pip_sample(at(KERNEL_ADDR), 0), -PIP_EINVAL);
     CK("idle_status", pip_audio_status(), 0);
 
     /* An error leaves the sound that plays alone. */

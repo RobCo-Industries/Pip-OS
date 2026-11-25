@@ -51,7 +51,7 @@ With the default `backend = hdmi` the kernel prints no `ev=display` marker and d
 
 ## The card
 
-The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
+The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
 
 1. Entries with a FAT type byte (`0x01`, `0x04`, `0x06`, `0x0B`, `0x0C`, `0x0E`), in slot order.
 2. Then the other entries, in slot order. Some tools write a wrong type byte, and the mount reads the boot sector anyway.
@@ -114,11 +114,11 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
 
 ## Running the ROM
 
-After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/guide/api/umode.md) with the MMU on.
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/guide/api/umode.md) with the MMU on.
 
 1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
 2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
@@ -132,7 +132,7 @@ After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-
 | r0 | `0x017F0000`, the startup block |
 | r1 to r3 | 0 |
 | lr | `0x017F0080`, the return stub. Returning acts like `exit(r0)`. |
-| `abi_version`, `size` | `0x00010002`, 128 |
+| `abi_version`, `size` | `0x00010003`, 128 |
 | `heap_base`, `heap_size` | `0x01000000`, `0x007F0000` |
 | `stack_top`, `kind`, `flags`, `args` | `0x01800000`, 0, 0, empty |
 
@@ -176,7 +176,7 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -230,7 +230,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|

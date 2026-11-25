@@ -20,7 +20,7 @@ RTC_BASE = "2077-10-23T09:47:05"
 RTC_UNIX = calendar.timegm(time.strptime(RTC_BASE, "%Y-%m-%dT%H:%M:%S"))
 
 CALL_CHECKS = [
-    "unset_get", "unset_intact", "unset_avail0", "unset_read0", "unset_read0_intact",
+    "hw_no_rtc", "unset_get", "unset_intact", "unset_avail0", "unset_read0", "unset_read0_intact",
     "unset_get_kernel", "unset_get_mmio", "unset_get_straddle",
     "set", "get", "get_value", "get2", "advanced", "avail0", "read0", "read0_agrees",
     "get_kernel", "get_mmio", "get_straddle",
@@ -30,7 +30,7 @@ CALL_CHECKS = [
     "set_back", "get_back", "back_value", "set_max", "get_max", "max_clamped",
     "set_zero", "get_zero", "zero_value",
 ]
-RTC_CHECKS = ["avail0", "get", "read0", "read0_agrees", "set", "get_set", "set_value"]
+RTC_CHECKS = ["hw_rtc", "avail0", "get", "read0", "read0_agrees", "set", "get_set", "set_value"]
 WRITE_CHECKS = ["set_t1", "get_t1", "t1_value", "set_old", "get_old", "old_value"]
 BLANK_CHECKS = ["op4", "op_max", "off", "on"]
 

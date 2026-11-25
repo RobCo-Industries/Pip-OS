@@ -60,6 +60,9 @@ static void limits(void)
     CK("seq_kernel", pip_play_seq(at(KERNEL_ADDR), 1), -PIP_EFAULT);
     CK("seq_mmio", pip_play_seq(at(MMIO_ADDR), 1), -PIP_EFAULT);
     CK("seq_slot_end", pip_play_seq(at(SLOT_END - 2), 1), -PIP_EFAULT);
+    /* Two errors at once: the count comes before the pointer. */
+    CK("seq_count0_kernel", pip_play_seq(at(KERNEL_ADDR), 0), -PIP_EINVAL);
+    CK("seq_count257_kernel", pip_play_seq(at(KERNEL_ADDR), PIP_SEQ_MAX + 1), -PIP_EINVAL);
     CK("idle_status", pip_audio_status(), 0);
     CK("idle_stop", pip_audio_stop(), 0);
 }

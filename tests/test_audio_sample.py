@@ -22,7 +22,7 @@ RATE = 8000
 SLACK_MS = 150
 
 CHECKS = [
-    "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "idle_status",
+    "len0", "len65537", "len_max_u32", "kernel", "mmio", "slot_end", "null", "len0_kernel", "idle_status",
     "tone_2100", "err_len0", "err_kernel", "err_busy", "err_stop",
     "s800", "s800_busy", "s800_wait", "s800_done",
     "s1", "s1_wait",
@@ -133,8 +133,8 @@ def test_sample(board, kernel_image, test_rom, tmp_path, need_mtools):
     cut(tr, 20, 50)                    # 8000 bytes, cut by play_seq
     lasted(tr, 22, 60)                 # the note in full
     lasted(tr, 24, 80 * 1000 // RATE)  # 80 bytes: 10 ms
-    # A replacement stops the old sample and starts the new sound on the same tick.
-    for i in (13, 17, 21):
+    # A replacement stops the old sound and starts the new one on the same tick.
+    for i in (9, 13, 17, 21):
         assert tr[i][1] == tr[i + 1][1], (i, tr)
 
 

@@ -47,8 +47,10 @@ int pip_main(const pipos_startup_t *startup)
     uint32_t v = CANARY, t = 0, u = 0;
     uint32_t s;
     int ok;
+    pip_sys_info_t si;
 
     (void)startup;
+    CK("hw_no_rtc", pip_sys_info(&si) == 0 && (si.hw_flags & PIP_HW_RTC) == 0, 1);
     /* Not set. */
     CK("unset_get", pip_get_time(&v), -PIP_ENODEV);
     CK("unset_intact", v == CANARY, 1);

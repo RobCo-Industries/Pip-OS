@@ -87,8 +87,8 @@ static void sys_info(void)
     rt_hex("board_rev", si.board_rev);
     rt_hex("soc", si.soc);
     rt_hex("mem_size", si.mem_size);
-    rt_hex("reserved0", si.reserved[0]);
-    rt_hex("reserved1", si.reserved[1]);
+    rt_hex("hw_flags", si.hw_flags);
+    rt_hex("reserved", si.reserved);
     rt_end();
 }
 

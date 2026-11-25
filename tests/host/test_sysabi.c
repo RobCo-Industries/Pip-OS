@@ -10,7 +10,9 @@
 
 TEST(abi_values)
 {
-    CHECK_EQ(PIP_ABI_VERSION, 0x00010002);
+    CHECK_EQ(PIP_ABI_VERSION, 0x00010003);
+    CHECK_EQ(PIP_HW_RTC, 0x1u);
+    CHECK_EQ(PIP_HW_AUDIO, 0x4u);
     CHECK_EQ(PIP_SYS_SAMPLE_QUEUE, 0x26);
     CHECK_EQ(PIP_ROM_HEAP_SIZE, 0x007F0000);
     CHECK_EQ(PIPOS_ROM_STARTUP, 0x017F0000u);
@@ -37,7 +39,7 @@ TEST(startup_block)
 
     memset(&s, 0xaa, sizeof(s));
     pipos_startup_rom(&s);
-    CHECK_EQ(s.abi_version, 0x00010002u);
+    CHECK_EQ(s.abi_version, 0x00010003u);
     CHECK_EQ(s.size, 128u);
     CHECK_EQ(s.heap_base, 0x01000000u);
     CHECK_EQ(s.heap_size, 0x007F0000u);
@@ -61,15 +63,25 @@ TEST(info_structs)
     CHECK_EQ(m.stack_size, 0x00010000u);
 
     memset(&s, 0xaa, sizeof(s));
-    pipos_sys_info_fill(&s, 0x00070100u, 0x9000c1u, 0x2835u, 0x1c000000u);
+    pipos_sys_info_fill(&s, 0x00070100u, 0x9000c1u, 0x2835u, 0x1c000000u, PIP_HW_AUDIO);
     CHECK_EQ(s.size, 32u);
-    CHECK_EQ(s.abi_version, 0x00010002u);
+    CHECK_EQ(s.abi_version, 0x00010003u);
     CHECK_EQ(s.pipos_version, 0x00070100u);
     CHECK_EQ(s.board_rev, 0x9000c1u);
     CHECK_EQ(s.soc, 0x2835u);
     CHECK_EQ(s.mem_size, 0x1c000000u);
-    CHECK_EQ(s.reserved[0], 0u);
-    CHECK_EQ(s.reserved[1], 0u);
+    CHECK_EQ(s.hw_flags, PIP_HW_AUDIO);
+    CHECK_EQ(s.reserved, 0u);
+}
+
+TEST(hw_flags)
+{
+    CHECK_EQ(pipos_hw_flags(0, 0), 0u);
+    CHECK_EQ(pipos_hw_flags(1, 0), PIP_HW_RTC);
+    CHECK_EQ(pipos_hw_flags(0, 1), PIP_HW_AUDIO);
+    CHECK_EQ(pipos_hw_flags(1, 1), PIP_HW_RTC | PIP_HW_AUDIO);
+    /* Any non-zero answer sets only its own bit: bit 1 and bits 3 to 31 stay 0. */
+    CHECK_EQ(pipos_hw_flags(-1, 7), 0x5u);
 }
 
 TEST(log_char)

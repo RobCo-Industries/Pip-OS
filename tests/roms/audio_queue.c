@@ -128,6 +128,10 @@ static void busy(void)
     CK("b_busy", queue(3, 800), -PIP_EBUSY);
     CK("b_len0", pip_sample_queue(buf, 0), -PIP_EINVAL);
     CK("b_kernel", pip_sample_queue(at(KERNEL_ADDR), 16), -PIP_EFAULT);
+    /* Length, pointer and busy all apply: the length comes first. */
+    CK("b_len0_kernel", pip_sample_queue(at(KERNEL_ADDR), 0), -PIP_EINVAL);
+    CK("b_len65537", pip_sample_queue(buf, PIP_SAMPLE_MAX + 1), -PIP_EINVAL);
+    CK("b_null", pip_sample_queue(at(0), 16), -PIP_EFAULT);
     CK("b_busy_max", queue(4, PIP_SAMPLE_MAX), -PIP_EBUSY);
     CK("b_status", pip_audio_status(), 1);
     ms = wait_quiet();

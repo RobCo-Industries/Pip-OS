@@ -98,7 +98,8 @@ TEST(info_offsets)
     CHECK_EQ(offsetof(pip_sys_info_t, board_rev), 0x0C);
     CHECK_EQ(offsetof(pip_sys_info_t, soc), 0x10);
     CHECK_EQ(offsetof(pip_sys_info_t, mem_size), 0x14);
-    CHECK_EQ(offsetof(pip_sys_info_t, reserved), 0x18);
+    CHECK_EQ(offsetof(pip_sys_info_t, hw_flags), 0x18);
+    CHECK_EQ(offsetof(pip_sys_info_t, reserved), 0x1C);
 
     CHECK_EQ(offsetof(pip_mem_info_t, heap_base), 0x00);
     CHECK_EQ(offsetof(pip_mem_info_t, heap_size), 0x04);
