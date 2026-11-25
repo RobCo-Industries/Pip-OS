@@ -22,11 +22,14 @@
  *                             keeps the script channel from running;
  *                             replies t_ms=<tick_ms()>
  *
- * Each attach prints ev=holo_attach rc=<rc> ms=<ms blocked> samples=<PCM
- * samples output meanwhile> polls=<pipos_poll() passes meanwhile>
- * t0_ms=<tick_ms() at its start> t1_ms=<tick_ms() at its end>. The audio
- * trace's t_ms is within one tick of tick_ms(). The
- * shipped image has none of this: tests/test_slot.py checks it.
+ * Each attach prints ev=holo_attach rc=<rc> ms=<ms blocked> polls=<pipos_poll()
+ * passes meanwhile> t0_ms=<tick_ms() at its start> t1_ms=<tick_ms() at its
+ * end> pcm0= pos0= pcm1= pos1=. pcm0 and pcm1 are audio_busy() at the start
+ * and at the end: 1 while a sound plays. pos0 and pos1 are the samples the
+ * current or last PCM play has output, from audio_pcm_samples(). Each pair
+ * is read with IRQs masked, so the PCM interrupt cannot run between them.
+ * The audio trace's t_ms is within one tick of tick_ms(). The shipped
+ * image has none of this: tests/test_slot.py checks it.
  */
 #ifdef PIPOS_HOLO_TEST
 
@@ -35,6 +38,7 @@
 #include <robco/audio.h>
 #include <robco/holo.h>
 #include <robco/input.h>
+#include <robco/irq.h>
 #include <robco/klibc.h>
 #include <robco/sd.h>
 #include <robco/tick.h>
@@ -134,19 +138,33 @@ static int ram_attach_inner(void)
     return 0;
 }
 
+/* The PCM state in one IRQ-masked read: *pos gets the play's samples output. */
+static int pcm_state(uint32_t *pos)
+{
+    uint32_t s = irq_save();
+    int busy = audio_busy();
+
+    (void)audio_pcm_samples(pos);
+    irq_restore(s);
+    return busy;
+}
+
 static int ram_attach(void)
 {
     uint32_t t0 = timer_now_ms();
     uint32_t k0 = tick_ms();
-    uint32_t s0 = audio_pcm_samples(NULL);
+    uint32_t pos0, pos1;
+    int pcm0 = pcm_state(&pos0);
     uint32_t p0 = pipos_poll_passes();
     int rc = ram_attach_inner();
+    int pcm1 = pcm_state(&pos1);
     uint32_t k1 = tick_ms();
 
     k_printf("@RC stage=" PIPOS_STAGE
-             " ev=holo_attach rc=%d ms=%u samples=%u polls=%u t0_ms=%u t1_ms=%u\n", rc,
-             (unsigned)(timer_now_ms() - t0), (unsigned)(audio_pcm_samples(NULL) - s0),
-             (unsigned)(pipos_poll_passes() - p0), (unsigned)k0, (unsigned)k1);
+             " ev=holo_attach rc=%d ms=%u polls=%u t0_ms=%u t1_ms=%u pcm0=%d pos0=%u"
+             " pcm1=%d pos1=%u\n", rc,
+             (unsigned)(timer_now_ms() - t0), (unsigned)(pipos_poll_passes() - p0),
+             (unsigned)k0, (unsigned)k1, pcm0, (unsigned)pos0, pcm1, (unsigned)pos1);
     return rc;
 }
 

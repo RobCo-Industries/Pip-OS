@@ -631,14 +631,38 @@ def attach_span(vm):
     return m, int(m["t0_ms"]), int(m["t1_ms"])
 
 
+def pcm_state(m):
+    """(pcm0, pos0, pcm1, pos1) from the attach marker: the kernel's own PCM state,
+    read with IRQs masked at the attach's start and end. pcm is audio_busy(),
+    pos the samples the play has output."""
+    return int(m["pcm0"]), int(m["pos0"]), int(m["pcm1"]), int(m["pos1"])
+
+
 def audio_trace(vm):
     """(op, t_ms) of each audio trace line, on the audio clock."""
     return [(a["op"], int(a["t_ms"])) for a in pipos_markers(vm, "audio")]
 
 
+def trace_after(vm, ev):
+    """The audio trace with every record queued before the ROM's ev=<ev>.
+
+    The ROM logs ev=wait after ev=<ev> and sits in wait_event. The trace
+    prints from audio_poll() at the start of each pipos_poll() pass, and
+    only a pass that begins after that ev=wait answers the holo command sent
+    now. So that pass printed every record queued before ev=<ev>."""
+    t = time.monotonic()
+    while not re.search(rf"stage=testrom ev={ev}\b(?:(?!stage=testrom ev={ev}\b).)*"
+                        r"stage=testrom ev=wait\b", vm.serial, re.S):
+        assert time.monotonic() - t < TIMEOUT, f"no testrom ev=wait after ev={ev}\n{vm.serial}"
+        time.sleep(0.02)
+    holo(vm, "reads")
+    return audio_trace(vm)
+
+
 # The attach marker's t0_ms and t1_ms are tick_ms(). The audio trace's t_ms
 # is the audio clock, seeded from tick_ms() and within one tick of it.
 CLOCKS_MS = TICK_MS
+SAMPLE_RATE = 8000
 SAMPLE_MS = 7500                # the ROM's dial_push sample: 60000 bytes at 8 kHz
 
 
@@ -646,7 +670,10 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
                                       need_mtools):
     """holo_attach() may block 1.2 s inside a work pass: no pipos_poll()
     pass runs meanwhile. The PCM interrupt plays from the kernel's copy of
-    the sample, so the sound goes on. Recorded in docs/ARCHITECTURE.md."""
+    the sample, so the sound goes on. Recorded in docs/ARCHITECTURE.md.
+
+    The sound part reads the kernel's PCM state from the attach marker.
+    The trace gives only the sample's start, read after a barrier."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
 
@@ -661,35 +688,32 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
             wait_rom(vm, "tapeev", count + 1)
             assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
-            ms, samples, polls = int(m["ms"]), int(m["samples"]), int(m["polls"])
-            tr = audio_trace(vm)
-            print(f"\nattach: ms={ms} samples={samples} polls={polls} t0={a0} t1={a1} "
-                  f"insert={t_in} audio={tr}")
+            ms, polls = int(m["ms"]), int(m["polls"])
+            pcm0, pos0, pcm1, pos1 = pcm_state(m)
+            # ev=tapeev comes after the attach.
+            tr = trace_after(vm, "tapeev")
+            print(f"\nattach: {m} insert={t_in} audio={tr}")
             assert ms >= 1200, m
             # The witness: the main loop's work did not run during the attach.
             assert polls == 0, m
-            # Never more samples than due, on any host.
-            assert samples <= ms * 8 + 8, m
             no_exception(vm)
-            # The sample was playing for the whole attach: it started before
-            # t0 and nothing ended it before t1.
-            assert tr and tr[0][0] == "pcm" and tr[0][1] <= a0 + CLOCKS_MS, (m, tr)
-            end = tr[1] if len(tr) > 1 else None
-            if end is not None and end[1] < a1 - CLOCKS_MS:
-                assert end[0] == "pcm_end" and end[1] - tr[0][1] >= SAMPLE_MS - CLOCKS_MS, \
-                    f"the sound stopped during the attach: {m} {tr}"
-                # The whole sample played out before the attach ended. Only
-                # a late insert explains it: an attach right after the
-                # debounce would still end after the sample.
-                assert t_in + SETTLE_MS + 1200 + CLOCKS_MS >= end[1], \
-                    f"the insert at {t_in} ms left time to attach before the sample ended: " \
-                    f"{m} {tr}"
-                raise CannotJudge(f"the insert came at {t_in} ms, the sample ended at {end[1]} ms, "
-                                  f"before the attach ended at {a1} ms")
-            # The PCM interrupt ran during it. How many samples it output
-            # depends on how often QEMU delivers the timer interrupt on this
-            # host: a late interrupt skips to the sample due.
-            assert samples > 0, m
+            # The sample started before the insert, so before the barrier.
+            assert tr and tr[0][0] == "pcm" and tr[0][1] <= t_in + CLOCKS_MS, (m, tr)
+            due = tr[0][1] + SAMPLE_MS
+            if not (pcm0 and pcm1):
+                # Not playing at the start or at the end. The sample's
+                # length says when it was due to end: only an end due
+                # before then excuses it.
+                edge = a1 if pcm0 else a0
+                assert due <= edge + CLOCKS_MS, \
+                    f"the sound stopped with {due - edge} ms of the sample left: {m} {tr}"
+                raise CannotJudge(f"the insert came at {t_in} ms, the sample was due to end at "
+                                  f"{due} ms, the attach ran {a0} to {a1} ms")
+            # Playing at both ends, and the PCM interrupt output samples
+            # in between, never more than 8 kHz makes due in ms. The count
+            # depends on how often QEMU delivers the interrupt on this host:
+            # a late interrupt skips to the sample due.
+            assert 0 < pos1 - pos0 <= ms * SAMPLE_RATE // 1000 + 8, m
 
     judged(attempt)
 
@@ -726,50 +750,34 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
             n = int(wait_rom(vm, "streamed")[0]["n"])
             assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
-            ms = int(m["ms"])
-            tr = audio_trace(vm)
+            pcm0, pos0, pcm1, pos1 = pcm_state(m)
+            # ev=streamed comes after the stream's last queue call.
+            tr = trace_after(vm, "streamed")
             lastq = rom_markers(vm, "lastq")
-            print(f"\nstream: chunks={n} attach ms={ms} t0={a0} t1={a1} insert={t_in} "
-                  f"lastq={lastq} audio={tr}")
-            assert ms >= 1200 and m["polls"] == "0", m
+            print(f"\nstream: chunks={n} {m} insert={t_in} lastq={lastq} audio={tr}")
+            assert int(m["ms"]) >= 1200 and m["polls"] == "0", m
             no_exception(vm)
-            # The test inserts after ev=stream, so the first play starts
-            # before the insert, and the attach comes a debounce later.
-            assert tr and tr[0][0] == "pcm" and tr[0][1] <= t_in + CLOCKS_MS, (t_in, tr)
+            # The attach comes a debounce after the insert.
             assert a0 + CLOCKS_MS >= t_in + SETTLE_MS, (t_in, m)
-            before = [k for k, (_, t) in enumerate(tr) if t < a0 - CLOCKS_MS]
-            assert before, (m, tr)
-            last = before[-1]
-            if tr[last][0] == "pcm_end":
+            if not pcm0:
                 # The stream ran dry before the attach. The ROM's last queue
                 # call before the attach was full, or filled it, so at least
                 # a chunk was queued then: only a ROM late by a chunk explains it.
-                assert len(lastq) == 1, (lastq, vm.serial)
+                dry = [t for op, t in tr if op == "pcm_end" and t <= a0 + CLOCKS_MS]
+                assert dry and len(lastq) == 1, (m, tr, lastq)
                 tq = int(lastq[0]["t_ms"])
-                late = tr[last][1] - tq
+                late = dry[-1] - tq
                 assert late + 2 * CLOCKS_MS >= STREAM_CHUNK_MS, \
                     f"the stream ran dry {late} ms after the ROM's last queue call at {tq} ms, " \
                     f"before the attach: {m} {tr}"
                 raise CannotJudge(f"the ROM's last queue call before the attach came at {tq} ms, "
-                                  f"the stream ran dry at {tr[last][1]} ms, {late} ms later, "
+                                  f"the stream ran dry at {dry[-1]} ms, {late} ms later, "
                                   f"before the attach at {a0} ms")
-            # 1. Live: a chunk was playing when the attach began.
-            assert tr[last][0] in ("pcm", "pcm_next"), (m, tr)
-            # 2. The play ends inside the attach. At its start at most the
-            # rest of the playing chunk and one waiting chunk were queued,
-            # STREAM_AHEAD_MS, so it ends by t0 + 200 ms, one tick between
-            # the clocks.
-            end = next((k for k in range(last + 1, len(tr)) if tr[k][0] != "pcm_next"), None)
-            assert end is not None and tr[end][0] == "pcm_end", (m, tr)
-            assert a0 - CLOCKS_MS <= tr[end][1] <= a0 + STREAM_AHEAD_MS + CLOCKS_MS, (m, tr)
-            # 3. The next chunk starts a new play after the attach ends.
-            assert end + 1 < len(tr) and tr[end + 1][0] == "pcm", (m, tr)
-            assert tr[end + 1][1] >= a1 - CLOCKS_MS, (m, tr)
-            # 4. The silence lasts the attach less what was queued at its
-            # start, less one tick: the new play's t_ms is the audio clock,
-            # which moves at each 10 ms tick.
-            gap = tr[end + 1][1] - tr[end][1]
-            assert gap >= ms - STREAM_AHEAD_MS - TICK_MS, (gap, m, tr)
-            no_exception(vm)
+            # 1. Live at the start, dry at the end, and the play output no
+            # more than the two chunks queued at the start.
+            assert pcm1 == 0, m
+            assert 0 <= pos1 - pos0 <= STREAM_AHEAD_MS * SAMPLE_RATE // 1000, m
+            # 2. The next chunk starts a new play after the attach ends.
+            assert any(op == "pcm" and t >= a1 - CLOCKS_MS for op, t in tr), (m, tr)
 
     judged(attempt)

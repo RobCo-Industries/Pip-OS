@@ -228,20 +228,23 @@ When the card of a running slot tape leaves, `on_svc()` in `syscall.c` sees it a
 
 #### A slow attach
 
-`holo_attach()` blocks for up to about 1.2 s on a slow card, inside a work pass. `test_slow_attach_blocks_main_loop` measures it with the test backend and a 1200 ms delay, while the ROM plays a 7.5 s sample. The `holo_attach` marker reports three values for the attach:
+`holo_attach()` blocks for up to about 1.2 s on a slow card, inside a work pass. `test_slow_attach_blocks_main_loop` measures it with the test backend and a 1200 ms delay, while the ROM plays a 7.5 s sample. The `holo_attach` marker reports these values for the attach:
 
 - `ms`: how long it blocked.
 - `polls`: the `pipos_poll()` passes that ran meanwhile. It is 0 on every run: the main loop's work stops for the whole attach. The test asserts it.
-- `samples`: the PCM samples the interrupt output meanwhile.
+- `pcm0` and `pcm1`: `audio_busy()` at its start and its end, 1 while a sound plays.
+- `pos0` and `pos1`: the samples the current PCM play has output at its start and its end, from `audio_pcm_samples()`.
+
+Each pair is read with IRQs masked, so the PCM interrupt cannot run between the two reads.
 
 The attach runs in `pipos_slot_work()`, inside whichever work call the ROM made: `sleep_ms`, `poll_event`, `wait_event`, `read_buttons`, `read_dial`, `file_read`, `holo_enumerate` or `holo_eject_event`. The ROM stays blocked in that call for the whole attach. What the listener hears depends on how the ROM plays sound:
 
 - `sample` plays through. The kernel copies the whole buffer, and the channel 3 timer interrupt reads it with no refill from the main loop.
 - A stream through `sample_queue` lasts only as long as what was queued. The kernel has two buffers: one plays and one waits. Each holds at most 65536 bytes, 8.192 s at 8 kHz. So at most the rest of the playing buffer plus one waiting buffer is queued ahead, up to 16.4 s. A ROM that queues less than the attach takes runs dry. The play ends with the trace marker `ev=audio op=pcm_end`, the output goes silent, and `audio_status` returns 0 when the ROM can call it again. After the attach, the ROM's next `sample_queue` starts a new play: `ev=audio op=pcm`.
 
-`test_slow_attach_runs_a_stream_dry` shows it. The ROM streams 100 ms chunks from a `sleep_ms` loop, so at most 200 ms are queued ahead. It streams until it gets the card's `PIP_EV_TAPE`, and the test inserts the card once the stream runs, so the attach always lands in a live stream. The `holo_attach` marker gives the attach's start and end on the tick clock, and the test ties the trace to them. A chunk plays when the attach begins. The play ends within 200 ms of that start. The next `pcm` comes after the attach ends. The gap is at least the attach's length less 210 ms. Local runs measure about 1080 ms. `test_slow_attach_blocks_main_loop` checks the same way that its sample plays from before the attach to after it.
+`test_slow_attach_runs_a_stream_dry` shows it. The ROM streams 100 ms chunks from a `sleep_ms` loop, so at most 200 ms are queued ahead. It streams until it gets the card's `PIP_EV_TAPE`, and the test inserts the card once the stream runs, so the attach always lands in a live stream. The test reads the kernel's PCM state from the `holo_attach` marker. A play runs at the attach's start and none at its end. The play outputs at most the 1600 samples, 200 ms, that were queued at the start. The next `pcm` in the trace comes after the attach ends. `test_slow_attach_blocks_main_loop` checks that its sample plays at both ends of the attach and that the interrupt output samples in between.
 
-`samples` does not measure the sound. It counts the PCM interrupts QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. How many arrive depends on the host. On a macOS host, QEMU delivers about 800 a second, idle or not: 940 to 1120 during the attach, and about 5800 for the whole 7.5 s sample. On the Linux CI runners it delivers all 8000 a second: 9602 during the attach. With `-icount` the count is 9600. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`.
+`pos1 - pos0` does not measure the sound's pace. It counts the samples the PCM interrupt output, one per interrupt QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. The driver keeps the clock's position in the buffer to itself, and RobCo-Core has no call that reads it. How many interrupts arrive depends on the host. On a macOS host, QEMU delivers about 800 to 1000 a second, idle or not: 1149 during one 1200 ms attach. On the Linux CI runners it delivered all 8000 a second: 9602 during the attach. With `-icount` the count is 9600. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`. That the sound plays through rests on `pcm1`: the play still runs when the attach ends.
 
 The display freezes for the whole attach: the ROM waits inside its call, so it presents nothing, and the kernel draws nothing. Input is not lost: GPIO buttons and the dial are sampled by the tick and queued. A card that settles fast attaches in milliseconds, so this cost hits only a slow card, once per insertion. Nothing here is hidden from the ROM, and no fix is in place.
 
