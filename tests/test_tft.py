@@ -24,6 +24,10 @@ from PIL import Image
 from harness.boot import boot
 from harness.env import minimal_env
 
+from hosttiming import judge_stream, judged, park_args
+from panelsends import (FULL_BYTES, H, W, Sends, both_sends, judged_sends, panic_sends,
+                        window_sends)
+
 from pipos_helpers import (TIMEOUT, assert_rom_checks, booted, config, config_issues, dump,
                            make_card, no_exception, one, pipos_markers, press, rom_markers,
                            screenshot, script, wait_markers)
@@ -32,8 +36,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROM = "PIPBOY/ROM1.ROM"
 CFG = "PIPBOY/PIPOS.CFG"
 TAPE = "PIPBOY/HOLO/TAPE.HTP"
-W, H = 320, 240
-FULL_BYTES = W * H * 2
 RATE = 8000
 # tests/roms/tft_stream.c
 CHUNKS = 3
@@ -107,29 +109,6 @@ def wait_rom(vm, ev, count):
     wait_until(lambda: len(rom_markers(vm, ev)) >= count, vm)
 
 
-def ordered(vm):
-    """(kind, marker) of the ROM's step and shown lines and the kernel's sends, in order."""
-    out = []
-    for m in vm.markers():
-        if m.get("stage") == "testrom" and m.get("ev") in ("step", "shown"):
-            out.append((m["ev"], m))
-        elif m.get("stage") == "pipos" and m.get("ev") == "tft_send":
-            out.append(("send", m))
-    return out
-
-
-def sends_of_step(vm, n):
-    """The sends from ev=step n=<n> to its ev=shown."""
-    seq = ordered(vm)
-    i = next(k for k, (kind, m) in enumerate(seq) if kind == "step" and m["n"] == str(n))
-    j = next(k for k in range(i, len(seq)) if seq[k][0] == "shown")
-    return [m for kind, m in seq[i + 1:j] if kind == "send"]
-
-
-def rect(m):
-    return tuple(int(m[k]) for k in ("x", "y", "w", "h"))
-
-
 def test_shipped_image_has_no_hook(board, kernel_image, tft_build, tmp_path, need_mtools):
     with open(kernel_image, "rb") as f:
         shipped = f.read()
@@ -191,41 +170,28 @@ def test_init_failure_falls_back_to_hdmi(board, tft_build, test_rom, test_holo, 
 
 
 def test_both_panel_matches_hdmi(board, tft_build, test_rom, test_holo, tmp_path, need_mtools):
-    image, model = tft_build
-    sd = card(tmp_path, display_cfg("backend = both"),
-              {ROM: test_rom("tft_frames"), TAPE: test_holo("tape")})
-    with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
-        wait_rom(vm, "shown", 1)
-        disp = one(vm, "display")
-        assert (disp["backend"], disp["tft"]) == ("both", "absent"), disp
-        first = sends(vm)[0]
-        assert first["why"] == "full" and rect(first) == (0, 0, W, H), first
-        assert_panel_is_hdmi(vm, model, tmp_path)
-        for n in range(1, 5):
+    def strict():
+        image, model = tft_build
+        sd = card(tmp_path, display_cfg("backend = both"),
+                  {ROM: test_rom("tft_frames"), TAPE: test_holo("tape")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT,
+                  extra_args=park_args(board)) as vm:
+            wait_rom(vm, "shown", 1)
+            disp = one(vm, "display")
+            assert (disp["backend"], disp["tft"]) == ("both", "absent"), disp
+            assert_panel_is_hdmi(vm, model, tmp_path)
+            for n in range(1, 5):
+                press(vm, "select")
+                wait_rom(vm, "shown", n + 1)
+                if n == 2:
+                    assert_panel_is_hdmi(vm, model, tmp_path)
             press(vm, "select")
-            wait_rom(vm, "shown", n + 1)
-            if n == 2:
-                assert_panel_is_hdmi(vm, model, tmp_path)
-        press(vm, "select")
-        vm.wait_for("@RC stage=pipos ev=rom_exit", timeout=TIMEOUT)
-        assert_rom_checks(vm, ["holo", "off", "on"])
-        no_exception(vm)
-    unchanged = sends_of_step(vm, 1)
-    assert [(rect(m), m["bytes"]) for m in unchanged] == [((0, 0, 0, 0), "0")], unchanged
-    small = sends_of_step(vm, 2)
-    assert [rect(m) for m in small] == [(101, 57, 3, 2)], small
-    # CASET, PASET and RAMWR with their parameters, then 2 bytes per pixel.
-    assert int(small[0]["bytes"]) == 11 + 3 * 2 * 2, small
-    holo = sends_of_step(vm, 3)
-    assert [(m["why"], rect(m)) for m in holo] == [("full", (0, 0, W, H))], holo
-    # The wake itself sends the whole frame, so the present after it sends nothing.
-    seq = ordered(vm)
-    shown3 = [k for k, (kind, m) in enumerate(seq) if kind == "shown"][3]
-    step4 = next(k for k, (kind, m) in enumerate(seq) if kind == "step" and m["n"] == "4")
-    woke = [m for kind, m in seq[shown3 + 1:step4] if kind == "send"]
-    assert [(m["why"], rect(m)) for m in woke] == [("full", (0, 0, W, H))], woke
-    assert int(woke[0]["bytes"]) >= FULL_BYTES, woke
-    assert [rect(m) for m in sends_of_step(vm, 4)] == [(0, 0, 0, 0)]
+            vm.wait_for("@RC stage=pipos ev=rom_exit", timeout=TIMEOUT)
+            assert_rom_checks(vm, ["holo", "off", "on"])
+            no_exception(vm)
+        return both_sends(vm.markers())
+
+    judged_sends(strict)
 
 
 def test_tft_only_shows_boot_text_and_panic_on_panel(board, tft_build, tmp_path, need_mtools):
@@ -255,97 +221,82 @@ def test_stream_while_redrawing(board, tft_build, test_rom, tmp_path, need_mtool
 
     PCM plays from a timer interrupt, which the polled SPI transfer leaves
     on. The ROM queues the next chunk between presents, so a chunk must
-    outlast one present.
+    outlast one present. The ROM reports the longest time between its queue
+    calls: when that reaches a chunk's length, the host stalled QEMU and
+    the run cannot judge the claim. See tests/hosttiming.py.
     """
     image, _ = tft_build
-    sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_stream")})
-    with booted(image, board, sd=sd) as vm:
-        assert_rom_checks(vm, ["start", "queue"])
-        stream = rom_markers(vm, "stream")[0]
-        frames = int(stream["frames"])
-        tr = wait_markers(vm, "audio", count=CHUNKS + 1)
-        full = [m for m in sends(vm) if int(m["bytes"]) >= FULL_BYTES]
-        no_exception(vm)
-    print(f"\n{board}: {frames} frames, {len(full)} full sends while streaming, "
-          f"longest present {stream['max_ms']} ms")
-    ops = [m["op"] for m in tr]
-    assert ops == ["pcm"] + ["pcm_next"] * (CHUNKS - 1) + ["pcm_end"], ops
-    for i, m in enumerate(tr[:-1]):
-        data = bytes((k * 7 + i * 31) & 0xFF for k in range(CHUNK_LEN))
-        assert m["crc"] == f"{zlib.crc32(data):08x}", (i, m)
-    # Each chunk plays in full, the next right after it: no gap, no restart.
-    t = [int(m["t_ms"]) for m in tr]
-    chunk_ms = CHUNK_LEN * 1000 // RATE
-    for i in range(1, CHUNKS + 1):
-        assert chunk_ms * i <= t[i] - t[0] <= chunk_ms * i + 500, (i, t)
-    assert frames >= CHUNKS and len(full) >= CHUNKS, (frames, len(full))
+    crcs = [f"{zlib.crc32(bytes((k * 7 + i * 31) & 0xFF for k in range(CHUNK_LEN))):08x}"
+            for i in range(CHUNKS)]
+
+    def attempt():
+        sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_stream")})
+        with booted(image, board, sd=sd, extra_args=park_args(board)) as vm:
+            assert_rom_checks(vm, ["start", "queue"])
+            stream = rom_markers(vm, "stream")[0]
+            frames = int(stream["frames"])
+            tr = wait_markers(vm, "audio", count=CHUNKS + 1)
+            full = [m for m in sends(vm) if int(m["bytes"]) >= FULL_BYTES]
+            no_exception(vm)
+        print(f"\n{board}: {frames} frames, {len(full)} full sends while streaming, "
+              f"longest present {stream['max_ms']} ms, longest queue gap "
+              f"{stream['max_gap_ms']} ms")
+        judge_stream(stream, tr, len(full), CHUNKS, CHUNK_LEN, RATE, crcs)
+
+    judged(attempt)
 
 
 def test_rotation_0_sends_only_the_visible_window(board, tft_build, test_rom, tmp_path,
                                                   need_mtools):
     """At 0 degrees the panel shows the left 240x240: changes right of it are never sent."""
-    image, model = tft_build
-    sd = card(tmp_path, display_cfg("backend = both\ntft_rotation = 0"),
-              {ROM: test_rom("tft_window")})
-    with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
-        wait_rom(vm, "shown", 1)
-        for n in range(1, 3):
-            press(vm, "select")
-            wait_rom(vm, "shown", n + 1)
-        img = screenshot(vm, tmp_path)
-        view = panel_view(vm, model, rotation=0)
-        no_exception(vm)
-    first = sends_of_step(vm, 0)
-    # The ROM's scene covers the whole window, and no more.
-    assert [rect(m) for m in first] == [(0, 0, H, H)], first
-    hidden = sends_of_step(vm, 1)
-    assert [(rect(m), m["bytes"]) for m in hidden] == [((0, 0, 0, 0), "0")], hidden
-    pixel = sends_of_step(vm, 2)
-    assert [(m["why"], rect(m)) for m in pixel] == [("diff", (10, 20, 1, 1))], pixel
-    # CASET, PASET and RAMWR with their parameters, then one pixel.
-    assert int(pixel[0]["bytes"]) == 11 + 2, pixel
-    small = img.resize((W, H), Image.NEAREST)
-    assert small.resize((640, 480), Image.NEAREST).tobytes() == img.tobytes()
-    px = small.load()
-    assert px[10, 20] == (0xFF, 0x00, 0xFF) and px[300, 200] == (0x00, 0xFF, 0x00)
-    bad = [(x, y) for y in range(H) for x in range(H) if view[y][x] != rgb565(*px[x, y])]
-    assert not bad, f"{len(bad)} pixels differ, first {bad[:5]}"
+    def strict():
+        image, model = tft_build
+        sd = card(tmp_path, display_cfg("backend = both\ntft_rotation = 0"),
+                  {ROM: test_rom("tft_window")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT,
+                  extra_args=park_args(board)) as vm:
+            wait_rom(vm, "shown", 1)
+            for n in range(1, 3):
+                press(vm, "select")
+                wait_rom(vm, "shown", n + 1)
+            img = screenshot(vm, tmp_path)
+            view = panel_view(vm, model, rotation=0)
+            no_exception(vm)
+        small = img.resize((W, H), Image.NEAREST)
+        assert small.resize((640, 480), Image.NEAREST).tobytes() == img.tobytes()
+        px = small.load()
+        assert px[10, 20] == (0xFF, 0x00, 0xFF) and px[300, 200] == (0x00, 0xFF, 0x00)
+        bad = [(x, y) for y in range(H) for x in range(H) if view[y][x] != rgb565(*px[x, y])]
+        assert not bad, f"{len(bad)} pixels differ, first {bad[:5]}"
+        return window_sends(vm.markers())
+
+    judged_sends(strict)
 
 
 def test_panic_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, need_mtools):
     """A panic after power blanked the screen wakes the panel, then sends the whole console."""
-    image, _ = tft_build
-    sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_window")})
-    with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
-        wait_rom(vm, "shown", 1)
-        for n in range(1, 3):
+    def strict():
+        image, _ = tft_build
+        sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_window")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT,
+                  extra_args=park_args(board)) as vm:
+            wait_rom(vm, "shown", 1)
+            for n in range(1, 3):
+                press(vm, "select")
+                wait_rom(vm, "shown", n + 1)
             press(vm, "select")
-            wait_rom(vm, "shown", n + 1)
-        press(vm, "select")
-        wait_rom(vm, "dark", 1)
-        assert_rom_checks(vm, ["off"])
-        assert screenshot(vm, tmp_path).getcolors() == [(640 * 480, (0, 0, 0))]
-        vm.send("panic DARK\n", port=1)
-        vm.wait_for("ev=panic msg=DARK", timeout=TIMEOUT)
-        wait_until(lambda: any(m["why"] == "full" for m in after_panic(vm)), vm)
-        # HDMI: the panic text lands on the black screen.
-        img = screenshot(vm, tmp_path)
-        assert len(img.getcolors(640 * 480)) > 1, img.getcolors(640 * 480)
-    seq = after_panic(vm)
-    assert [m["why"] for m in seq] == ["wake", "full"], seq
-    # SLPOUT, then DISPON: one command byte each, DC low.
-    want = zlib.crc32(bytes([0, 0x11, 0, 0x29]))
-    assert (rect(seq[0]), seq[0]["bytes"], seq[0]["crc"]) == \
-        ((0, 0, 0, 0), "2", f"{want:08x}"), seq[0]
-    assert rect(seq[1]) == (0, 0, W, H) and int(seq[1]["bytes"]) >= FULL_BYTES, seq[1]
+            wait_rom(vm, "dark", 1)
+            assert_rom_checks(vm, ["off"])
+            assert screenshot(vm, tmp_path).getcolors() == [(640 * 480, (0, 0, 0))]
+            vm.send("panic DARK\n", port=1)
+            vm.wait_for("ev=panic msg=DARK", timeout=TIMEOUT)
+            wait_until(lambda: any(m["why"] == "full"
+                                   for m in Sends(vm.markers()).after_panic()), vm)
+            # HDMI: the panic text lands on the black screen.
+            img = screenshot(vm, tmp_path)
+            assert len(img.getcolors(640 * 480)) > 1, img.getcolors(640 * 480)
+        # SLPOUT, then DISPON: one command byte each, DC low.
+        return panic_sends(vm.markers(), zlib.crc32(bytes([0, 0x11, 0, 0x29])))
 
+    judged_sends(strict)
 
-def after_panic(vm):
-    """The sends after the panic marker."""
-    out, seen = [], False
-    for m in vm.markers():
-        if m.get("stage") == "pipos" and m.get("ev") == "panic":
-            seen = True
-        elif seen and m.get("stage") == "pipos" and m.get("ev") == "tft_send":
-            out.append(m)
-    return out

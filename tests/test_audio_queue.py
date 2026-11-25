@@ -12,6 +12,7 @@ side for a loaded machine. The tests do not count PCM IRQs.
 import time
 import zlib
 
+from hosttiming import judge_chain, judged
 from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, config, dump, make_card,
                            no_exception, one, pipos_markers, rom_one, wait_markers)
 
@@ -126,32 +127,62 @@ def play_ms(n):
     return n * 1000 // RATE
 
 
+def fresh(k):
+    """A long chain chunk that started afresh after an underrun: pcm at volume 70."""
+    return ("pcm", k[1], 70, k[2]) if k[0] == "pcm_next" else None
+
+
+def judge_long_chain(tr, gap):
+    """Judges the long chain's trace, tr[LONG:], with the ROM's l_gap max_ms.
+
+    Strict in every run: each chunk appears once, in order, with its length
+    and CRC, the chain ends, and each chunk plays in full. A stalled host can
+    make a chunk run dry: a pcm_end then a fresh pcm of the next chunk in
+    place of its pcm_next. That is excused only when the gap reached a
+    chunk, and a late switch only when the gap also reached its lateness.
+    See hosttiming.judge_chain().
+    """
+    judge_chain([t[0] for t in tr], [t[1] for t in tr], TRACE[LONG:], END, fresh,
+                play_ms(LONG_LEN), 500, gap, "in the long chain")
+
+
 def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
-    sd = card(tmp_path, test_rom("audio_queue"), config(volume=70, beep="no"))
-    with booted(kernel_image, board, sd=sd) as vm:
-        assert_rom_checks(vm, CHECKS)
-        assert one(vm, "rom_exit")["status"] == "0"
-        wait_markers(vm, "audio", count=len(TRACE))
-        tr = trace(vm)
-        no_exception(vm)
-    assert [t[0] for t in tr] == TRACE, tr
-    assert not pipos_markers(vm, "audio_drop"), vm.serial
-    # Each chunk plays in full, the next one right after it. A switch can come
-    # late by up to one timer IRQ, which shortens the following interval, so
-    # the strict bounds run from the start: the engine keeps one time base.
-    span(tr, 0, 1, play_ms(4000))
-    span(tr, 0, 2, play_ms(8000))
-    span(tr, 3, 4, play_ms(2400))
-    span(tr, 3, 5, play_ms(4000))
-    span(tr, 3, 6, play_ms(4800))
-    assert tr[8][1] == tr[9][1], tr  # the sample replaces the tone on one tick
-    span(tr, 9, 10, play_ms(400))
-    for i in (11, 15, 19, 23):  # cut after about 50 ms, nothing chained
-        cut(tr, i, 50)
-    span(tr, 13, 14, play_ms(800))
-    # The long chain: no restart, and at least the whole length.
-    for i in range(1, LONG_N + 1):
-        span(tr, LONG, LONG + i, play_ms(i * LONG_LEN), 500)
+    """The long chain needs the ROM to queue within a chunk, 250 ms.
+
+    The ROM reports the longest time between its queue calls there. When a
+    stalled host made that reach a chunk, a wrong long chain cannot be
+    judged, and only its underruns and timing are excused. Everything else is
+    judged in every run.
+    """
+    def attempt():
+        sd = card(tmp_path, test_rom("audio_queue"), config(volume=70, beep="no"))
+        with booted(kernel_image, board, sd=sd) as vm:
+            assert_rom_checks(vm, CHECKS)
+            assert one(vm, "rom_exit")["status"] == "0"
+            gap = int(rom_one(vm, "l_gap")["max_ms"])
+            wait_markers(vm, "audio", count=len(TRACE))
+            tr = trace(vm)
+            no_exception(vm)
+        assert [t[0] for t in tr[:LONG]] == TRACE[:LONG], tr
+        assert not pipos_markers(vm, "audio_drop"), vm.serial
+        # Each chunk plays in full, the next one right after it. A switch can come
+        # late by up to one timer IRQ, which shortens the following interval, so
+        # the strict bounds run from the start: the engine keeps one time base.
+        span(tr, 0, 1, play_ms(4000))
+        span(tr, 0, 2, play_ms(8000))
+        span(tr, 3, 4, play_ms(2400))
+        span(tr, 3, 5, play_ms(4000))
+        span(tr, 3, 6, play_ms(4800))
+        # Strict: one tick prints the stop and the start from one clock_ms, in IRQ context.
+        assert tr[8][1] == tr[9][1], tr  # the sample replaces the tone on one tick
+        span(tr, 9, 10, play_ms(400))
+        for i in (11, 15, 19, 23):  # cut after about 50 ms, nothing chained
+            cut(tr, i, 50)
+        span(tr, 13, 14, play_ms(800))
+
+        judge_long_chain(tr[LONG:], gap)
+
+    judged(attempt)
 
 
 def test_exit_stops_both(board, kernel_image, test_rom, tmp_path, need_mtools):

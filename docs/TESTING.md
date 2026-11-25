@@ -48,6 +48,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
 | `tests/tools/test_card_tool.py` | `tools/card.py` on its own, without a build or QEMU: the `TAPE` and `CARD_DIR` rules, the staged-card check and each `bootdir` stop, links at every position in `DIR` and in the sources, `BOOTDIR.LST` lines, read-only folders, and a sweep of 300 random trees from a fixed seed. Either a run stops and `DIR` is unchanged, or it holds exactly the staged files plus the files it left alone, and a file outside `DIR` that links point at never changes. Cases that need two spellings of a name run only on a case-sensitive temp folder; the run prints which branch it took. The read-only cases skip as root, as in the CI container. |
+| `tests/tools/test_hosttiming.py` | `tests/hosttiming.py` on its own, without a build or QEMU: the stream judgement on the numbers of the failing CI run and of normal runs, the chains, the panel retries, and the session rule. See [Host timing](#host-timing). |
 | `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers, in auto mode, and in auto mode with the clock chip. See [Conformance ROM](#conformance-rom). |
 
@@ -75,7 +76,21 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 A whole frame is about 150 KiB on the wire. The repeat counts shrink flat colours. After a boot with `backend = both`, the transcript holds 189861 bytes, the boot console frames, and the dump is about 85 KB of text. It takes about 0.4 s in QEMU, whose serial ports have no baud rate. At 115200 baud it would take about 7.4 s. A frame with no repeats would be about 300 KB of hex, about 27 s.
 
-QEMU's SPI model is slower than the wire. A full-frame `present` takes about 230 ms on `raspi2b` and up to 3.4 s on `raspi3b`, against 128 ms on a panel at 9.62 MHz. So the streaming test uses 8 s chunks.
+A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 400 ms in QEMU. QEMU's `raspi3b` starts all four cores. The harness points only core 0 at its AArch64 shim, so cores 1 to 3 loop through an exception vector and hold QEMU's big lock often. The kernel's polled SPI needs that lock on every register access, so a present took 3 s there on a Mac and 8.8 s on a GitHub runner. The tests that present on the panel park cores 1 to 3 in `WFI` with `park_args()` from `tests/hosttiming.py`. The streaming test uses 8 s chunks, so a present has a margin of about 20 times.
+
+## Host timing
+
+QEMU runs without icount, so the guest clock follows the host. A stalled host stretches guest time, and a test with a time limit can fail with a correct kernel. `tests/hosttiming.py` judges such tests with numbers from the same run.
+
+Host timing may excuse only the check that the evidence explains. A test states its checks with `split_checks()` or `judged_split()`. The strict part holds every check a slow host cannot break, and it fails in every run. Each timed check is a `Timed` with a name and its own evidence. A timed check fails unless its own evidence is present, whatever the other checks show:
+
+- `test_stream_while_redrawing`: the ROM reports `max_gap_ms`, the longest time between two queue calls. Strict: the frame count and the full send count, every chunk once, in order, with its CRC, each chunk played in full, and the end of the stream. Timed `underrun`: excused when the gap plus one 10 ms tick reaches a chunk. Timed `late switch`, more than 500 ms late: excused when the gap reaches a chunk and also the switch's lateness. A fresh start after an underrun starts a new time base.
+- `test_sample_queue`: the ROM reports `ev=l_gap max_ms`, the same gap in the long chain of 250 ms chunks. Strict: the whole trace before the long chain, every long chain chunk once, in order, with its length and CRC, and each chunk played in full. Timed: `underrun` and `late switch`, as above. An underrun is the only trace change a slow host can cause: a `pcm_end` then a fresh `pcm` of the same chunk in place of its `pcm_next`.
+- The `tft` tests that check exact sends, in `tests/panelsends.py`: a retried present adds one whole-frame send with `why=retry` and cuts the failed send short. The kernel prints `ev=display_error op=present` before the first retry of a run. The tests take out each retry send and check every other send, rectangle and byte count in every run. Timed `bytes of a retried present`: only the byte count of a send the kernel retried, excused by that retry.
+
+When the timed checks fail and each has its evidence, the test runs again, up to 4 runs. Then it skips with a reason that starts with `host timing:` and prints the numbers. Any other failure fails at once.
+
+A skip must not hide a failure. The session counts `host timing:` skips per board, lists them at the end, and fails when any board has more than one. A skip belongs to the `board` parameter of its test. Skips of tests without one count together under `no board`. `--timing-skips-max=<n>` allows n skips per board. `make test-target` prints every skip reason with `-rs`. `tests/tools/test_hosttiming.py` tests the judgement and the rule without QEMU.
 
 ## Test ROMs
 
