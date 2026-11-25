@@ -17,6 +17,7 @@
  *           live stream. It has no time cap: a test that never inserts
  *           fails on its own timeout. With the PIP_EV_TAPE it logs
  *           ev=lastq t_ms=<ticks_ms of its last queue call before the call that saw the event>.
+ *           Then ev=maxgap ms=<longest time between two queue calls>.
  *   dial_push  plays a 7.5 s sample, then ev=sample rc=
  *
  * It starts with ev=hw flags= abi= from sys_info and ev=wait before each
@@ -39,6 +40,7 @@ static void stream(void)
     int32_t until = 0;
     int32_t n = 0;
     int32_t tried = pip_ticks_ms();
+    int32_t gap = 0;
     int tape = 0;
     pip_event_t ev;
     uint32_t i;
@@ -53,6 +55,9 @@ static void stream(void)
             tape = 1;
             until = pip_ticks_ms() + STREAM_TAIL_MS;
         }
+        if (pip_ticks_ms() - tried > gap) {
+            gap = pip_ticks_ms() - tried;
+        }
         tried = pip_ticks_ms();
         if (pip_sample_queue(chunk, CHUNK) == 0) {
             if (n++ == 0) {
@@ -64,6 +69,7 @@ static void stream(void)
     }
     pip_audio_stop();
     say("streamed", "n", n);
+    say("maxgap", "ms", gap);
 }
 
 static void say(const char *ev, const char *k, int32_t v)
