@@ -276,6 +276,8 @@ Each pair is read with IRQs masked, so the PCM interrupt cannot run between the 
 
 `pos1 - pos0` does not measure the sound's pace. It counts the samples the PCM interrupt output, one per interrupt QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. How many interrupts arrive depends on the host. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`.
 
+One limit is new. A card whose CSD or CID data token comes later than the library's step budget ends as a bad card. The budget is `SDSPI_STEP_TOKEN_BYTES` in `sdspi.h`: 29 bytes, token included, about 0.58 ms at 400 kHz, for each of `SDSPI_TOKEN_TRIES`, 4, sends of CMD9 or CMD10. Then the step returns `SD_ERR_SLOW`. The blocking attach of the first ABI 1.4 kernel waited up to 100 ms for that token. No real card has been tried, so nobody knows yet whether such cards exist. The cure belongs in RobCo-Core: a stepped wait for the token by time, up to 100 ms.
+
 Before RobCo-Core `cab5f69`, `holo_attach()` blocked for the whole attach, up to about 1.2 s: no work pass ran, a stream ran dry and the display froze. That limit is gone.
 
 #### SPI0 and the panel
