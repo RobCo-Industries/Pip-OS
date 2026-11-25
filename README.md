@@ -25,8 +25,8 @@ What works now:
 What does not work yet:
 
 - Real hardware. Every test runs in QEMU.
-- The SPI display, battery monitoring and sensors other than the clock.
-- PCM streaming. `sample` plays one buffer of at most 64 KiB.
+- Battery monitoring and sensors other than the clock.
+- The SPI panel on real hardware. It runs only in QEMU, where no panel answers.
 
 ## Build
 
@@ -83,9 +83,9 @@ Copy the files in `DIR` to the FAT32 boot partition of the card. They include th
 
 RobCo-Core documents the library and the shared specifications:
 
-- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/guide/API.md)
-- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/MEMORY_MAP.md)
-- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/PIPOS_ABI.md)
+- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/guide/API.md)
+- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/MEMORY_MAP.md)
+- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/PIPOS_ABI.md)
 
 ## Related projects
 

@@ -19,15 +19,39 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 9 | SD card and its boot volume, see [The card](#the-card) | `ev=card`, `ev=mount` |
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
+| 11a | The SPI panel when `[display] backend` asks for it, see [The display backend](#the-display-backend) | `ev=display` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
 | 13 | The ROM, if it passed the check, see [Running the ROM](#running-the-rom) | `ev=jump`, then `ev=rom_exit` or `ev=rom_kill` |
 | 14 | Main loop | `ev=ready` |
 
 A failed card, file or configuration step never stops the boot. A failure in steps 2 to 5 calls `pipos_panic()`.
 
+## The display backend
+
+With `backend = tft` or `both` in `PIPOS.CFG`, the kernel calls RobCo-Core's `tft_init()` with the panel keys after the settings. Then it reads the panel id with `tft_read_id()`. It prints one marker:
+
+```
+@RC stage=pipos ev=display backend=both tft=absent rc=0 hz=9722222 asked=tft bad=0
+```
+
+That line is from QEMU, where nothing answers and the core clock gives 9.72 MHz.
+
+| Key | Meaning |
+|---|---|
+| `backend` | What is in use: `hdmi`, `tft` or `both` |
+| `tft` | `ok`: the panel answered. `absent`: `tft_init()` worked but no id came back. `err`: `tft_init()` failed. |
+| `rc` | What `tft_init()` returned, `0` or a negative `TFT_ERR_*` |
+| `hz` | The SPI rate set, `0` when `tft_init()` failed |
+| `asked` | The `backend` key of `PIPOS.CFG` |
+| `bad` | How many `backend` and `tft_*` values the kernel refused |
+
+`tft_init()` runs a second time after `TFT_ERR_BUS`. When it fails, the kernel uses HDMI only and shows `SPI DISPLAY FAILED, USING HDMI` on the boot console and the PL011. A panel that gives no id may still work: a module without its MISO line wired reads the same. So the panel stays in use. With `backend = tft` HDMI then also takes the frames, as with `both`, so a device with a dead panel stays usable on HDMI.
+
+With the default `backend = hdmi` the kernel prints no `ev=display` marker and does not touch SPI0.
+
 ## The card
 
-The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
+The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
 
 1. Entries with a FAT type byte (`0x01`, `0x04`, `0x06`, `0x0B`, `0x0C`, `0x0E`), in slot order.
 2. Then the other entries, in slot order. Some tools write a wrong type byte, and the mount reads the boot sector anyway.
@@ -90,11 +114,11 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
 
 ## Running the ROM
 
-After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/guide/api/umode.md) with the MMU on.
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/guide/api/umode.md) with the MMU on.
 
 1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
 2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
@@ -148,11 +172,11 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Panic
 
-`pipos_panic(why)` masks interrupts, prints `ev=panic msg=<why>` with spaces turned into `_`, writes `KERNEL PANIC: <why>` and `SYSTEM HALTED` on the screen and halts. CPU exceptions print `ev=exception` through RobCo-Core and halt.
+`pipos_panic(why)` masks interrupts, prints `ev=panic msg=<why>` with spaces turned into `_`, writes `KERNEL PANIC: <why>` and `SYSTEM HALTED` on the screen and halts. A panel that `power` blanked is woken first, see [ARCHITECTURE.md](ARCHITECTURE.md#display-path). CPU exceptions print `ev=exception` through RobCo-Core and halt.
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -172,6 +196,9 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `error` | `code path` | The ROM failed. `code` is a `rimg` error name. |
 | `rom` | `rc name version size crc` | ROM result. `rc` is `ok` or a `rimg` error name. `name` and `version` are `-` on failure. |
 | `gfx` | `bb size user heap_end` | The back buffer. `user=0` when no image can reach it. |
+| `display` | `backend tft rc hz asked bad` | The SPI panel at boot, `backend = tft` or `both` only. See [The display backend](#the-display-backend). |
+| `display_error` | `op rc` | The first panel call that failed after boot. `op` is `present`, `blank` or `wake`. |
+| `tft_send` | `why x y w h bytes crc` | Test builds only, one per send to the panel. See [TESTING.md](TESTING.md#spi-panel). |
 | `audio` | `op hz vol t_ms`, or `op rate len vol crc t_ms` and `op n last t_ms` for a sample | One sound change, trace backend only. Printed by RobCo-Core. See [API.md](API.md#audio). |
 | `audio_drop` | `n` | Trace records the audio driver dropped. Printed by RobCo-Core. |
 | `jump` | `entry` | The kernel enters the ROM |
@@ -203,7 +230,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/f5bba36132a0b10940898c681dde50b453bfffad/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/b2774bf9abeddb3503064999d3cc0461b490e0d0/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|
@@ -211,7 +238,7 @@ The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https:/
 | `0x00008000`-`0x003FFFFF` | Pip-OS | Kernel image, stacks, MMU table and heap. The link fails if the image and stacks pass `0x00400000`. |
 | `0x00400000`-`0x007FFFFF` | ROM slot | `ROM1.ROM` after a successful check. The ROM can write it. |
 | `0x00800000`-`0x00BFFFFF` | Holotape slot | The running holotape, loaded by `holo_launch`. It can write it. |
-| `0x00C00000`-`0x00FFFFFF` | Pip-OS | The 320x240 back buffer at `0x00C00000`, kernel-only |
+| `0x00C00000`-`0x00FFFFFF` | Pip-OS | Kernel-only. The 320x240 back buffer at `0x00C00000`, the panel's last frame at `0x00C80000`, the panel console frame at `0x00D00000`. Test builds keep the panel transcript from `0x00D80000` to the end. |
 | `0x01000000`-`0x017FFFFF` | ROM | ROM heap and stack. The startup block and the return stub sit at `0x017F0000`. |
 | `0x01800000`-`0x01FFFFFF` | Holotape | Holotape heap and stack. Its startup block and return stub sit at `0x01FF0000`. |
 

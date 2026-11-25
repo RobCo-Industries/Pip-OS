@@ -5,6 +5,7 @@
 #include <robco/uart.h>
 
 #include "bootlines.h"
+#include "display.h"
 #include "pipos.h"
 
 void pipos_panic(const char *why)
@@ -19,6 +20,7 @@ void pipos_panic(const char *why)
     console_puts("\nKERNEL PANIC: ");
     console_puts(why);
     console_puts("\nSYSTEM HALTED\n");
+    pipos_display_panic(why);
     uart_flush();
     robco_halt();
 }

@@ -11,12 +11,11 @@
 #include <robco/klibc.h>
 #include <robco/mmu.h>
 
+#include "display.h"
 #include "gfx_draw.h"
 #include "pipos.h"
 #include "sys.h"
 
-/* Kernel-only RAM from the Pip-Boy memory map, "Back buffers". */
-#define GFX_BB_BASE  0x00C00000u
 #define GFX_BB_BYTES ((uint32_t)GFX_W * GFX_H * 4u)
 
 static gfx_surface_t surf;
@@ -30,11 +29,18 @@ static uint32_t fg_default(void)
     return (uint32_t)sc->normal.r << 16 | (uint32_t)sc->normal.g << 8 | sc->normal.b;
 }
 
-/* Copies the back buffer to the framebuffer: 0, or -PIP_ENODEV. */
+/*
+ * Copies the back buffer to the framebuffer when HDMI takes frames, then
+ * sends the change to the panel when it does: 0, -PIP_ENODEV or -PIP_EIO.
+ */
 static int32_t show_back_buffer(void)
 {
     const fb_info_t *fb = fb_get();
+    int32_t rc = pipos_display_send(surf.px);
 
+    if (!pipos_display_hdmi()) {
+        return rc;
+    }
     if (fb == NULL) {
         return -PIP_ENODEV;
     }
@@ -42,13 +48,14 @@ static int32_t show_back_buffer(void)
                        fb->order == FB_ORDER_RGB) == 0) {
         return -PIP_ENODEV;
     }
-    return 0;
+    return rc;
 }
 
 /* The console's full redraw: background, then every cell. */
 static void show_console(void)
 {
     console_set_scheme(console_scheme());
+    pipos_display_console();
 }
 
 static void show(int what)
@@ -72,7 +79,16 @@ static void show(int what)
 
 void pipos_gfx_blank(int on)
 {
-    show(gfx_screen_blank(&screen, on));
+    int what = gfx_screen_blank(&screen, on);
+
+    /* Wake first, so the frame or the console reaches a lit panel. */
+    if (!on) {
+        pipos_display_blank(0);
+    }
+    show(what);
+    if (on) {
+        pipos_display_blank(1);
+    }
 }
 
 static int32_t sys_draw_line(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1, uint32_t a2,
@@ -132,7 +148,8 @@ static int32_t sys_gfx_info(const pipos_sys_ctx_t *ctx, uint32_t out, uint32_t a
     info.width = GFX_W;
     info.height = GFX_H;
     info.format = PIP_GFX_FORMAT_XRGB;
-    info.backend = PIP_GFX_BACKEND_HDMI;
+    /* backend = both reports the panel, the ABI's only other value. */
+    info.backend = pipos_display_panel() ? PIP_GFX_BACKEND_SPI : PIP_GFX_BACKEND_HDMI;
     info.fg_default = fg_default();
     return pipos_user_copy_out(ctx, out, &info, sizeof(info));
 }
@@ -292,6 +309,10 @@ void pipos_gfx_init(void)
         user |= mmu_section_user(a);
     }
     user |= mmu_section_user(GFX_BB_BASE + GFX_BB_BYTES - 1);
+    /* The panel's frames and transcript, in the same kernel-only region. */
+    for (a = GFX_SHADOW_BASE; a < GFX_TAP_END; a += MMU_SECTION_SIZE) {
+        user |= mmu_section_user(a);
+    }
     k_printf("@RC stage=" PIPOS_STAGE " ev=gfx bb=0x%08x size=%u user=%d heap_end=0x%08x\n",
              (unsigned)GFX_BB_BASE, (unsigned)GFX_BB_BYTES, user, (unsigned)heap_end);
     if (user != 0 || heap_end > GFX_BB_BASE) {
@@ -311,6 +332,10 @@ void pipos_gfx_image_start(int kind)
 void pipos_gfx_image_end(int kind)
 {
     (void)gfx_image_end(&surf, &rom_state, kind);
+    /* The holotape drew over the ROM's frame: its next present sends it all. */
+    if (kind != PIP_KIND_ROM) {
+        pipos_display_full();
+    }
     show(gfx_screen_end(&screen, kind));
 }
 

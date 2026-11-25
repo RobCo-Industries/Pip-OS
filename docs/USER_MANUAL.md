@@ -9,6 +9,7 @@ Pip-OS has only run in QEMU so far. Results on a real board are pending.
 - A Raspberry Pi Zero, Zero W, Pi 1, Pi 2 or Pi 3. The Pi 4 is not supported.
 - A micro SD card, or a full-size one for the Pi 1.
 - An HDMI display. Pip-OS draws at 640 by 480.
+- Optional: a 320 by 240 ILI9341 SPI panel instead of HDMI, or next to it. See [Choosing the display](#choosing-the-display).
 - Optional: six buttons and a rotary dial with a push button, on GPIO pins.
 - Optional: a speaker or amplifier on the PWM audio output.
 - Optional: an RTC module on I2C, address `0x68`, to keep the time.
@@ -131,7 +132,7 @@ ROMs and holotapes are `rimg` images built with the SDK. [ROM_DEVELOPMENT.md](RO
 
 ## Configuration
 
-`PIPBOY/PIPOS.CFG` is an INI file with four keys. [CONFIG.md](CONFIG.md) has the full table and the error rules.
+`PIPBOY/PIPOS.CFG` is an INI file. These are the common keys. [CONFIG.md](CONFIG.md) has the full table and the error rules.
 
 ```
 [display]
@@ -151,6 +152,26 @@ beep = yes
 | `beep` in `[audio]` | `yes` or `no` | `yes` |
 
 A bad value keeps the default. A line that is not INI makes Pip-OS ignore the whole file.
+
+## Choosing the display
+
+`backend` in `[display]` picks where the picture goes:
+
+| `backend` | What you get |
+|---|---|
+| `hdmi` | HDMI only. The default. |
+| `both` | The same picture on HDMI and on the SPI panel |
+| `tft` | The SPI panel. HDMI shows only the boot text. |
+
+```
+[display]
+backend = tft
+tft_rotation = 270
+```
+
+Wire the panel as in [HARDWARE.md](HARDWARE.md#spi-panel). If the picture is upside down, try `tft_rotation = 270` or `90`. If red and blue are swapped, set `tft_bgr = no`. If the colours look inverted, set `tft_invert = yes`. [CONFIG.md](CONFIG.md#spi-panel) lists every panel key.
+
+The panel shows the last 15 boot lines, 40 characters wide, and the panic text. If the panel fails to start, Pip-OS uses HDMI and shows `SPI DISPLAY FAILED, USING HDMI`. If it starts but never answers, Pip-OS sends the picture to both, so HDMI still works. The panel has not been tried on real hardware.
 
 ## Saves
 
@@ -181,6 +202,7 @@ A ROM can halt the system. The screen then shows `PIP-OS HALTED. SAFE TO POWER O
 | `NO HOLOTAPE FOUND` with tapes on the card | Wrong folder or extension | Put them in `PIPBOY/HOLO/` with the `.HTP` extension |
 | A holotape is missing from the ROM's list | The name is longer than 8 characters, or the file is not a valid holotape | Rename it to 8.3 form and rebuild it |
 | `ROM(1) <FAULT> AT 0x<address>` | The ROM crashed | Report it to the ROM's author |
+| Panel stays dark | Wiring, or `backend` left at `hdmi` | Check the wiring in [HARDWARE.md](HARDWARE.md#spi-panel). The serial log has an `ev=display` line when `backend` asks for the panel. |
 | Colours or delay not applied | A bad value or a syntax error in `PIPOS.CFG` | Check the file against [CONFIG.md](CONFIG.md). The serial log names the bad line. |
 | The time is unset or wrong | No RTC module, or its time is not valid | Fit an RTC module and set it |
 | The buttons do nothing | Wrong pins, or the button does not connect the pin to ground | Check the pins above |

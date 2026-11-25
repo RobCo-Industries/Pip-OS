@@ -1035,3 +1035,192 @@ TEST(screen_ownership_and_blank)
     CHECK_EQ(gfx_screen_end(&sc, PIP_KIND_ROM), GFX_SHOW_NONE);
     CHECK_EQ(gfx_screen_blank(&sc, 0), GFX_SHOW_CONSOLE);
 }
+
+/* ---- dirty rectangle ---------------------------------------------------- */
+
+#define DW 320u
+#define DH 240u
+
+static uint32_t dirty_a[DW * DH], dirty_b[DW * DH];
+
+/* The plain answer: min and max over every differing pixel. */
+static int dirty_ref(uint32_t stride, uint32_t w, uint32_t h, gfx_rect_t *r)
+{
+    uint32_t x, y, x0 = w, y0 = h, x1 = 0, y1 = 0;
+
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+            if (dirty_a[y * stride + x] != dirty_b[y * stride + x]) {
+                x0 = x < x0 ? x : x0;
+                y0 = y < y0 ? y : y0;
+                x1 = x + 1 > x1 ? x + 1 : x1;
+                y1 = y + 1 > y1 ? y + 1 : y1;
+            }
+        }
+    }
+    if (x1 == 0) {
+        return 0;
+    }
+    r->x = x0, r->y = y0, r->w = x1 - x0, r->h = y1 - y0;
+    return 1;
+}
+
+static int dirty_agrees(uint32_t stride, uint32_t w, uint32_t h)
+{
+    gfx_rect_t got = { 9, 9, 9, 9 }, want = { 0, 0, 0, 0 };
+    int g = gfx_dirty_rect(dirty_a, dirty_b, stride, w, h, &got);
+    int e = dirty_ref(stride, w, h, &want);
+
+    if (g != e) {
+        return 0;
+    }
+    return !e || (got.x == want.x && got.y == want.y && got.w == want.w && got.h == want.h);
+}
+
+TEST(dirty_rect_edges)
+{
+    gfx_rect_t r;
+    static const uint32_t pts[][2] = {
+        { 0, 0 }, { DW - 1, 0 }, { 0, DH - 1 }, { DW - 1, DH - 1 }, { 160, 120 },
+    };
+    unsigned i;
+
+    memset(dirty_a, 0, sizeof(dirty_a));
+    memset(dirty_b, 0, sizeof(dirty_b));
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 0);
+    /* One pixel anywhere, corners included, gives a 1x1 rectangle. */
+    for (i = 0; i < sizeof(pts) / sizeof(pts[0]); i++) {
+        dirty_a[pts[i][1] * DW + pts[i][0]] = 1;
+        CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 1);
+        CHECK_EQ(r.x, pts[i][0]);
+        CHECK_EQ(r.y, pts[i][1]);
+        CHECK_EQ(r.w, 1);
+        CHECK_EQ(r.h, 1);
+        dirty_a[pts[i][1] * DW + pts[i][0]] = 0;
+    }
+    /* Opposite corners: the whole frame. */
+    dirty_a[0] = 1;
+    dirty_a[DW * DH - 1] = 1;
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 1);
+    CHECK_EQ(r.x, 0);
+    CHECK_EQ(r.y, 0);
+    CHECK_EQ(r.w, DW);
+    CHECK_EQ(r.h, DH);
+    /* Top right and bottom left: also the whole frame. */
+    memset(dirty_a, 0, sizeof(dirty_a));
+    dirty_a[DW - 1] = 7;
+    dirty_a[(DH - 1) * DW] = 7;
+    CHECK(dirty_agrees(DW, DW, DH));
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 1);
+    CHECK_EQ(r.w, DW);
+    CHECK_EQ(r.h, DH);
+    /* Only the top byte differs: still a change. */
+    memset(dirty_a, 0, sizeof(dirty_a));
+    dirty_a[5 * DW + 6] = 0xff000000u;
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 1);
+    /* A 1x1 surface. */
+    dirty_a[0] = 0;
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, 1, 1, 1, &r), 0);
+    dirty_a[0] = 3;
+    CHECK(dirty_agrees(1, 1, 1));
+}
+
+TEST(dirty_rect_random)
+{
+    unsigned round, k, n;
+
+    srand(1234);
+    memset(dirty_b, 0, sizeof(dirty_b));
+    for (round = 0; round < 300; round++) {
+        memcpy(dirty_a, dirty_b, sizeof(dirty_a));
+        n = (unsigned)rand() % 6u;      /* 0 to 5 changed pixels */
+        for (k = 0; k < n; k++) {
+            dirty_a[(unsigned)rand() % (DW * DH)] ^= 1u + (unsigned)rand() % 0xffffffu;
+        }
+        CHECK(dirty_agrees(DW, DW, DH));
+        /* A filled block of random size. */
+        if (round % 3u == 0) {
+            uint32_t x0 = (unsigned)rand() % DW, y0 = (unsigned)rand() % DH;
+            uint32_t x1 = x0 + (unsigned)rand() % (DW - x0), y1 = y0 + (unsigned)rand() % (DH - y0);
+            uint32_t x, y;
+
+            for (y = y0; y <= y1; y++) {
+                for (x = x0; x <= x1; x++) {
+                    dirty_a[y * DW + x] = 0x00abcdefu;
+                }
+            }
+            CHECK(dirty_agrees(DW, DW, DH));
+        }
+        memcpy(dirty_b, dirty_a, sizeof(dirty_b));
+    }
+}
+
+TEST(dirty_rect_copy_makes_frames_equal)
+{
+    gfx_rect_t r;
+    unsigned i;
+
+    srand(99);
+    for (i = 0; i < DW * DH; i++) {
+        dirty_a[i] = (uint32_t)rand();
+        dirty_b[i] = dirty_a[i];
+    }
+    for (i = 0; i < 40; i++) {
+        dirty_a[(unsigned)rand() % (DW * DH)]++;
+        dirty_b[0] = dirty_a[0];
+        if (gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r)) {
+            gfx_copy_rect(dirty_a, dirty_b, DW, &r);
+        }
+        CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 0);
+        CHECK(memcmp(dirty_a, dirty_b, sizeof(dirty_a)) == 0);
+    }
+}
+
+/* Rotation 0 and 180: the panel shows the left 240 columns and the top 240 rows. */
+#define VW 240u
+#define VH 240u
+
+TEST(dirty_rect_window)
+{
+    gfx_rect_t r;
+    unsigned round, k, n;
+
+    memset(dirty_a, 0, sizeof(dirty_a));
+    memset(dirty_b, 0, sizeof(dirty_b));
+    /* Changes right of the window or below it count for nothing. */
+    dirty_a[0 * DW + VW] = 1;
+    dirty_a[100 * DW + DW - 1] = 1;
+    dirty_a[(DH - 1) * DW + VW + 3] = 1;
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, VW, VH, &r), 0);
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, VW, 200, &r), 0);
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, DW, DH, &r), 1);
+    /* Then one pixel inside: a 1x1 rectangle, the hidden changes still left out. */
+    dirty_a[37 * DW + 5] = 2;
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, VW, VH, &r), 1);
+    CHECK_EQ(r.x, 5);
+    CHECK_EQ(r.y, 37);
+    CHECK_EQ(r.w, 1);
+    CHECK_EQ(r.h, 1);
+    /* The last visible column and row. */
+    memset(dirty_a, 0, sizeof(dirty_a));
+    dirty_a[(VH - 1) * DW + VW - 1] = 3;
+    dirty_a[(VH - 1) * DW + VW] = 3;
+    CHECK_EQ(gfx_dirty_rect(dirty_a, dirty_b, DW, VW, VH, &r), 1);
+    CHECK_EQ(r.x, VW - 1);
+    CHECK_EQ(r.y, VH - 1);
+    CHECK_EQ(r.w, 1);
+    CHECK_EQ(r.h, 1);
+    /* Random changes over the whole frame, against the plain answer. */
+    srand(4321);
+    memset(dirty_b, 0, sizeof(dirty_b));
+    for (round = 0; round < 300; round++) {
+        memcpy(dirty_a, dirty_b, sizeof(dirty_a));
+        n = (unsigned)rand() % 6u;
+        for (k = 0; k < n; k++) {
+            dirty_a[(unsigned)rand() % (DW * DH)] ^= 1u + (unsigned)rand() % 0xffffffu;
+        }
+        CHECK(dirty_agrees(DW, VW, VH));
+        CHECK(dirty_agrees(DW, VW, 200));
+        memcpy(dirty_b, dirty_a, sizeof(dirty_b));
+    }
+}
