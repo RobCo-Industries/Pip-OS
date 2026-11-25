@@ -306,6 +306,8 @@ static int32_t sys_file_read(const pipos_sys_ctx_t *ctx, uint32_t handle, uint32
     if (size > 0x7fffffffu) {
         size = 0x7fffffffu; /* the result must stay positive */
     }
+    /* Main-loop work, the holotape slot's included, runs in every file_read. */
+    pipos_poll();
     while (done < size) {
         uint32_t want = size - done < CHUNK ? size - done : CHUNK;
         int n = fs_read(&files[level(ctx->kind)][h], buf, want);

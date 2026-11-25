@@ -124,11 +124,16 @@ int pipos_slot_mounted_now(void)
     return be != NULL && slot.state == PIPOS_SLOT_MOUNTED;
 }
 
-void pipos_slot_read_error(void)
+int pipos_slot_read_error(void)
 {
-    if (be != NULL) {
-        act(pipos_slot_read_failed(&slot, be->card()));
+    int card;
+
+    if (be == NULL) {
+        return 0;
     }
+    card = be->card();
+    act(pipos_slot_read_failed(&slot, card));
+    return card;
 }
 
 uint32_t pipos_slot_take_bits(int caller_is_rom)

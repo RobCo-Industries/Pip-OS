@@ -71,8 +71,11 @@ int pipos_slot_enabled(void);
 void pipos_slot_work(void);
 /* 1 while the tape volume is mounted. */
 int pipos_slot_mounted_now(void);
-/* A read on the tape volume failed: BAD with the card in, REMOVED without. */
-void pipos_slot_read_error(void);
+/*
+ * A read on the tape volume failed: BAD with the card in, REMOVED without.
+ * Returns 1 when card detect still reads the card in.
+ */
+int pipos_slot_read_error(void);
 /* holo_eject_event: the pending bits; only the ROM clears them. */
 uint32_t pipos_slot_take_bits(int caller_is_rom);
 /* sys_holo.c tells the module when a slot tape starts and ends. */

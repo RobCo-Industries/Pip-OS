@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.3: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.4: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010003  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010004  /* (major << 16) | minor */
 
 /* log: at most this many bytes, NUL included. */
 #define PIP_LOG_MAX         256

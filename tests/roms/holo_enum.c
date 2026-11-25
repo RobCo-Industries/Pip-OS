@@ -27,10 +27,10 @@ static void show(int32_t i, const pip_holo_info_t *t)
     }
     pip_snprintf(line, sizeof(line),
                  "@RC stage=testrom ev=tape i=%d file=%s sub=%u size=%u ver=0x%08x name=%s "
-                 "title=%s icon=0x%08x res=%u\n",
+                 "title=%s icon=0x%08x flags=%u\n",
                  (int)i, t->file, (unsigned)t->subtype, (unsigned)t->size,
                  (unsigned)t->image_version, name, title, (unsigned)sum,
-                 (unsigned)t->reserved);
+                 (unsigned)t->flags);
     pip_log(line);
 }
 
