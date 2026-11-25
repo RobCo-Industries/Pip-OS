@@ -59,7 +59,7 @@ Handlers check every pointer with the `pipos_user_*` helpers of `sys.h` and refu
 - C11 with GNU extensions, 4-space indentation, no tabs.
 - `stdint.h` types for fixed-width values.
 - Comments explain why, not what.
-- Markers follow the format in RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+- Markers follow the format in RobCo-Core's [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 ### Testing on hardware
 

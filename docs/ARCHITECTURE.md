@@ -23,7 +23,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | ABI header shared with ROM code | `sdk/include/pipos/abi.h` |
 | ROM and holotape SDK | `sdk/` |
 
-The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/guide/API.md).
+The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/guide/API.md).
 
 ## Boot flow
 
@@ -54,7 +54,7 @@ A failure in `mmu_init()`, `fb_init()`, `console_init()`, the heap or the tick c
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
+The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
 
 | Range | Use | Defined in |
 |---|---|---|
@@ -82,7 +82,7 @@ The startup block of each image sits at the bottom of its stack, `stack_top - 0x
 
 ## How an image runs
 
-`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
+`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
 
 `pipos_image_run()` in `kernel/rom.c` runs both kinds of image:
 
@@ -190,6 +190,8 @@ A panel call that fails after boot is counted. The first prints `ev=display_erro
 
 `sys_storage.c`: saves and read-only files, `0x50`-`0x57`, through RobCo-Core's `fs.h`. Saves are `/PIPBOY/SAVE/<NAME>.SAV`, at most 64 KiB, written whole through work files marked `~` and `#`. File calls cannot reach the save folder by any name or 8.3 alias. State: one table of 8 handles per image level, so the ROM's files stay open and out of reach while a holotape runs. `image_start` and `image_end` close the level's handles. Pure rules in `storage_rules.c`, tested by `tests/host/test_storage.c`.
 
+RobCo-Core mounts up to `ROBCO_FS_VOLUMES` volumes at once, 2 by default, and Pip-OS keeps the default. The boot card uses the first slot. The second slot holds the holotape card. Each slot costs 592 bytes of BSS in `fs_vols`, so the second slot costs 592 bytes of kernel RAM, mostly the FatFs sector window.
+
 ### holo
 
 `sys_holo.c`: `holo_enumerate`, `holo_launch`, `holo_last_status`, `holo_eject_event`. Lists up to 32 `.HTP` files in `/PIPBOY/HOLO`. The listing is a first header check: it checks magic, header version and file size. `holo_launch` loads and runs one tape as described above, after the full validation. So it can refuse a listed tape for its slot bounds, ABI major or CRC. Only the ROM may launch. State: the last launch result and a running flag. `holo_eject_event` always returns 0. Pure rules in `holo_rules.c`, tested by `tests/host/test_holo.c`.
@@ -208,7 +210,7 @@ The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c
 | `kill` | Ends the innermost running image with `umode_request_kill()` |
 | `panic <reason>` | Takes the panic path |
 
-Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
+Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
 
 ## Build
 
