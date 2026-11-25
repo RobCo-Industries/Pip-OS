@@ -14,7 +14,9 @@
  *           It waits with sleep_ms(20) while a chunk already waits. It
  *           streams until a PIP_EV_TAPE comes, logged as ev=tapeev, then
  *           300 ms more, so a card inserted after ev=stream lands in a
- *           live stream. It stops at 10 s if no PIP_EV_TAPE comes.
+ *           live stream. It stops at 10 s if no PIP_EV_TAPE comes. With
+ *           the PIP_EV_TAPE it logs ev=lastq t_ms=<ticks_ms of its last
+ *           queue call before the call that saw the event>.
  *   dial_push  plays a 7.5 s sample, then ev=sample rc=
  *
  * It starts with ev=hw flags= abi= from sys_info and ev=wait before each
@@ -38,6 +40,7 @@ static void stream(void)
     int32_t t0 = pip_ticks_ms();
     int32_t until = STREAM_MAX_MS;
     int32_t n = 0;
+    int32_t tried = t0;
     int tape = 0;
     pip_event_t ev;
     uint32_t i;
@@ -48,9 +51,11 @@ static void stream(void)
     while (pip_ticks_ms() - t0 < until) {
         if (!tape && pip_poll_event(&ev) == 1 && ev.type == PIP_EV_TAPE) {
             say("tapeev", "value", ev.value);
+            say("lastq", "t_ms", tried);
             tape = 1;
             until = pip_ticks_ms() - t0 + STREAM_TAIL_MS;
         }
+        tried = pip_ticks_ms();
         if (pip_sample_queue(chunk, CHUNK) == 0) {
             if (n++ == 0) {
                 pip_log("@RC stage=testrom ev=stream\n");
@@ -71,9 +76,15 @@ static void say(const char *ev, const char *k, int32_t v)
     pip_log(line);
 }
 
+/* ev=launch rc= t_ms=<ticks_ms when the call returned> */
 static void launch(const char *name, const char *args)
 {
-    say("launch", "rc", pip_holo_launch(name, args));
+    char line[96];
+    int32_t rc = pip_holo_launch(name, args);
+
+    pip_snprintf(line, sizeof(line), "@RC stage=testrom ev=launch rc=%d t_ms=%d\n", (int)rc,
+                 (int)pip_ticks_ms());
+    pip_log(line);
 }
 
 static void list(void)

@@ -5,8 +5,9 @@
  * PIPOS_TEST_CARD_BASE + n * PIPOS_TEST_CARD_STRIDE, and drives the slot
  * with the holo script command:
  *
- *   holo insert <n> <blocks>  card n goes in, <blocks> of 512 bytes
- *   holo pull                 the card leaves
+ *   holo insert <n> <blocks>  card n goes in, <blocks> of 512 bytes; replies
+ *                             t_ms=<tick_ms()>
+ *   holo pull                 the card leaves; replies t_ms=<tick_ms()>
  *   holo readfail [k]         read k + 1 from now fails with BLK_ERR_IO, card
  *                             in. Without k, the next read.
  *   holo reads                replies reads=<n>, the reads served or failed
@@ -18,7 +19,8 @@
  *   holo delay <ms>           every attach blocks <ms> first, as a slow card
  *   holo pullin <ms>          the card leaves <ms> from now, seen by the
  *                             next card detect read, even while a tape
- *                             keeps the script channel from running
+ *                             keeps the script channel from running;
+ *                             replies t_ms=<tick_ms()>
  *
  * Each attach prints ev=holo_attach rc=<rc> ms=<ms blocked> samples=<PCM
  * samples output meanwhile> polls=<pipos_poll() passes meanwhile>
@@ -179,6 +181,15 @@ static int number(const char *s, uint32_t *out)
     return 0;
 }
 
+/* Replies t_ms=<tick_ms()>: when insert or pull took effect, on the attach's clock. */
+static void reply_time(struct input_script_reply *reply)
+{
+    char line[24];
+
+    k_snprintf(line, sizeof(line), "t_ms=%u\n", (unsigned)tick_ms());
+    reply->write(line);
+}
+
 int pipos_slot_test_command(int argc, char *argv[], struct input_script_reply *reply)
 {
     const char *op = argc >= 2 ? argv[1] : "";
@@ -191,8 +202,10 @@ int pipos_slot_test_command(int argc, char *argv[], struct input_script_reply *r
         card_blocks = b;
         card_since = timer_now_ms();
         card_in = 1;
+        reply_time(reply);
     } else if (k_strcmp(op, "pull") == 0 && argc == 2) {
         card_in = 0;
+        reply_time(reply);
     } else if (k_strcmp(op, "readfail") == 0 && argc == 2) {
         read_fail = 1;
     } else if (k_strcmp(op, "readfail") == 0 && argc == 3 && number(argv[2], &a) == 0 &&
@@ -214,6 +227,7 @@ int pipos_slot_test_command(int argc, char *argv[], struct input_script_reply *r
     } else if (k_strcmp(op, "pullin") == 0 && argc == 3 && number(argv[2], &a) == 0) {
         pull_at = timer_now_ms() + a;
         pull_armed = 1;
+        reply_time(reply);
     } else if (k_strcmp(op, "delay") == 0 && argc == 3 && number(argv[2], &a) == 0 &&
                a <= 5000u) {
         delay_ms = a;

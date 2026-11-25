@@ -86,9 +86,9 @@ QEMU has no SD card on SPI0, so the real slot driver cannot run there. A test bu
 
 | Command | Effect |
 |---|---|
-| `holo insert <n> <blocks>` | Card `n` goes in. The backend reports it present after 250 ms, as the driver's debounce. |
-| `holo pull` | The card leaves |
-| `holo pullin <ms>` | The card leaves `<ms>` from now. It reaches a tape that keeps the script channel from running. |
+| `holo insert <n> <blocks>` | Card `n` goes in. The backend reports it present after 250 ms, as the driver's debounce. Replies `t_ms`. |
+| `holo pull` | The card leaves. Replies `t_ms`. |
+| `holo pullin <ms>` | The card leaves `<ms>` from now. It reaches a tape that keeps the script channel from running. Replies `t_ms`. |
 | `holo readfail` | The next read fails with the card in |
 | `holo readpull` | The next read pulls the card |
 | `holo refuse` | The next attach returns `SD_ERR_CMD` |
@@ -109,6 +109,13 @@ Host timing may excuse only the check that the evidence explains. A test states 
 - `test_stream_while_redrawing`: the ROM reports `max_gap_ms`, the longest time between two queue calls. Strict: the frame count and the full send count, every chunk once, in order, with its CRC, each chunk played in full, and the end of the stream. Timed `underrun`: excused when the gap plus one 10 ms tick reaches a chunk. Timed `late switch`, more than 500 ms late: excused when the gap reaches a chunk and also the switch's lateness. A fresh start after an underrun starts a new time base.
 - `test_sample_queue`: the ROM reports `ev=l_gap max_ms`, the same gap in the long chain of 250 ms chunks. Strict: the whole trace before the long chain, every long chain chunk once, in order, with its length and CRC, and each chunk played in full. Timed: `underrun` and `late switch`, as above. An underrun is the only trace change a slow host can cause: a `pcm_end` then a fresh `pcm` of the same chunk in place of its `pcm_next`.
 - The `tft` tests that check exact sends, in `tests/panelsends.py`: a retried present adds one whole-frame send with `why=retry` and cuts the failed send short. The kernel prints `ev=display_error op=present` before the first retry of a run. The tests take out each retry send and check every other send, rectangle and byte count in every run. Timed `bytes of a retried present`: only the byte count of a send the kernel retried, excused by that retry.
+
+The slot tests in `tests/test_slot.py` raise `CannotJudge` themselves. Each checks every result that does not depend on timing first. It excuses a run only when the run did not meet its case, and only with a second piece of evidence that a kernel fault cannot give. `holo insert`, `holo pull` and `holo pullin` reply `t_ms=<tick_ms()>`, the time they took effect:
+
+- `test_pull_while_slot_tape_runs`: the pull must land while the tape runs. The ROM's `ev=launch` carries `t_ms`. A launch that returns before the pull was due fails. A pull before the load is excused only with `-PIP_ENOENT` or `-PIP_EIO` and no `holo_start`. A pull after `holo_start` and before the tape's `ev=tloop` is excused after the kill checks.
+- `test_pull_in_debounce`: the pull must land within the 250 ms debounce. An attach is excused only when the pull came 250 ms or more after the insert, by their `t_ms`.
+- `test_slow_attach_blocks_main_loop`: the sample must play through the attach. A sample that ended first is excused only when it played in full and even an attach right after the debounce would have ended after it.
+- `test_slow_attach_runs_a_stream_dry`: the stream must be live when the attach begins. The cap is excused only when the insert came within the debounce of the cap. A stream that ran dry before the attach is excused only when it ran dry a chunk or more after the ROM's last queue call, which the ROM reports as `ev=lastq t_ms`.
 
 When the timed checks fail and each has its evidence, the test runs again, up to 4 runs. Then it skips with a reason that starts with `host timing:` and prints the numbers. Any other failure fails at once.
 

@@ -35,7 +35,9 @@ HOLO_BASE = 0x00800000
 HOLO_SIZE = 0x00400000
 
 INS, REM, BAD = 1, 2, 4
-ENODEV, ENOEXEC, EFAULT = -41, -40, -14
+# RobCo-Core's include/robco/holo.h: the debounce before an attach.
+SETTLE_MS = 250
+ENODEV, ENOEXEC, EFAULT, EIO, ENOENT = -41, -40, -14, -5, -2
 HW_TAPE = 8
 
 
@@ -83,6 +85,14 @@ def run(image, board, sd, cards=None):
 def holo(vm, *words):
     reply = vm.script("holo " + " ".join(words), timeout=TIMEOUT)
     assert reply.status == "ok", reply
+    return reply
+
+
+def holo_at(vm, *words):
+    """holo insert or pull: the tick_ms() when it took effect."""
+    reply = holo(vm, *words)
+    assert len(reply.lines) == 1 and reply.lines[0].startswith("t_ms="), reply
+    return int(reply.lines[0][len("t_ms="):])
 
 
 def key(vm, name):
@@ -377,6 +387,10 @@ def test_pull_while_idle(board, holo_build, test_rom, test_holo, tmp_path, need_
         no_exception(vm)
 
 
+# test_pull_while_slot_tape_runs: the pull lands this long after it is armed.
+PULL_IN_MS = 1500
+
+
 @pytest.mark.parametrize("how", ["right", "left"])
 def test_pull_while_slot_tape_runs(board, holo_build, test_rom, test_holo, tmp_path,
                                    need_mtools, how):
@@ -393,26 +407,40 @@ def test_pull_while_slot_tape_runs(board, holo_build, test_rom, test_holo, tmp_p
         n = len(rom_markers(vm, "launch"))
         # A tape that only calls ticks_ms keeps the script channel from
         # running, so the pull is armed before the launch.
-        holo(vm, "pullin", "1500")
+        t_arm = holo_at(vm, "pullin", str(PULL_IN_MS))
         key(vm, how)
-        rc = int(wait_rom(vm, "launch", n + 1)[-1]["rc"])
-        if not rom_markers(vm, "tloop"):
-            # The guest clock follows the host: a stall of 1.5 s let the
-            # pull land before the tape ran.
-            raise CannotJudge("the pull came before the tape ran")
+        done = wait_rom(vm, "launch", n + 1)[-1]
+        rc, t_done = int(done["rc"]), int(done["t_ms"])
+        # Checks that hold whatever the timing. The launch returned after
+        # the pull was due: a launch that fails by itself returns at once.
+        assert t_done + TICK_MS >= t_arm + PULL_IN_MS, \
+            f"the launch returned rc={rc} at {t_done} ms, the pull was due at " \
+            f"{t_arm + PULL_IN_MS} ms: {vm.serial}"
+        assert mask(vm) == INS | REM
+        assert vm.script("state", timeout=TIMEOUT).lines[0].split()[4] == "holo=0"
+        no_exception(vm)
+        # When the call entry sees the pull first, the ROM's next work pass
+        # reports it; when sleep_ms does, the tape runs and gets no event.
+        assert tape_events(vm)[0] == INS and REM not in tape_events(vm)[1:] or \
+            tape_events(vm) == [INS, REM]
+        started = pipos_markers(vm, "holo_start")
+        kills = pipos_markers(vm, "holo_kill")
+        if not started:
+            # The pull came before the load: only a missing tape or a
+            # failed read of it. Anything else fails.
+            assert not kills and rc in (ENOENT, EIO), (rc, vm.serial)
+            raise CannotJudge(f"the pull came before the tape loaded: rc={rc} at {t_done} ms, "
+                              f"the pull due at {t_arm + PULL_IN_MS} ms, no holo_start")
         assert rc == ENODEV, vm.serial
         kill = one(vm, "holo_kill")
         assert kill["reason"] == "eject", kill
         # The fault format, and an address inside the tape: kernel/holo.h.
         assert re.fullmatch(r"0x[0-9a-f]{8}", kill["pc"]), kill
         assert HOLO_BASE <= int(kill["pc"], 16) < HOLO_BASE + HOLO_SIZE, kill
-        assert mask(vm) == INS | REM
-        # When the call entry sees the pull first, the ROM's next work pass
-        # reports it; when sleep_ms does, the tape runs and gets no event.
-        assert tape_events(vm)[0] == INS and REM not in tape_events(vm)[1:] or \
-            tape_events(vm) == [INS, REM]
-        assert vm.script("state", timeout=TIMEOUT).lines[0].split()[4] == "holo=0"
-        no_exception(vm)
+        if not rom_markers(vm, "tloop"):
+            # The guest clock follows the host: a stall of 1.5 s let the
+            # pull land between the start and the tape's first marker.
+            raise CannotJudge("the pull came after holo_start, before the tape's ev=tloop")
 
     judged(attempt)
 
@@ -444,15 +472,20 @@ def test_pull_in_debounce(board, holo_build, test_rom, test_holo, tmp_path, need
     def attempt():
         with run(holo_build, board, sd, {0: card}) as vm:
             wait_rom(vm, "wait")
-            holo(vm, "insert", "0", str(CARD_BLOCKS))
-            holo(vm, "pull")
+            t_in = holo_at(vm, "insert", "0", str(CARD_BLOCKS))
+            t_out = holo_at(vm, "pull")
             time.sleep(0.6)
             got = mask(vm)
-            if pipos_markers(vm, "holo_attach") and got != 0:
-                # The pull came after the 250 ms debounce: the host was slow.
-                raise CannotJudge("an attach ran before the pull")
-            assert got == 0 and tape_events(vm) == [], vm.serial
             no_exception(vm)
+            if got == 0 and tape_events(vm) == []:
+                return
+            # Only a pull after the debounce may attach. The card was in
+            # t_out - t_in ms by the tick clock, one tick either way.
+            held = t_out - t_in
+            assert pipos_markers(vm, "holo_attach") and held + TICK_MS >= SETTLE_MS, \
+                (held, got, vm.serial)
+            raise CannotJudge(f"the pull came {held} ms after the insert, past the "
+                              f"{SETTLE_MS} ms debounce, and an attach ran")
 
     judged(attempt)
 
@@ -623,31 +656,40 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
             wait_rom(vm, "wait")
             key(vm, "dial_push")
             assert wait_rom(vm, "sample")[0]["rc"] == "0"
-            insert(vm)
+            count = len(tape_events(vm))
+            t_in = holo_at(vm, "insert", "0", str(CARD_BLOCKS))
+            wait_rom(vm, "tapeev", count + 1)
+            assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
             ms, samples, polls = int(m["ms"]), int(m["samples"]), int(m["polls"])
             tr = audio_trace(vm)
             print(f"\nattach: ms={ms} samples={samples} polls={polls} t0={a0} t1={a1} "
-                  f"audio={tr}")
+                  f"insert={t_in} audio={tr}")
             assert ms >= 1200, m
             # The witness: the main loop's work did not run during the attach.
             assert polls == 0, m
+            # Never more samples than due, on any host.
+            assert samples <= ms * 8 + 8, m
+            no_exception(vm)
             # The sample was playing for the whole attach: it started before
             # t0 and nothing ended it before t1.
             assert tr and tr[0][0] == "pcm" and tr[0][1] <= a0 + CLOCKS_MS, (m, tr)
             end = tr[1] if len(tr) > 1 else None
             if end is not None and end[1] < a1 - CLOCKS_MS:
-                if end[0] == "pcm_end" and end[1] - tr[0][1] >= SAMPLE_MS - CLOCKS_MS:
-                    # The whole sample played out before the attach ended:
-                    # the insert came too late to judge.
-                    raise CannotJudge(f"the sample ended at {end[1]} ms, before the attach "
-                                      f"ended at {a1} ms")
-                raise AssertionError(f"the sound stopped during the attach: {m} {tr}")
+                assert end[0] == "pcm_end" and end[1] - tr[0][1] >= SAMPLE_MS - CLOCKS_MS, \
+                    f"the sound stopped during the attach: {m} {tr}"
+                # The whole sample played out before the attach ended. Only
+                # a late insert explains it: an attach right after the
+                # debounce would still end after the sample.
+                assert t_in + SETTLE_MS + 1200 + CLOCKS_MS >= end[1], \
+                    f"the insert at {t_in} ms left time to attach before the sample ended: " \
+                    f"{m} {tr}"
+                raise CannotJudge(f"the insert came at {t_in} ms, the sample ended at {end[1]} ms, "
+                                  f"before the attach ended at {a1} ms")
             # The PCM interrupt ran during it. How many samples it output
             # depends on how often QEMU delivers the timer interrupt on this
-            # host: a late interrupt skips to the sample due. Never more than due.
-            assert 0 < samples <= ms * 8 + 8, m
-            no_exception(vm)
+            # host: a late interrupt skips to the sample due.
+            assert samples > 0, m
 
     judged(attempt)
 
@@ -669,7 +711,8 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
     The ROM streams until it gets the card's PIP_EV_TAPE, and the test
     inserts the card after ev=stream. So the stream is live when the attach
     begins and goes on after it ends: the kernel's order makes the overlap.
-    Only the ROM's 10 s cap could end the stream first."""
+    Only the ROM's 10 s cap after a late insert, or a ROM that queued a chunk
+    late before the attach, could end the stream first."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
 
@@ -679,23 +722,45 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
             wait_rom(vm, "wait")
             assert vm.script("dial -1", timeout=TIMEOUT).status == "ok"
             wait_rom(vm, "stream")
-            holo(vm, "insert", "0", str(CARD_BLOCKS))
+            t_in = holo_at(vm, "insert", "0", str(CARD_BLOCKS))
             n = int(wait_rom(vm, "streamed")[0]["n"])
             assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
             ms = int(m["ms"])
             tr = audio_trace(vm)
-            print(f"\nstream: chunks={n} attach ms={ms} t0={a0} t1={a1} audio={tr}")
+            lastq = rom_markers(vm, "lastq")
+            print(f"\nstream: chunks={n} attach ms={ms} t0={a0} t1={a1} insert={t_in} "
+                  f"lastq={lastq} audio={tr}")
             assert ms >= 1200 and m["polls"] == "0", m
-            assert tr and tr[0][0] == "pcm", tr
+            no_exception(vm)
+            # The test inserts after ev=stream, so the first play starts
+            # before the insert, and the attach comes a debounce later.
+            assert tr and tr[0][0] == "pcm" and tr[0][1] <= t_in + CLOCKS_MS, (t_in, tr)
+            assert a0 + CLOCKS_MS >= t_in + SETTLE_MS, (t_in, m)
             before = [k for k, (_, t) in enumerate(tr) if t < a0 - CLOCKS_MS]
-            if not before:
-                raise CannotJudge(f"the attach began at {a0} ms, before the stream at {tr[0][1]} ms")
+            assert before, (m, tr)
             last = before[-1]
             if tr[last][0] in ("pcm_end", "stop") and last == len(tr) - 1 and \
                     tr[last][1] - tr[0][1] >= STREAM_MAX_MS - 2 * CLOCKS_MS:
-                raise CannotJudge(f"the stream hit its cap at {tr[last][1]} ms, before the attach "
-                                  f"at {a0} ms")
+                # The cap ended the stream first. Only a late insert explains
+                # it: an attach a debounce after it would find the stream live.
+                assert t_in + SETTLE_MS + CLOCKS_MS >= tr[last][1], \
+                    f"the insert at {t_in} ms left time to attach in the stream: {m} {tr}"
+                raise CannotJudge(f"the insert came at {t_in} ms, the stream hit its cap at "
+                                  f"{tr[last][1]} ms, before the attach at {a0} ms")
+            if tr[last][0] == "pcm_end":
+                # The stream ran dry before the attach. The ROM's last queue
+                # call before the attach was full, or filled it, so at least
+                # a chunk was queued then: only a ROM late by a chunk explains it.
+                assert len(lastq) == 1, (lastq, vm.serial)
+                tq = int(lastq[0]["t_ms"])
+                late = tr[last][1] - tq
+                assert late + 2 * CLOCKS_MS >= STREAM_CHUNK_MS, \
+                    f"the stream ran dry {late} ms after the ROM's last queue call at {tq} ms, " \
+                    f"before the attach: {m} {tr}"
+                raise CannotJudge(f"the ROM's last queue call before the attach came at {tq} ms, "
+                                  f"the stream ran dry at {tr[last][1]} ms, {late} ms later, "
+                                  f"before the attach at {a0} ms")
             # 1. Live: a chunk was playing when the attach began.
             assert tr[last][0] in ("pcm", "pcm_next"), (m, tr)
             # 2. The play ends inside the attach. At its start at most the
