@@ -3,8 +3,21 @@
  * they do not replace the host libc's. The Makefile force-includes this
  * file into the library sources. libpip_test.c includes it around the
  * SDK headers only, then again with LIBPIP_NAMES_UNDO.
+ *
+ * A host libc may define these names as macros, as the macOS SDK does
+ * for its checked string functions. The #undef lines drop those first.
  */
 #ifndef LIBPIP_NAMES_UNDO
+#undef memcpy
+#undef memmove
+#undef memset
+#undef memcmp
+#undef strlen
+#undef strnlen
+#undef strcmp
+#undef strncmp
+#undef strchr
+#undef strlcpy
 #define memcpy  pipt_memcpy
 #define memmove pipt_memmove
 #define memset  pipt_memset

@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make sdimage`, `make run` and `make bootdir`.
 
 ### Changed
+- RobCo-Core moved to `79cbd82`. Its harness parks the three spare cores of QEMU's `raspi3b` for every boot. Its SPI waits fail only when no byte moves for 20 ms plus four byte times. It adds a watchdog API, which the kernel does not use yet. Its host warning check now also compiles at CI's flags, so `tests/host/libpip_names.h` drops a host libc's macros of the same names before it renames them.
 - `test_stream_while_redrawing` and the panel tests that count sends park cores 1 to 3 of `raspi3b`. They spun in an exception loop and made a full present take 8.8 s on a GitHub runner.
 - Tests with a time limit judge their claim only when the run's own numbers show the host kept up. Otherwise they run again, up to 4 runs, then skip with a `host timing:` reason. The session fails on more than one such skip per board. `--timing-skips-max` sets the limit, and `make test-target` prints skip reasons.
 - A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
