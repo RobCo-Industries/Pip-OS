@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make sdimage`, `make run` and `make bootdir`.
 
 ### Changed
+- The hardware checklist in `docs/TESTING.md` has an open item for ABI 1.3 `hw_flags` on a board, and says that every recorded run used `2d10c2c`.
 - The holotape count at boot, `holo_enumerate`, `holo_launch` and `dir_list` skip entries whose long name starts with a dot, and hidden, system and volume label entries. A card written from a Mac no longer counts its `._<name>.HTP` side files as holotapes, and `dir_list` no longer shows them or `.Spotlight-V100` as `_CULVE~1.HTP` or `SPOTLI~1`.
 - The docs describe RobCo-Core's progress-based SPI rule: a send fails when no byte moves for 20 ms plus four byte times, not after a total time. The kernel's one whole-frame retry of a failed send is unchanged.
 - RobCo-Core moved to `79cbd82`. Its harness parks the three spare cores of QEMU's `raspi3b` for every boot. Its SPI waits fail only when no byte moves for 20 ms plus four byte times. It adds a watchdog API, which the kernel does not use yet. Its host warning check now also compiles at CI's flags, so `tests/host/libpip_names.h` drops a host libc's macros of the same names before it renames them.

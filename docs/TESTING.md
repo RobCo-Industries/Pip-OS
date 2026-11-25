@@ -269,6 +269,8 @@ Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` on
 
 Each run on a real board is recorded here, with the commit that ran. A result holds only for that board and that commit.
 
+Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3, the SPI panel backend and this tree with RobCo-Core `79cbd82` have not run on a board. RobCo-Core records its own hardware runs in its docs.
+
 ### Hardware checklist
 
 | Item | Status |
@@ -289,6 +291,7 @@ Each run on a real board is recorded here, with the commit that ran. A result ho
 | RTC chip | Open. Only `rtc=absent` with no chip is seen. |
 | SPI panel | Open |
 | The conformance ROM, see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) | Open |
+| ABI 1.3 `hw_flags` from `sys_info` | Open. `2d10c2c` predates ABI 1.3. To check: `PIP_HW_RTC` set with a clock chip fitted and clear without one, and `PIP_HW_AUDIO` set when the audio driver starts. |
 
 ### Zero W 1.1 run, 2026-11-24
 
