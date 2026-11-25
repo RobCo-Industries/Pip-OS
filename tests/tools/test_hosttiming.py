@@ -498,13 +498,3 @@ def test_session_limit_option_is_per_board(tmp_path):
 def test_session_without_timing_skips_prints_nothing(tmp_path):
     code, out = session(tmp_path, [])
     assert code == 0 and "host timing skips" not in out, out
-
-
-# ---- park_args() ----------------------------------------------------------------------------
-
-def test_park_args_only_on_raspi3b():
-    assert hosttiming.park_args("raspi2b") == []
-    args = hosttiming.park_args("raspi3b")
-    assert "loader,addr=0x80020,data=0xd503207f,data-len=4" in args
-    assert [a for a in args if "cpu-num" in a] == \
-        [f"loader,addr=0x80020,cpu-num={n}" for n in (1, 2, 3)]

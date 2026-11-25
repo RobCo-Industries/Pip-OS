@@ -46,13 +46,14 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_time.py` | The time, sensor, battery and power calls, with and without QEMU's RTC model |
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
+| `tests/test_side_files.py` | A card with macOS side files, dot folders, hidden and system files: the holotape count, `holo_enumerate`, `dir_list` and a save match a clean card |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
 | `tests/tools/test_card_tool.py` | `tools/card.py` on its own, without a build or QEMU: the `TAPE` and `CARD_DIR` rules, the staged-card check and each `bootdir` stop, links at every position in `DIR` and in the sources, `BOOTDIR.LST` lines, read-only folders, and a sweep of 300 random trees from a fixed seed. Either a run stops and `DIR` is unchanged, or it holds exactly the staged files plus the files it left alone, and a file outside `DIR` that links point at never changes. Cases that need two spellings of a name run only on a case-sensitive temp folder; the run prints which branch it took. The read-only cases skip as root, as in the CI container. |
 | `tests/tools/test_hosttiming.py` | `tests/hosttiming.py` on its own, without a build or QEMU: the stream judgement on the numbers of the failing CI run and of normal runs, the chains, the panel retries, and the session rule. See [Host timing](#host-timing). |
 | `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers, in auto mode, and in auto mode with the clock chip. See [Conformance ROM](#conformance-rom). |
 
-While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/TESTING.md#qemu-keep-alive).
+While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/TESTING.md#qemu-keep-alive).
 
 The helpers live in the SDK, in `sdk/testing/pipos_testing/`, so a ROM project can use them too. `tests/pipos_helpers.py` re-exports them. Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
@@ -76,7 +77,7 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 A whole frame is about 150 KiB on the wire. The repeat counts shrink flat colours. After a boot with `backend = both`, the transcript holds 189861 bytes, the boot console frames, and the dump is about 85 KB of text. It takes about 0.4 s in QEMU, whose serial ports have no baud rate. At 115200 baud it would take about 7.4 s. A frame with no repeats would be about 300 KB of hex, about 27 s.
 
-A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 400 ms in QEMU. QEMU's `raspi3b` starts all four cores. The harness points only core 0 at its AArch64 shim, so cores 1 to 3 loop through an exception vector and hold QEMU's big lock often. The kernel's polled SPI needs that lock on every register access, so a present took 3 s there on a Mac and 8.8 s on a GitHub runner. The tests that present on the panel park cores 1 to 3 in `WFI` with `park_args()` from `tests/hosttiming.py`. The streaming test uses 8 s chunks, so a present has a margin of about 20 times.
+A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 600 ms in QEMU. QEMU's `raspi3b` starts all four cores. RobCo-Core's harness points cores 1 to 3 at its AArch64 shim too, and the firmware stub parks them in `WFI`, for every boot. Its canary V18 checks this. Before it did, they looped through an exception vector and held QEMU's big lock often. The kernel's polled SPI needs that lock on every register access, so a present took 3 s there on a Mac and 8.8 s on a GitHub runner. The streaming test uses 8 s chunks, so a present has a margin of about 20 times.
 
 ## Host timing
 
@@ -113,6 +114,7 @@ A skip must not hide a failure. The session counts `host timing:` skips per boar
 | `tft_*` | Panel frames for `test_tft.py`: a scene, small changes and `power`, streaming while redrawing, and changes outside the window the panel shows at 0 degrees |
 | `time_*` | The clock with and without an RTC, `power` reboot, halt and screen off and on |
 | `storage_*` | Saves, recovery, files, aliases of the save folder, saves over 64 KiB, a card that goes away, a save kept across two boots |
+| `side_files` | Prints the holotape listing, `dir_list` of four folders and a save's size, for `test_side_files.py` |
 | `holo_*` | Holotape listing, launch, card errors and the state handover. `holo_tapes/tape.c` is the test holotape. |
 
 ## Writing a test ROM
@@ -199,7 +201,7 @@ For self-checks inside the ROM, include `<pipos/selftest.h>`. `pip_check(name, o
 
 ## Conformance ROM
 
-`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
 
 | File | Is |
 |---|---|
@@ -267,6 +269,8 @@ Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` on
 
 Each run on a real board is recorded here, with the commit that ran. A result holds only for that board and that commit.
 
+Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3, the SPI panel backend and this tree with RobCo-Core `79cbd82` have not run on a board. RobCo-Core records its own hardware runs in its docs.
+
 ### Hardware checklist
 
 | Item | Status |
@@ -287,6 +291,7 @@ Each run on a real board is recorded here, with the commit that ran. A result ho
 | RTC chip | Open. Only `rtc=absent` with no chip is seen. |
 | SPI panel | Open |
 | The conformance ROM, see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) | Open |
+| ABI 1.3 `hw_flags` from `sys_info` | Open. `2d10c2c` predates ABI 1.3. To check: `PIP_HW_RTC` set with a clock chip fitted and clear without one, and `PIP_HW_AUDIO` set when the audio driver starts. |
 
 ### Zero W 1.1 run, 2026-11-24
 

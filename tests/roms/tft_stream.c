@@ -4,8 +4,8 @@
  * 8 s each, are queued as the kernel takes them. A chunk must outlast one
  * present: about 128 ms on a panel at 10 MHz. In QEMU's raspi3b it took
  * 3 s on a Mac and 8.8 s on a GitHub runner while cores 1 to 3 spun in an
- * exception loop; the test parks them, and a present then takes about
- * 0.4 s on a Mac. See tests/hosttiming.py. Between queue calls
+ * exception loop. RobCo-Core's harness parks them now, and a present takes
+ * about 0.4 s on a Mac. See docs/TESTING.md. Between queue calls
  * the ROM clears the screen to another colour and presents it, so each
  * present sends a full frame to the panel. The audio trace must show one
  * op=pcm, CHUNKS - 1 op=pcm_next and one op=pcm_end: no underrun.

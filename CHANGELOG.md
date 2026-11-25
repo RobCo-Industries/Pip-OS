@@ -71,7 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make sdimage`, `make run` and `make bootdir`.
 
 ### Changed
-- `test_stream_while_redrawing` and the panel tests that count sends park cores 1 to 3 of `raspi3b`. They spun in an exception loop and made a full present take 8.8 s on a GitHub runner.
+- The hardware checklist in `docs/TESTING.md` has an open item for ABI 1.3 `hw_flags` on a board, and says that every recorded run used `2d10c2c`.
+- The holotape count at boot, `holo_enumerate`, `holo_launch` and `dir_list` skip entries whose long name starts with a dot, and hidden, system and volume label entries. A card written from a Mac no longer counts its `._<name>.HTP` side files as holotapes, and `dir_list` no longer shows them or `.Spotlight-V100` as `_CULVE~1.HTP` or `SPOTLI~1`.
+- The docs describe RobCo-Core's progress-based SPI rule: a send fails when no byte moves for 20 ms plus four byte times, not after a total time. The kernel's one whole-frame retry of a failed send is unchanged.
+- RobCo-Core moved to `79cbd82`. Its harness parks the three spare cores of QEMU's `raspi3b` for every boot. Its SPI waits fail only when no byte moves for 20 ms plus four byte times. It adds a watchdog API, which the kernel does not use yet. Its host warning check now also compiles at CI's flags, so `tests/host/libpip_names.h` drops a host libc's macros of the same names before it renames them.
+- RobCo-Core's harness parks cores 1 to 3 of `raspi3b` for every boot, so the panel tests no longer park them with `park_args()`. Both together would point two loaders at the same core. The cores spun in an exception loop and made a full present take 8.8 s on a GitHub runner.
 - Tests with a time limit judge their claim only when the run's own numbers show the host kept up. Otherwise they run again, up to 4 runs, then skip with a `host timing:` reason. The session fails on more than one such skip per board. `--timing-skips-max` sets the limit, and `make test-target` prints skip reasons.
 - A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
 - The kernel finds the card's volume with RobCo-Core's `fs_mount_boot()`. It prefers the first FAT volume that holds `/PIPBOY/PIPOS.CFG` or `/PIPBOY/ROM1.ROM`, and falls back to the first that mounts. `ev=mount` gains `marker`. `ev=card rc=nomount` gains `why`. A card with an empty partition table now reports `rc=nomount why=nofat` instead of `rc=nopart`.

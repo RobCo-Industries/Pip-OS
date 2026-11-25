@@ -23,7 +23,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | ABI header shared with ROM code | `sdk/include/pipos/abi.h` |
 | ROM and holotape SDK | `sdk/` |
 
-The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/guide/API.md).
+The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/guide/API.md).
 
 ## Boot flow
 
@@ -54,7 +54,7 @@ A failure in `mmu_init()`, `fb_init()`, `console_init()`, the heap or the tick c
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
+The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
 
 | Range | Use | Defined in |
 |---|---|---|
@@ -82,7 +82,7 @@ The startup block of each image sits at the bottom of its stack, `stack_top - 0x
 
 ## How an image runs
 
-`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
+`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
 
 `pipos_image_run()` in `kernel/rom.c` runs both kinds of image:
 
@@ -157,7 +157,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 - HDMI: `present` scales the back buffer by 2 into the framebuffer, as before.
 - Panel: `present` compares the back buffer with the shadow, a copy of the last frame sent at `0x00C80000`. `gfx_dirty_rect()` in `gfx_draw.c` finds the smallest rectangle that holds every changed pixel the panel shows. At 0 and 180 degrees the panel shows the left 240 columns and the top 240 rows, so it looks only there, with the 320-pixel row stride. A change outside that window is never sent and never reaches the shadow. It skips equal rows from the top and the bottom, then looks for the leftmost and rightmost change in the rows between. RobCo-Core's `tft_present_px32_rect()` sends that rectangle in RGB565, and `gfx_copy_rect()` copies it into the shadow. An unchanged frame sends nothing.
 - The whole frame goes out after `tft_init()`, after `power` wakes the screen, after a holotape returns and after a failed send.
-- A panic after `power` blanked the screen wakes the panel first: sleep out, display on, backlight on. Then the whole console frame goes out. `tft_sleep()` returns at once when the timer has stopped, and every SPI wait has a deadline, so the panic path stays bounded. A failed panel call skips the rest of the wake; the frame is still sent. On HDMI the panic text lands on the black screen, since the console draws straight into the framebuffer.
+- A panic after `power` blanked the screen wakes the panel first: sleep out, display on, backlight on. Then the whole console frame goes out. `tft_sleep()` returns at once when the timer has stopped, and every SPI wait fails after 20 ms plus four byte times with no byte moved, so the panic path stays bounded. A failed panel call skips the rest of the wake; the frame is still sent. On HDMI the panic text lands on the black screen, since the console draws straight into the framebuffer.
 
 Cost on the wire: a rectangle of w by h pixels takes 11 bytes of window commands and `2 * w * h` bytes of pixels. At 9.62 MHz, the rate set for the default 10 MHz:
 
@@ -172,7 +172,7 @@ Cost on the wire: a rectangle of w by h pixels takes 11 bytes of window commands
 
 The panel console: with the panel in use, boot text and panic text also reach the panel. `display.c` keeps the last 15 lines, cut at 40 characters, and draws them with the 8x16 font into the console frame at `0x00D00000`. It sends that frame the same way, against the shadow. Lines before `pipos_display_start()` and a panic before it never reach the panel. With `backend = tft` HDMI keeps the boot console and shows no frame.
 
-A panel call that fails after boot is counted. The first prints `ev=display_error`. A failed send may leave part of a rectangle on the panel, so the kernel tries once more with the whole frame. If that fails too, `present` returns `-PIP_EIO`, the kernel keeps running and sends the whole frame next time. In QEMU on `raspi3b` a loaded host can stall the SPI model past RobCo-Core's 20 ms SPI deadline, so the retry is not only for hardware.
+A panel call that fails after boot is counted. The first prints `ev=display_error`. A failed send may leave part of a rectangle on the panel, so the kernel tries once more with the whole frame. If that fails too, `present` returns `-PIP_EIO`, the kernel keeps running and sends the whole frame next time. RobCo-Core's SPI driver fails a send only when no byte moves for 20 ms plus four byte times, and it reads the controller once more before it gives up. A slow but moving send never fails, whatever its length. So a retry needs a bus that stops, on hardware or in QEMU. A send that stops costs one such window, and its retry at most one more, on top of the bytes that went out. The panel tests still accept one retry per present, see [TESTING.md](TESTING.md#host-timing).
 
 ### input
 
@@ -208,7 +208,7 @@ The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c
 | `kill` | Ends the innermost running image with `umode_request_kill()` |
 | `panic <reason>` | Takes the panic path |
 
-Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
+Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
 
 ## Build
 

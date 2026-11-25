@@ -1,10 +1,12 @@
 """The exact panel sends of tests/test_tft.py, with the kernel's retries taken out.
 
-On raspi3b under heavy host load the library's 20 ms SPI deadline can
-expire in QEMU. The kernel then retries the present once, with the whole
+The library fails an SPI send when no byte moves for 20 ms plus four
+byte times. Its driver reads the controller once more before it gives up,
+so a host pause alone should not fail a send any more, but a stalled QEMU
+still could. The kernel then retries the present once, with the whole
 frame (kernel/display.c, pipos_display_send()). It prints the failed send's
 ev=tft_send marker, with the rectangle it tried and the bytes that went out
-before the deadline, then ev=display_error op=present, but only for the
+before the stall, then ev=display_error op=present, but only for the
 first failure of the run, then one ev=tft_send why=retry marker.
 
 So a retry changes one present only: one more send, a whole-frame one, and

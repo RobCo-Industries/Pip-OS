@@ -395,3 +395,25 @@ TEST(handles)
     CHECK_EQ(pipos_handle_count(used), 0);
     CHECK_EQ(pipos_handle_alloc(&used), 0);
 }
+
+TEST(dir_entry_skipped)
+{
+    /* macOS side files and folders, by their long names. */
+    CHECK_EQ(pipos_dir_entry_skipped("._CULVERT.HTP", FS_ATTR_ARCHIVE), 1);
+    CHECK_EQ(pipos_dir_entry_skipped(".DS_Store", 0), 1);
+    CHECK_EQ(pipos_dir_entry_skipped(".Spotlight-V100", FS_ATTR_DIR), 1);
+    CHECK_EQ(pipos_dir_entry_skipped(".fseventsd", FS_ATTR_DIR | FS_ATTR_HIDDEN), 1);
+    CHECK_EQ(pipos_dir_entry_skipped(".Trashes", FS_ATTR_DIR | FS_ATTR_HIDDEN), 1);
+    /* Hidden, system and volume label bits, whatever the name. */
+    CHECK_EQ(pipos_dir_entry_skipped("TAPE.HTP", FS_ATTR_HIDDEN), 1);
+    CHECK_EQ(pipos_dir_entry_skipped("TAPE.HTP", FS_ATTR_SYSTEM | FS_ATTR_ARCHIVE), 1);
+    CHECK_EQ(pipos_dir_entry_skipped("PIPOS", PIPOS_FAT_ATTR_VOLUME), 1);
+    /* Shown: plain files and folders, read-only, and names that only hold a dot. */
+    CHECK_EQ(pipos_dir_entry_skipped("TAPE.HTP", 0), 0);
+    CHECK_EQ(pipos_dir_entry_skipped("TAPE.HTP", FS_ATTR_ARCHIVE | FS_ATTR_RDONLY), 0);
+    CHECK_EQ(pipos_dir_entry_skipped("HOLO", FS_ATTR_DIR), 0);
+    CHECK_EQ(pipos_dir_entry_skipped("_CULVE~1.HTP", FS_ATTR_ARCHIVE), 0);
+    CHECK_EQ(pipos_dir_entry_skipped("#GAME.HTP", 0), 0);
+    CHECK_EQ(pipos_dir_entry_skipped("~GAME.HTP", 0), 0);
+    CHECK_EQ(pipos_dir_entry_skipped("A.B.HTP", 0), 0);
+}

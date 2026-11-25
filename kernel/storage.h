@@ -63,6 +63,18 @@ int32_t pipos_save_dir_check(const char *path, const pipos_dir_reader_t *r);
  */
 int32_t pipos_storage_errno(int fs_err);
 
+/* The FAT volume label bit. RobCo-Core's fs.h names the other attribute bits. */
+#define PIPOS_FAT_ATTR_VOLUME   0x08u
+
+/*
+ * 1 when a listing skips a card entry: its long name starts with '.', or
+ * its FAT attributes `attr` have the hidden, system or volume label bit.
+ * A Mac writes "._<name>" side files and folders such as .Spotlight-V100;
+ * PCs mark their own files hidden or system. The 8.3 alias of "._X.HTP"
+ * is "_X~1.HTP", so the rule reads the long name.
+ */
+int pipos_dir_entry_skipped(const char *name, unsigned attr);
+
 /* The handle table: bit n of *used is handle n. */
 int32_t pipos_handle_alloc(uint32_t *used);          /* handle, or -PIP_ENOMEM */
 int32_t pipos_handle_check(uint32_t used, int32_t h); /* 0 or -PIP_EBADF */

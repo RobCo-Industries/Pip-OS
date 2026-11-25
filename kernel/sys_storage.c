@@ -384,6 +384,9 @@ static int32_t sys_dir_list(const pipos_sys_ctx_t *ctx, uint32_t upath, uint32_t
         return pipos_storage_errno(frc);
     }
     while (count < max && (frc = fs_readdir(&d, &st)) == 1) {
+        if (pipos_dir_entry_skipped(st.name, st.attr)) {
+            continue;
+        }
         if (index++ >= start) {
             dirent_fill(&ents[count++], &st);
         }
