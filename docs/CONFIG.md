@@ -26,6 +26,7 @@ beep = yes
 | `display` | `line_delay_ms` | 0 to 2000 | `0` | Pause between two boot lines, in milliseconds |
 | `display` | `backend` | `hdmi`, `tft`, `both`, any case | `hdmi` | Where frames go, see [SPI panel](#spi-panel) |
 | `audio` | `volume` | 0 to 100 | `100` | Audio volume in percent |
+| `holotape` | `slot` | `on`, `off`, any case | `off` | The holotape slot of ABI 1.4. `off` touches no slot pin. See [API.md](API.md#the-holotape-slot). |
 | `audio` | `beep` | `yes`, `no`, `true`, `false`, `on`, `off`, `1`, `0`, any case | `yes` | Beep once at power-on |
 
 Numbers are unsigned decimal. A `+` sign is accepted.

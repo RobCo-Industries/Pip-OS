@@ -7,6 +7,12 @@
  * Context: main context and system calls only. pipos_slot_work() runs
  * inside pipos_poll(), so inside the calls that do main-loop work.
  * pipos_slot_eject_due() runs at every system call entry.
+ *
+ * SPI0 is shared with the panel. Every panel transfer starts in main
+ * context (present, power, boot and panic text); Pip-OS has no interrupt
+ * handler that draws. Every card transfer runs here or in the file reads
+ * of sys_holo.c, also main context. Neither calls pipos_poll() during a
+ * transfer, so a panel transfer never starts during a card read.
  */
 #include <pipos/abi.h>
 #include <robco/blk.h>

@@ -4,7 +4,7 @@ A running image calls the kernel with `svc #0`. The call number goes in r7, the 
 
 [`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers, the error codes, the structs and every limit. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for every call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
-Pip-OS implements ABI 1.3, `PIP_ABI_VERSION` `0x00010003`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0, 1.1 or 1.2 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
+Pip-OS implements ABI 1.4, `PIP_ABI_VERSION` `0x00010004`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 to 1.3 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
 
 | Error | Value |
 |---|---|
@@ -54,8 +54,8 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 - `ticks_ms` moves in steps of 10 ms, the 100 Hz tick.
 - `sleep_ms` waits on the 1 MHz system timer, so it never ends early. The tick wakes it, so it can run up to 10 ms long. IRQs stay on, and the kernel runs its main-loop work while it waits.
 - The exit status is the low 8 bits of `status`. `exit` prints it as `ev=rom_exit status=<0 to 255>` for the ROM. For a holotape, `holo_launch` returns it.
-- `sys_info` writes `size` 32, `abi_version` `0x00010003`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, `hw_flags` and one reserved word set to 0.
-- `hw_flags` sits at offset `0x18` and is new in ABI 1.3. Bit 0, `PIP_HW_RTC`, is set when a clock chip answered at boot. Bit 2, `PIP_HW_AUDIO`, is set when the audio driver started at boot, so the sound calls can play. When the PWM output fails at boot and the trace backend takes over, the bit is set too. Bit 1 and bits 3 to 31 are 0. A Pip-OS before 1.3 writes 0 there, so a ROM checks `abi_version >= 0x00010003` before it reads the field.
+- `sys_info` writes `size` 32, `abi_version` `0x00010004`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, `hw_flags` and one reserved word set to 0.
+- `hw_flags` sits at offset `0x18` and is new in ABI 1.3. Bit 0, `PIP_HW_RTC`, is set when a clock chip answered at boot. Bit 2, `PIP_HW_AUDIO`, is set when the audio driver started at boot, so the sound calls can play. When the PWM output fails at boot and the trace backend takes over, the bit is set too. Bit 3, `PIP_HW_TAPE`, is set when `PIPOS.CFG` sets `[holotape] slot = on` and the slot backend started at boot, since ABI 1.4. Bit 1 and bits 4 to 31 are 0. A Pip-OS before 1.3 writes 0 there, so a ROM checks `abi_version >= 0x00010003` before it reads the field.
 - What a ROM can tell its user: a set time lasts past power-off only when `PIP_HW_RTC` is set, the time lies in 946684800 to 4102444799, and `set_time` returns 0. With the bit clear the time is lost at power-off. The full rule is in the spec's [System information](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/PIPOS_ABI.md#system-information) section.
 - `mem_info` reports the caller's own region. For the ROM: `heap_base` `0x01000000`, `heap_size` `0x007F0000`, `stack_top` `0x01800000`, `stack_size` `0x00010000`. For a holotape: `0x01800000`, `0x007F0000`, `0x02000000`, `0x00010000`.
 - `log` prints on the PL011 with no newline added. Printable ASCII, `\n` and `\t` print as they are, every other byte as `?`.
@@ -106,6 +106,7 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 | Up, down, left, right, select, dial push | `PIP_EV_BUTTON`, `code` 0 to 5 |
 | Back | `PIP_EV_BUTTON`, `code` 6, `PIP_BTN_BACK`. New in ABI 1.2. |
 | One dial turn | `PIP_EV_DIAL`, `code` 0, the signed detent count |
+| One holotape slot change | `PIP_EV_TAPE`, `code` 0, `value` the `PIP_HOLO_EV_*` bits of that change. The ROM's queue only. New in ABI 1.4. |
 | F1 to F4, characters | Nothing. Only the kernel sees them. |
 
 - Events come from the GPIO buttons and dial, the serial console and the script channel alike.
@@ -207,9 +208,9 @@ The name and path rules, the 64 KiB save limit and the read-only card rules are 
 | Number | Name | Arguments | Result | Errors |
 |---|---|---|---|---|
 | `0x60` | `holo_enumerate` | `pip_holo_info_t *out, uint32 max` | Entries written | `EINVAL` for `max` outside 1 to 32, `EFAULT`, `EIO` |
-| `0x61` | `holo_launch` | `const char *name, const char *args` | The holotape's exit status, 0 to 255 | `EPERM`, `EINVAL`, `EFAULT`, `ENOENT`, `ENOEXEC`, `EIO` |
+| `0x61` | `holo_launch` | `const char *name, const char *args` | The holotape's exit status, 0 to 255 | `EPERM`, `EINVAL`, `EFAULT`, `ENOENT`, `ENOEXEC`, `EIO`, `ENODEV` when the slot card of a running slot tape left |
 | `0x62` | `holo_last_status` | none | What the ROM's last `holo_launch` returned | `ENOENT` before the first launch |
-| `0x63` | `holo_eject_event` | none | 0 | none |
+| `0x63` | `holo_eject_event` | none | The ROM's `PIP_HOLO_EV_*` bits since its last call, then cleared. 0 for a holotape and with `PIP_HW_TAPE` clear. | none |
 
 The listing, the launch steps, the name rules and what a holotape may touch are in the spec's [Holotapes](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/PIPOS_ABI.md#holotapes) and [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/PIPOS_ABI.md#sandbox) sections. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#writing-a-holotape) shows how to build one.
 
@@ -220,6 +221,17 @@ The listing, the launch steps, the name rules and what a holotape may touch are 
 - When `umode_run()` refuses the holotape task, `holo_launch` returns `-PIP_ENOEXEC` and the kernel prints `ev=error code=umode`.
 - A holotape fault prints `ev=holo_kill` and is not shown on the screen.
 - The volume a holotape sets stays after it ends.
+
+### The holotape slot
+
+ABI 1.4 adds a second place for tapes: the root folder of the card in the holotape slot. `[holotape] slot = on` in `PIPOS.CFG` turns it on, see [CONFIG.md](CONFIG.md#keys). With the default `off`, no slot pin is touched and every call behaves as ABI 1.3.
+
+- `holo_enumerate` lists the slot tapes first, with `PIP_HOLO_SLOT` in `flags`, then the boot card tapes whose name the slot card does not hold. A slot file shadows by name alone, also when its header fails. The 32 entries count both places.
+- `holo_launch` looks on the slot card first while its volume is mounted. A name the slot card does not hold goes to the boot card. A read error on the slot card returns `-PIP_EIO` and makes the card bad. A pull returns `-PIP_ENOENT` or `-PIP_EIO`, never a boot card tape.
+- A slot tape whose card leaves ends at its next system call of any kind. The kernel prints `ev=holo_kill reason=eject pc=<pc>` and `holo_launch` returns `-PIP_ENODEV`. A tape from the boot card runs on.
+- `holo_eject_event` returns `PIP_HOLO_EV_INSERTED`, `PIP_HOLO_EV_REMOVED` and `PIP_HOLO_EV_BAD`. Each change also queues `PIP_EV_TAPE` for the ROM, never for a holotape.
+- Slot work runs inside `sleep_ms`, `poll_event`, `wait_event`, `read_buttons`, `read_dial`, `file_read`, `holo_enumerate` and `holo_eject_event`.
+- `file_open`, `dir_list` and the save calls never reach the slot card.
 
 ## Limits
 

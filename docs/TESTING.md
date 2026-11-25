@@ -46,6 +46,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_time.py` | The time, sensor, battery and power calls, with and without QEMU's RTC model |
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
+| `tests/test_slot.py` | The ABI 1.4 holotape slot in a test build, with the RAM card backend. See [Holotape slot](#holotape-slot). |
 | `tests/test_side_files.py` | A card with macOS side files, dot folders, hidden and system files: the holotape count, `holo_enumerate`, `dir_list` and a save match a clean card |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
 | `tests/tools/test_card_tool.py` | `tools/card.py` on its own, without a build or QEMU: the `TAPE` and `CARD_DIR` rules, the staged-card check and each `bootdir` stop, links at every position in `DIR` and in the sources, `BOOTDIR.LST` lines, read-only folders, and a sweep of 300 random trees from a fixed seed. Either a run stops and `DIR` is unchanged, or it holds exactly the staged files plus the files it left alone, and a file outside `DIR` that links point at never changes. Cases that need two spellings of a name run only on a case-sensitive temp folder; the run prints which branch it took. The read-only cases skip as root, as in the CI container. |
@@ -78,6 +79,26 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 A whole frame is about 150 KiB on the wire. The repeat counts shrink flat colours. After a boot with `backend = both`, the transcript holds 189861 bytes, the boot console frames, and the dump is about 85 KB of text. It takes about 0.4 s in QEMU, whose serial ports have no baud rate. At 115200 baud it would take about 7.4 s. A frame with no repeats would be about 300 KB of hex, about 27 s.
 
 A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 600 ms in QEMU. QEMU's `raspi3b` starts all four cores. RobCo-Core's harness points cores 1 to 3 at its AArch64 shim too, and the firmware stub parks them in `WFI`, for every boot. Its canary V18 checks this. Before it did, they looped through an exception vector and held QEMU's big lock often. The kernel's polled SPI needs that lock on every register access, so a present took 3 s there on a Mac and 8.8 s on a GitHub runner. The streaming test uses 8 s chunks, so a present has a margin of about 20 times.
+
+## Holotape slot
+
+QEMU has no SD card on SPI0, so the real slot driver cannot run there. A test build with `-DPIPOS_HOLO_TEST` replaces it with `kernel/slot_test.c`, a card served from RAM. `tests/test_slot.py` builds it into `build/holotest`. The test puts card images in guest RAM with QEMU's `-device loader`, card `n` at `0x02000000 + n * 0x00800000`, and drives the slot with the `holo` script command:
+
+| Command | Effect |
+|---|---|
+| `holo insert <n> <blocks>` | Card `n` goes in. The backend reports it present after 250 ms, as the driver's debounce. |
+| `holo pull` | The card leaves |
+| `holo pullin <ms>` | The card leaves `<ms>` from now. It reaches a tape that keeps the script channel from running. |
+| `holo readfail` | The next read fails with the card in |
+| `holo readpull` | The next read pulls the card |
+| `holo refuse` | The next attach returns `SD_ERR_CMD` |
+| `holo again <k>` | The next `k` attaches return `SD_ERR_AGAIN` |
+| `holo attachpull` | The next attach pulls the card and returns `BLK_ERR_NOMEDIA` |
+| `holo delay <ms>` | Every attach blocks `<ms>` first, as a slow card |
+
+Each attach prints `ev=holo_attach rc ms samples`. `test_shipped_image_has_no_test_backend` checks that the shipped image holds none of it and answers `holo` with `err unknown command`.
+
+What the backend can fake: card detect, the debounce, each attach result, a read error, a pull at any read, a slow attach. What it cannot: the real `holo.h` driver, its pins, the bus buffer and supply, SPI0 timing and sharing with the panel, the lock tab, a card that answers slowly in the middle of a read. The real driver has met only RobCo-Core's card model in its own tests. No board with the slot exists yet, so the shipped path is unverified until hardware.
 
 ## Host timing
 
@@ -263,13 +284,13 @@ Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` on
 
 ### Test
 
-`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel, turns every page with DOWN, goes back from the summary to the last page once, then ends on SELECT. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, one results row per serial check line with the last check on the last page, and golden screens of the intro, the picture prompt, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_picture.png`, `conform_page1.png` and `conform_summary.png`. The ROM has room for 319 results. A check past that is not shown: the ROM adds a FAIL named `results_overflow` instead, so the run fails. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP. A fourth run in auto mode adds QEMU's DS1338 clock chip: `sensor_rtc` and `time_at_boot` pass instead of ABSENT, and `hw_flags` has bits 0 and 2 set. Without the chip it has bit 2 only. The `sysinfo_hw_*` checks follow the spec rules in `conformance/rom/hw_flags.h`. `PIP_HW_RTC` says only that a chip answered, so `get_time` may return 0 or `-PIP_ENODEV` with the bit set or clear. With `PIP_HW_AUDIO` set, a short tone must start and `audio_status` must read 1. With the bit clear, the tone may play or return `-PIP_EIO`. The reserved bits must be 0. `tests/host/test_conform_hw.c` tests these rules on the host. It covers a chip with an invalid time, which QEMU's DS1338 cannot hold. A fifth run in auto mode boots a kernel built with the PWM audio backend forced. On `raspi0` and `raspi1ap`, QEMU's PWM registers abort, so `audio_init()` fails and the trace backend plays the sound. `hw_flags` must still have bit 2 set. A full run records 214 checks.
+`tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel, turns every page with DOWN, goes back from the summary to the last page once, then ends on SELECT. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, one results row per serial check line with the last check on the last page, and golden screens of the intro, the picture prompt, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_picture.png`, `conform_page1.png` and `conform_summary.png`. The ROM has room for 319 results. A check past that is not shown: the ROM adds a FAIL named `results_overflow` instead, so the run fails. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP. A fourth run in auto mode adds QEMU's DS1338 clock chip: `sensor_rtc` and `time_at_boot` pass instead of ABSENT, and `hw_flags` has bits 0 and 2 set. Without the chip it has bit 2 only. The `sysinfo_hw_*` checks follow the spec rules in `conformance/rom/hw_flags.h`. `PIP_HW_RTC` says only that a chip answered, so `get_time` may return 0 or `-PIP_ENODEV` with the bit set or clear. With `PIP_HW_AUDIO` set, a short tone must start and `audio_status` must read 1. With the bit clear, the tone may play or return `-PIP_EIO`. The reserved bits must be 0. `tests/host/test_conform_hw.c` tests these rules on the host. It covers a chip with an invalid time, which QEMU's DS1338 cannot hold. A fifth run in auto mode boots a kernel built with the PWM audio backend forced. On `raspi0` and `raspi1ap`, QEMU's PWM registers abort, so `audio_init()` fails and the trace backend plays the sound. `hw_flags` must still have bit 2 set. A full run records 216 checks.
 
 ## Hardware results
 
 Each run on a real board is recorded here, with the commit that ran. A result holds only for that board and that commit.
 
-Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3, the SPI panel backend and this tree with RobCo-Core `79cbd82` have not run on a board. RobCo-Core records its own hardware runs in its docs.
+Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3 and 1.4, the SPI panel backend, the holotape slot and this tree with RobCo-Core `ec16779` have not run on a board. RobCo-Core records its own hardware runs in its docs.
 
 ### Hardware checklist
 
@@ -291,6 +312,7 @@ Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit
 | RTC chip | Open. Only `rtc=absent` with no chip is seen. |
 | SPI panel | Open |
 | The conformance ROM, see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) | Open |
+| ABI 1.4 holotape slot | Open. No board with the slot exists. To check: insert, list, launch and pull on the real driver, a slow card's attach time, and SPI0 shared with the panel. |
 | ABI 1.3 `hw_flags` from `sys_info` | Open. `2d10c2c` predates ABI 1.3. To check: `PIP_HW_RTC` set with a clock chip fitted and clear without one, and `PIP_HW_AUDIO` set when the audio driver starts. |
 
 ### Zero W 1.1 run, 2026-11-24

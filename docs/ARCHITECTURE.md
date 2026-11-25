@@ -194,13 +194,66 @@ RobCo-Core mounts up to `ROBCO_FS_VOLUMES` volumes at once, 2 by default, and Pi
 
 ### holo
 
-`sys_holo.c`: `holo_enumerate`, `holo_launch`, `holo_last_status`, `holo_eject_event`. Lists up to 32 `.HTP` files in `/PIPBOY/HOLO`. The listing is a first header check: it checks magic, header version and file size. `holo_launch` loads and runs one tape as described above, after the full validation. So it can refuse a listed tape for its slot bounds, ABI major or CRC. Only the ROM may launch. State: the last launch result and a running flag. `holo_eject_event` always returns 0. Pure rules in `holo_rules.c`, tested by `tests/host/test_holo.c`.
+`sys_holo.c`: `holo_enumerate`, `holo_launch`, `holo_last_status`, `holo_eject_event`. Lists up to 32 `.HTP` files from the slot card's root folder, then `/PIPBOY/HOLO`. See [Holotape slot](#holotape-slot). The listing is a first header check: it checks magic, header version and file size. `holo_launch` loads and runs one tape as described above, after the full validation. So it can refuse a listed tape for its slot bounds, ABI major or CRC. Only the ROM may launch. State: the last launch result and a running flag. `holo_eject_event` returns the slot module's pending bits to the ROM. Pure rules in `holo_rules.c` and `slot_rules.c`, tested by `tests/host/test_holo.c` and `tests/host/test_slot.c`.
+
+### Holotape slot
+
+One module owns the slot of ABI 1.4: its state, the bits pending for the ROM, the mount and the eject.
+
+| File | Role |
+|---|---|
+| `slot_rules.c`, `slot.h` | Pure. The state machine of the spec's diagram and the listing rule. Inputs: card detect, the attach result, the mount result, a failed read on the tape volume. Outputs: the action to take and the `PIP_HOLO_EV_*` bits. |
+| `slot.c` | Runs the machine on a backend. Mounts the card as volume `tape` with `FS_MOUNT_RDONLY`, ejects it with `fs_eject()`, queues `PIP_EV_TAPE`. |
+| `slot_backend.h` | The backend interface: `init`, `card`, `present`, `attach`, `detach`, `blkdev` |
+| `slot_holo.c` | The real backend on RobCo-Core's `holo.h`, `HOLO_CONFIG_DEFAULT` pins |
+| `slot_test.c` | A RAM card for QEMU. Built only with `-DPIPOS_HOLO_TEST`. See [TESTING.md](TESTING.md#holotape-slot). |
+
+```mermaid
+flowchart TD
+    calls["sys_holo.c, sys_input.c, sys_system.c"] --> slot["slot.c"]
+    poll["pipos_poll(): main-loop work"] --> slot
+    svc["syscall.c: every call entry"] -->|eject due?| slot
+    slot --> rules["slot_rules.c: pure machine"]
+    slot --> be{"backend"}
+    be --> holo["slot_holo.c on holo.h"]
+    be --> ram["slot_test.c, test builds only"]
+    slot --> fs["fs.h volume tape, read-only"]
+```
+
+`[holotape] slot = off`, the default, leaves the backend pointer NULL. Then no slot pin is touched, `PIP_HW_TAPE` is clear and every call behaves as ABI 1.3.
+
+Slot work runs in `pipos_holo_poll()`, so in every pass of `pipos_poll()` and of the main loop. The calls the spec lists all do that work: `sleep_ms`, `poll_event`, `wait_event`, `read_buttons`, `read_dial`, `file_read`, `holo_enumerate` and `holo_eject_event`. `file_read` and `holo_eject_event` gained a `pipos_poll()` for it.
+
+When the card of a running slot tape leaves, `on_svc()` in `syscall.c` sees it at the tape's next call of any kind. It reads the backend's card detect there, so a tape that never calls a work call is still caught. It calls `umode_request_kill()` and skips the call. The tape ends through the same path as a fault or the `kill` command, and `sys_holo.c` prints `ev=holo_kill reason=eject` and returns `-PIP_ENODEV`. A tape from the boot card is never marked.
+
+#### A slow attach
+
+`holo_attach()` blocks for up to about 1.2 s on a slow card, inside a work pass. `test_slow_attach_blocks_main_loop` measures it with the test backend and a 1200 ms delay, while the ROM plays a 7.5 s sample:
+
+| Board | Attach | PCM samples output during it | Expected at 8 kHz |
+|---|---|---|---|
+| `raspi0` | 1200 ms | 966 | 9600 |
+| `raspi1ap` | 1200 ms | 1030 | 9600 |
+| `raspi2b` | 1200 ms | 945 | 9600 |
+| `raspi3b` | 1200 ms | 980 | 9600 |
+
+The PCM interrupt plays what was already buffered, 120 to 130 ms, then the sound stops for the rest of the attach. `audio_poll()` and the buffer refill do not run while the work pass blocks. The display freezes for the whole attach too: the ROM waits inside its call, so it presents nothing, and the kernel draws nothing. Input is not lost: GPIO buttons and the dial are sampled by the tick and queued. A card that settles fast attaches in milliseconds, so this cost hits only a slow card, once per insertion. Nothing here is hidden from the ROM, and no fix is in place.
+
+#### SPI0 and the panel
+
+The ILI9341 panel and the slot card share SPI0. RobCo-Core's slot driver enables the card's bus only around its own transfers and needs the panel idle then. The two never overlap:
+
+- Panel transfers start only in main context: `present` and `power` from a system call, boot text and the panic text from `pipos_screen_line()` and `pipos_panic()`, the script command `panic` from `pipos_poll()`. Pip-OS installs no interrupt handler that touches the display. The tick and the PCM interrupt belong to RobCo-Core and never use SPI0.
+- Card reads happen only in main context too: the attach and the mount in `pipos_slot_work()`, and the file system reads of `holo_enumerate` and `holo_launch`.
+- Main context runs one thing at a time, and no panel or card function calls `pipos_poll()` in the middle of a transfer. `holo_enumerate` calls `pipos_poll()` only between two files, after each read finished.
+
+So a panel transfer can never start during a card read, and the reverse. The same proof sits in the header comment of `kernel/slot.c`.
 
 ## Main loop and maintenance port
 
 `main_loop()` in `main.c` runs `audio_poll()` and the group polls, then waits up to 20 ms for an input event. It prints one `ev=key` marker per event.
 
-The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c` adds five commands:
+The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c` adds five commands, and `tftdump` and `holo` in test builds:
 
 | Command | Effect |
 |---|---|

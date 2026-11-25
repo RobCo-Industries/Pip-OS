@@ -130,6 +130,23 @@ The sample holotape, `BEACON.HTP`, shows its title, draws rings and plays a shor
 
 ROMs and holotapes are `rimg` images built with the SDK. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md) explains how to build one. `make sdimage ROM=<file> TAPE=<file>` puts yours on the QEMU card.
 
+## Make a tape card
+
+Since ABI 1.4 a Pip-Boy with a holotape slot can run tapes from a second card. The slot is off by default: add this to `PIPBOY/PIPOS.CFG` on the boot card.
+
+```ini
+[holotape]
+slot = on
+```
+
+To make a tape card:
+
+1. Format a card as FAT, with one partition or none.
+2. Copy each tape to the root folder as `<NAME>.HTP`, 1 to 8 characters, then `.HTP`. Folders, hidden files and other names are ignored.
+3. Insert it. The ROM lists its tapes first. A tape on the tape card hides a tape of the same name on the boot card until you pull the card.
+
+Pip-OS never writes to the tape card. Saves still go to the boot card. A card that cannot be read is marked bad until you pull it. Pulling the card while one of its tapes runs ends that tape.
+
 ## Configuration
 
 `PIPBOY/PIPOS.CFG` is an INI file. These are the common keys. [CONFIG.md](CONFIG.md) has the full table and the error rules.
