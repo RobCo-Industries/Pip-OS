@@ -296,8 +296,7 @@ def test_stream_while_redrawing(board, tft_build, test_rom, tmp_path, need_mtool
         print(f"\n{board}: {frames} frames, {len(full)} full sends while streaming, "
               f"longest present {stream['max_ms']} ms, longest queue gap "
               f"{stream['max_gap_ms']} ms")
-        judge_stream(stream, tr, CHUNKS, CHUNK_LEN, RATE, crcs)
-        assert frames >= CHUNKS and len(full) >= CHUNKS, (frames, len(full))
+        judge_stream(stream, tr, len(full), CHUNKS, CHUNK_LEN, RATE, crcs)
 
     judged(attempt)
 

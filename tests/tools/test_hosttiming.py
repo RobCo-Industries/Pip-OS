@@ -58,8 +58,8 @@ CI_OPS = [("pcm", CRCS[0]), ("pcm_end", None), ("pcm", CRCS[1]), ("pcm_end", Non
 NORMAL_STREAM = {"frames": "190", "max_ms": "128", "max_gap_ms": "140"}
 
 
-def judge(stream, tr):
-    return judge_stream(stream, tr, CHUNKS, CHUNK_LEN, RATE, CRCS)
+def judge(stream, tr, full=CHUNKS):
+    return judge_stream(stream, tr, full, CHUNKS, CHUNK_LEN, RATE, CRCS)
 
 
 # ---- the stream judgement ------------------------------------------------------------
@@ -118,6 +118,15 @@ def test_slow_run_still_fails_on_a_repeated_chunk():
 def test_slow_run_still_fails_without_an_end():
     with pytest.raises(AssertionError):
         judge(CI_STREAM, CI_TRACE[:-1])
+
+
+def test_slow_run_with_too_few_full_sends_fails():
+    # The underrun has its evidence, the counts do not depend on it.
+    with pytest.raises(AssertionError) as e:
+        judge(CI_STREAM, CI_TRACE, full=CHUNKS - 1)
+    assert str(e.value).startswith(str((3, CHUNKS - 1))), e.value
+    with pytest.raises(AssertionError):
+        judge(dict(CI_STREAM, frames=str(CHUNKS - 1)), CI_TRACE)
 
 
 def test_slow_run_that_streamed_well_passes():

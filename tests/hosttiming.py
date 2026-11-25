@@ -213,14 +213,25 @@ def judge_chain(got, times, want, end, fresh, chunk_ms, slack_ms, gap_ms, where)
                         Timed("late switch", on_time, late_evidence))
 
 
-def judge_stream(stream, tr, chunks, chunk_len, rate, crcs):
+def judge_stream(stream, tr, full, chunks, chunk_len, rate, crcs):
     """Judges test_stream_while_redrawing from its markers.
 
     stream is the ROM's ev=stream marker, tr the kernel's ev=audio markers,
-    crcs the CRC-32 of each chunk. Raises AssertionError when the stream is
-    wrong, CannotJudge when it is wrong in a way the run's evidence explains,
-    and returns None when it passes.
+    full the number of full panel sends, crcs the CRC-32 of each chunk.
+    Raises AssertionError when the stream is wrong, CannotJudge when it is
+    wrong in a way the run's evidence explains, and returns None when it
+    passes.
+
+    The counts are strict, checked first. The ROM presents one frame before
+    each of its chunks - 1 queue calls, then at least one more while the
+    last chunk plays, so chunks frames at least, on any host. Each frame
+    changes every pixel, so its present sends a full frame; a retried present
+    sends one more. Only an 8 s stall between the last queue call and the
+    next status read could cut the last frame, and nothing measures that, so
+    no evidence can excuse it.
     """
+    frames = int(stream["frames"])
+    assert frames >= chunks and full >= chunks, (frames, full)
     chunk_ms = chunk_len * 1000 // rate
     got = [(m["op"], m.get("crc")) for m in tr]
     want = [("pcm", crcs[0])] + [("pcm_next", c) for c in crcs[1:chunks]] + [("pcm_end", None)]
