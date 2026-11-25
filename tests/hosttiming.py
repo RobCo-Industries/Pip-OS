@@ -13,9 +13,9 @@ and skips with a reason that starts with PREFIX. Any other failure fails at
 once. tests/conftest.py counts those skips and fails the session when one
 board has too many.
 
-Host timing may excuse only the checks that host timing can break. A test
-states them apart with split_checks() or judged_split(): strict checks that
-fail in every run, timed checks, and the run's evidence of a slow host.
+Host timing may excuse only the check that the run's evidence explains. A
+test states its checks with split_checks() or judged_split(): strict checks
+that fail in every run, and named timed checks, each with its own evidence.
 """
 
 import pytest
@@ -43,31 +43,47 @@ def judged(attempt, tries=TRIES):
     pytest.skip(f"{PREFIX} {tries} runs, " + "; ".join(reasons))
 
 
-def split_checks(strict, timed, evidence):
+class Timed:
+    """A named check that host timing can break, with the evidence that excuses it.
+
+    check(state) asserts. evidence(state) returns the run's own reason to
+    think the host broke this check, or None. The evidence names the one
+    check it explains: it never excuses another one.
+    """
+
+    def __init__(self, name, check, evidence):
+        self.name, self.check, self.evidence = name, check, evidence
+
+
+def split_checks(strict, *timed):
     """One run of a test that host timing can break. The only way to judge one.
 
-    Host timing may excuse only the checks that host timing can break.
+    Host timing may excuse only the check that the run's evidence explains.
 
     strict() runs every check a slow host cannot break and returns the run's
-    state. Its failure fails, slow host or not. timed(state) runs the checks
-    a slow host can break. evidence(state) returns the run's own reason to
-    think the host was too slow, or None. A timed failure with evidence
-    raises CannotJudge; without evidence it fails. Returns the state.
+    state. Its failure fails, slow host or not. Each Timed in timed then
+    runs on the state. A failed check whose own evidence is None fails the
+    run, whatever the other checks' evidence says. When every failed check
+    has its evidence, raises CannotJudge. Returns the state.
     """
     state = strict()
-    try:
-        timed(state)
-    except AssertionError as e:
-        reason = evidence(state)
-        if not reason:
-            raise
-        raise CannotJudge(f"{reason}; the check said: {e}") from e
+    excused = []
+    for t in timed:
+        try:
+            t.check(state)
+        except AssertionError as e:
+            reason = t.evidence(state)
+            if not reason:
+                raise
+            excused.append(f"{t.name}: {reason}; the check said: {e}")
+    if excused:
+        raise CannotJudge("; ".join(excused))
     return state
 
 
-def judged_split(strict, timed, evidence, tries=TRIES):
+def judged_split(strict, *timed, tries=TRIES):
     """judged() over split_checks(): reruns a run that cannot judge, then skips."""
-    return judged(lambda: split_checks(strict, timed, evidence), tries)
+    return judged(lambda: split_checks(strict, *timed), tries)
 
 
 def gap_too_long(gap_ms, limit_ms):
@@ -87,43 +103,114 @@ def spi_retried(markers):
     return retries if failed else []
 
 
-def chain_underruns(got, want, end, fresh):
-    """Checks a chunk chain against want and returns how many underruns it had.
+def chain_align(got, want, end, fresh):
+    """Lines a chunk chain up with want: one (j, i, dry) per want item.
 
     got and want are marker keys. A slow host can make a chunk run dry
     before the next is queued: the kernel then ends the sound and starts the
     next chunk afresh. So a want item w may appear in got as end then
     fresh(w), where fresh(w) is the fresh start of the same chunk, or None
     when w cannot underrun. Nothing else may differ: every chunk appears
-    once, in order, with its own length and CRC. Raises AssertionError.
+    once, in order, with its own length and CRC. j is the want index, i the
+    got index of w, dry the got index of the end before a fresh start, or
+    None. Raises AssertionError.
     """
-    i = n = 0
+    out = []
+    i = 0
     for j, w in enumerate(want):
         if i < len(got) and got[i] == w:
+            out.append((j, i, None))
             i += 1
             continue
         f = fresh(w)
         if f is not None and got[i:i + 2] == [end, f]:
+            out.append((j, i + 1, i))
             i += 2
-            n += 1
             continue
         raise AssertionError(f"marker {i} is {got[i:i + 2]}, want {w} (item {j}): {got}")
     assert i == len(got), f"{len(got) - i} markers after the chain: {got}"
-    return n
+    return out
 
 
-def judge_chain(got, want, end, fresh, spans, evidence):
-    """Judges a chunk chain from its marker keys.
+def chain_underruns(got, want, end, fresh):
+    """How many underruns a chunk chain had. Raises AssertionError: see chain_align()."""
+    return sum(dry is not None for _, _, dry in chain_align(got, want, end, fresh))
 
-    Strict in every run: chain_underruns(). Timed: no underrun, so got is
-    want, and spans(), the chain's time checks. evidence is the run's slow
-    host reason, or None.
+
+def chain_late(times, align, chunk_ms):
+    """Checks that each chunk plays in full and returns how late each switch came.
+
+    times holds the got markers' t_ms. A chunk's start, or the end of a
+    chunk that ran dry, comes k * chunk_ms after the time base at least,
+    where k counts the chunks since the base. That holds on any host. The
+    base is the first start, and a fresh start after an underrun starts a
+    new one: the wait for the late queue call is the underrun's, not a late
+    switch. Returns (got index, ms past k * chunk_ms) for each switch.
     """
-    def timed(_):
-        assert got == want, got
-        spans()
+    base_j, base_t = align[0][0], times[align[0][1]]
+    late = []
+    for j, i, dry in align[1:]:
+        k = j - base_j
+        at = i if dry is None else dry
+        dt = times[at] - base_t
+        assert dt >= chunk_ms * k, f"marker {at} came {dt} ms after the base, a chunk plays " \
+                                   f"{chunk_ms} ms: {k} chunks need {chunk_ms * k} ms: {times}"
+        late.append((at, dt - chunk_ms * k))
+        if dry is not None:
+            base_j, base_t = j, times[i]
+    return late
 
-    split_checks(lambda: chain_underruns(got, want, end, fresh), timed, lambda _: evidence)
+
+class Chain:
+    """What chain_align() and chain_late() found in a chunk chain."""
+
+    def __init__(self, got, align, late):
+        self.got, self.align, self.late = got, align, late
+        self.underruns = sum(dry is not None for _, _, dry in align)
+        self.worst = max((ms for _, ms in late), default=0)
+
+
+def judge_chain(got, times, want, end, fresh, chunk_ms, slack_ms, gap_ms, where):
+    """Judges a chunk chain from its marker keys and times.
+
+    Strict in every run: chain_align() and chain_late(), so every chunk
+    appears once, in order, with its length and CRC, and plays in full.
+    Timed, each with its own evidence:
+    - no underrun: excused when the ROM's longest gap between queue calls,
+      gap_ms, may have reached a chunk. A chunk runs dry only when the next
+      queue call comes later than the chunk lasts.
+    - no switch more than slack_ms late: excused when the gap reached a
+      chunk and also the switch's own lateness. A host stall stops the
+      whole guest, so a stall that made a switch late by L ms made the ROM's
+      gap L ms long at least.
+    where names the chain in the reasons.
+    """
+    def strict():
+        align = chain_align(got, want, end, fresh)
+        return Chain(got, align, chain_late(times, align, chunk_ms))
+
+    slow = gap_too_long(gap_ms, chunk_ms)
+
+    def no_underrun(c):
+        assert c.underruns == 0, got
+
+    def underrun_evidence(_):
+        if not slow:
+            return None
+        return f"the ROM queued {gap_ms} ms apart at most {where}, a chunk lasts {chunk_ms} ms"
+
+    def on_time(c):
+        assert c.worst <= slack_ms, f"a switch came {c.worst} ms late, {slack_ms} ms allowed: " \
+                                    f"{c.late}"
+
+    def late_evidence(c):
+        if not slow or not gap_too_long(gap_ms, c.worst):
+            return None
+        return f"the ROM queued {gap_ms} ms apart at most {where}, the latest switch came " \
+               f"{c.worst} ms late"
+
+    return split_checks(strict, Timed("underrun", no_underrun, underrun_evidence),
+                        Timed("late switch", on_time, late_evidence))
 
 
 def judge_stream(stream, tr, chunks, chunk_len, rate, crcs):
@@ -131,25 +218,15 @@ def judge_stream(stream, tr, chunks, chunk_len, rate, crcs):
 
     stream is the ROM's ev=stream marker, tr the kernel's ev=audio markers,
     crcs the CRC-32 of each chunk. Raises AssertionError when the stream is
-    wrong, CannotJudge when it is wrong in a way a slow host explains and the
-    ROM queued too late for the claim to hold, and returns None when it passes.
+    wrong, CannotJudge when it is wrong in a way the run's evidence explains,
+    and returns None when it passes.
     """
     chunk_ms = chunk_len * 1000 // rate
-    gap = int(stream["max_gap_ms"])
     got = [(m["op"], m.get("crc")) for m in tr]
     want = [("pcm", crcs[0])] + [("pcm_next", c) for c in crcs[1:chunks]] + [("pcm_end", None)]
-    evidence = None
-    if gap_too_long(gap, chunk_ms):
-        evidence = (f"the ROM queued {gap} ms apart at most, a chunk lasts {chunk_ms} ms, "
-                    f"longest present {stream['max_ms']} ms")
-
-    def spans():
-        # Each chunk plays in full, the next right after it.
-        t = [int(m["t_ms"]) for m in tr]
-        for i in range(1, chunks + 1):
-            assert chunk_ms * i <= t[i] - t[0] <= chunk_ms * i + 500, (i, t)
-
-    judge_chain(got, want, ("pcm_end", None), restart, spans, evidence)
+    judge_chain(got, [int(m["t_ms"]) for m in tr], want, ("pcm_end", None), restart, chunk_ms,
+                500, int(stream["max_gap_ms"]),
+                f"while streaming, longest present {stream['max_ms']} ms")
 
 
 def restart(key):

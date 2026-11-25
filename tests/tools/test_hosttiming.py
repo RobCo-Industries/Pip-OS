@@ -18,8 +18,8 @@ TESTS = os.path.join(ROOT, "tests")
 sys.path.insert(0, os.path.join(ROOT, "external", "robco-core", "tests"))
 sys.path.insert(0, TESTS)
 import hosttiming  # noqa: E402
-from hosttiming import (CannotJudge, chain_underruns, judge_chain, judge_stream, judged,  # noqa: E402
-                        judged_split, retry_evidence, spi_retried, split_checks)
+from hosttiming import (CannotJudge, Timed, chain_underruns, judge_chain, judge_stream,  # noqa: E402
+                        judged, judged_split, retry_evidence, spi_retried, split_checks)
 from harness.env import minimal_env  # noqa: E402
 
 # tests/roms/tft_stream.c
@@ -178,24 +178,36 @@ def test_spi_retry_counts_only_after_a_present_failure():
 
 # ---- split_checks() ---------------------------------------------------------------------
 
-def test_split_checks_never_excuses_a_strict_failure():
-    def strict():
-        assert False, "strict"
+def fails(msg):
+    def check(*_):
+        assert False, msg
+    return check
 
+
+def test_split_checks_never_excuses_a_strict_failure():
     with pytest.raises(AssertionError):
-        split_checks(strict, lambda _: None, lambda _: "slow")
+        split_checks(fails("strict"), Timed("t", lambda _: None, lambda _: "slow"))
 
 
 def test_split_checks_excuses_a_timed_failure_only_with_evidence():
-    def timed(_):
-        assert False, "timed"
-
     with pytest.raises(CannotJudge) as e:
-        split_checks(lambda: 1, timed, lambda state: f"slow {state}")
-    assert str(e.value).startswith("slow 1; the check said: timed"), e.value
+        split_checks(lambda: 1, Timed("t", fails("timed"), lambda state: f"slow {state}"))
+    assert str(e.value).startswith("t: slow 1; the check said: timed"), e.value
     with pytest.raises(AssertionError):
-        split_checks(lambda: 1, timed, lambda _: None)
-    assert split_checks(lambda: 2, lambda _: None, lambda _: "slow") == 2
+        split_checks(lambda: 1, Timed("t", fails("timed"), lambda _: None))
+    assert split_checks(lambda: 2, Timed("t", lambda _: None, lambda _: "slow")) == 2
+
+
+def test_evidence_of_one_check_does_not_excuse_another():
+    explained = Timed("underrun", fails("underrun"), lambda _: "slow")
+    other = Timed("late", fails("late"), lambda _: None)
+    for order in ((explained, other), (other, explained)):
+        with pytest.raises(AssertionError) as e:
+            split_checks(lambda: 1, *order)
+        assert str(e.value).startswith("late"), e.value
+    passing = Timed("late", lambda _: None, lambda _: None)
+    with pytest.raises(CannotJudge):
+        split_checks(lambda: 1, explained, passing)
 
 
 # ---- the panel tests: SPI retry evidence ------------------------------------------------
@@ -223,7 +235,7 @@ def test_retry_with_a_pixel_mismatch_fails():
         assert False, "12 pixels differ"
 
     with pytest.raises(AssertionError) as e:
-        judged_split(strict, lambda vm: None, lambda vm: retry_evidence([vm]))
+        judged_split(strict, Timed("sends", lambda vm: None, lambda vm: retry_evidence([vm])))
     assert "12 pixels differ" in str(e.value)
 
 
@@ -232,8 +244,8 @@ def test_retry_with_wrong_sends_cannot_judge():
         assert False, "sends"
 
     with pytest.raises(pytest.skip.Exception) as e:
-        judged_split(lambda: RETRIED, timed, lambda vm: retry_evidence([vm]))
-    assert str(e.value).startswith("host timing: 4 runs, 1 SPI sends retried"), e.value
+        judged_split(lambda: RETRIED, Timed("sends", timed, lambda vm: retry_evidence([vm])))
+    assert str(e.value).startswith("host timing: 4 runs, sends: 1 SPI sends retried"), e.value
 
 
 # ---- the long sample_queue chain ---------------------------------------------------------
@@ -253,8 +265,24 @@ def underrun_trace():
     return [LONG[0], END, ("pcm", 2000, 70, "c1"), LONG[2], END]
 
 
-def judge_long(got, evidence):
-    judge_chain(got, LONG, END, fresh, lambda: None, evidence)
+CHUNK = 250
+SLOW, FAST = CHUNK, 40
+
+
+def times(got, late=()):
+    """On-time t_ms for got: a chunk every CHUNK ms, a fresh start 100 ms after its end."""
+    t, out = 1000, []
+    for i, k in enumerate(got):
+        if i:
+            t += 100 if got[i - 1] == END else CHUNK
+        out.append(t)
+    for i, ms in late:
+        out[i] += ms
+    return out
+
+
+def judge_long(got, gap, tr=None):
+    judge_chain(got, tr or times(got), LONG, END, fresh, CHUNK, 500, gap, "in the chain")
 
 
 def test_chain_counts_underruns():
@@ -264,26 +292,26 @@ def test_chain_counts_underruns():
 
 def test_slow_chain_with_only_an_underrun_cannot_judge():
     with pytest.raises(CannotJudge):
-        judge_long(underrun_trace(), "slow")
+        judge_long(underrun_trace(), SLOW)
 
 
 def test_chain_with_an_underrun_and_no_evidence_fails():
     with pytest.raises(AssertionError):
-        judge_long(underrun_trace(), None)
+        judge_long(underrun_trace(), FAST)
 
 
 def test_slow_chain_with_a_wrong_crc_fails():
     tr = underrun_trace()
     tr[3] = ("pcm_next", 2000, "bad")
     with pytest.raises(AssertionError):
-        judge_long(tr, "slow")
+        judge_long(tr, SLOW)
 
 
 def test_slow_chain_with_a_wrong_length_fails():
     tr = list(LONG)
     tr[1] = ("pcm_next", 1999, "c1")
     with pytest.raises(AssertionError):
-        judge_long(tr, "slow")
+        judge_long(tr, SLOW)
 
 
 def test_slow_chain_out_of_order_or_repeated_fails():
@@ -293,17 +321,41 @@ def test_slow_chain_out_of_order_or_repeated_fails():
                [LONG[0], END, ("pcm", 2000, 70, "c2"), END],
                LONG + [END]):
         with pytest.raises(AssertionError):
-            judge_long(tr, "slow")
+            judge_long(tr, SLOW)
 
 
-def test_slow_chain_with_late_spans_cannot_judge():
-    def spans():
-        assert False, "late"
+def test_on_time_chains_pass():
+    judge_long(LONG, FAST)
+    assert times(LONG) == [1000, 1250, 1500, 1750]
+    assert times(underrun_trace()) == [1000, 1250, 1350, 1600, 1850]
 
+
+def test_slow_chain_with_a_late_switch_cannot_judge_only_with_a_gap_that_long():
+    tr = times(LONG, [(2, 600), (3, 600)])
     with pytest.raises(CannotJudge):
-        judge_chain(LONG, LONG, END, fresh, spans, "slow")
+        judge_long(LONG, 600, tr)
     with pytest.raises(AssertionError):
-        judge_chain(LONG, LONG, END, fresh, spans, None)
+        judge_long(LONG, 500, tr)
+    with pytest.raises(AssertionError):
+        judge_long(LONG, FAST, tr)
+
+
+def test_slow_chain_with_a_short_chunk_fails():
+    # A chunk that stops early is never the host's doing.
+    with pytest.raises(AssertionError):
+        judge_long(LONG, SLOW, times(LONG, [(1, -20)]))
+    got = underrun_trace()
+    with pytest.raises(AssertionError):
+        judge_long(got, SLOW, times(got, [(1, -20)]))
+
+
+def test_slow_chain_with_an_underrun_and_a_late_switch_after_it():
+    # The fresh start resets the time base: the wait for the queue is the underrun's.
+    got = underrun_trace()
+    with pytest.raises(CannotJudge):
+        judge_long(got, SLOW, times(got, [(2, 5000), (3, 5000), (4, 5000)]))
+    with pytest.raises(AssertionError):
+        judge_long(got, SLOW, times(got, [(3, 600), (4, 600)]))
 
 
 # ---- the session rule ----------------------------------------------------------------------

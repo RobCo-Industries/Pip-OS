@@ -24,7 +24,7 @@ from PIL import Image
 from harness.boot import boot
 from harness.env import minimal_env
 
-from hosttiming import judge_stream, judged, judged_split, park_args, retry_evidence
+from hosttiming import Timed, judge_stream, judged, judged_split, park_args, retry_evidence
 
 from pipos_helpers import (TIMEOUT, assert_rom_checks, booted, config, config_issues, dump,
                            make_card, no_exception, one, pipos_markers, press, rom_markers,
@@ -141,7 +141,7 @@ def judged_sends(strict, timed):
     VM. timed(vm) checks the exact sends. Only a timed failure in a run where
     the kernel marked a retry cannot judge.
     """
-    judged_split(strict, timed, lambda vm: retry_evidence([vm]))
+    judged_split(strict, Timed("exact sends", timed, lambda vm: retry_evidence([vm])))
 
 
 def test_shipped_image_has_no_hook(board, kernel_image, tft_build, tmp_path, need_mtools):

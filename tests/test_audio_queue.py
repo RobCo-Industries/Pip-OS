@@ -12,7 +12,7 @@ side for a loaded machine. The tests do not count PCM IRQs.
 import time
 import zlib
 
-from hosttiming import gap_too_long, judge_chain, judged
+from hosttiming import judge_chain, judged
 from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, config, dump, make_card,
                            no_exception, one, pipos_markers, rom_one, wait_markers)
 
@@ -135,21 +135,14 @@ def judge_long_chain(tr, gap):
     """Judges the long chain's trace, tr[LONG:], with the ROM's l_gap max_ms.
 
     Strict in every run: each chunk appears once, in order, with its length
-    and CRC, and the chain ends. A stalled host can only make a chunk run dry:
-    a pcm_end then a fresh pcm of the next chunk in place of its pcm_next,
-    and late switches. Those are excused only when the gap reached a chunk.
+    and CRC, the chain ends, and each chunk plays in full. A stalled host can
+    make a chunk run dry: a pcm_end then a fresh pcm of the next chunk in
+    place of its pcm_next. That is excused only when the gap reached a
+    chunk, and a late switch only when the gap also reached its lateness.
+    See hosttiming.judge_chain().
     """
-    limit = play_ms(LONG_LEN)
-    evidence = None
-    if gap_too_long(gap, limit):
-        evidence = f"the ROM queued {gap} ms apart at most in the long chain, a chunk lasts {limit} ms"
-
-    def spans():
-        # No restart, and at least the whole length.
-        for i in range(1, LONG_N + 1):
-            span(tr, 0, i, play_ms(i * LONG_LEN), 500)
-
-    judge_chain([t[0] for t in tr], TRACE[LONG:], END, fresh, spans, evidence)
+    judge_chain([t[0] for t in tr], [t[1] for t in tr], TRACE[LONG:], END, fresh,
+                play_ms(LONG_LEN), 500, gap, "in the long chain")
 
 
 def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
