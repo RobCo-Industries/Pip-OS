@@ -12,7 +12,7 @@ side for a loaded machine. The tests do not count PCM IRQs.
 import time
 import zlib
 
-from hosttiming import gap_too_long, judged, strict_unless
+from hosttiming import gap_too_long, judge_chain, judged
 from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, config, dump, make_card,
                            no_exception, one, pipos_markers, rom_one, wait_markers)
 
@@ -126,12 +126,39 @@ def play_ms(n):
     return n * 1000 // RATE
 
 
+def fresh(k):
+    """A long chain chunk that started afresh after an underrun: pcm at volume 70."""
+    return ("pcm", k[1], 70, k[2]) if k[0] == "pcm_next" else None
+
+
+def judge_long_chain(tr, gap):
+    """Judges the long chain's trace, tr[LONG:], with the ROM's l_gap max_ms.
+
+    Strict in every run: each chunk appears once, in order, with its length
+    and CRC, and the chain ends. A stalled host can only make a chunk run dry:
+    a pcm_end then a fresh pcm of the next chunk in place of its pcm_next,
+    and late switches. Those are excused only when the gap reached a chunk.
+    """
+    limit = play_ms(LONG_LEN)
+    evidence = None
+    if gap_too_long(gap, limit):
+        evidence = f"the ROM queued {gap} ms apart at most in the long chain, a chunk lasts {limit} ms"
+
+    def spans():
+        # No restart, and at least the whole length.
+        for i in range(1, LONG_N + 1):
+            span(tr, 0, i, play_ms(i * LONG_LEN), 500)
+
+    judge_chain([t[0] for t in tr], TRACE[LONG:], END, fresh, spans, evidence)
+
+
 def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
     """The long chain needs the ROM to queue within a chunk, 250 ms.
 
     The ROM reports the longest time between its queue calls there. When a
     stalled host made that reach a chunk, a wrong long chain cannot be
-    judged. Everything before the long chain is judged in every run.
+    judged, and only its underruns and timing are excused. Everything else is
+    judged in every run.
     """
     def attempt():
         sd = card(tmp_path, test_rom("audio_queue"), config(volume=70, beep="no"))
@@ -157,15 +184,7 @@ def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
             cut(tr, i, 50)
         span(tr, 13, 14, play_ms(800))
 
-        def long_chain():
-            assert [t[0] for t in tr] == TRACE, tr
-            # The long chain: no restart, and at least the whole length.
-            for i in range(1, LONG_N + 1):
-                span(tr, LONG, LONG + i, play_ms(i * LONG_LEN), 500)
-
-        strict_unless(gap_too_long(gap, play_ms(LONG_LEN)),
-                      f"the ROM queued {gap} ms apart at most in the long chain, "
-                      f"a chunk lasts {play_ms(LONG_LEN)} ms", long_chain)
+        judge_long_chain(tr[LONG:], gap)
 
     judged(attempt)
 
