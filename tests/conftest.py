@@ -5,9 +5,12 @@ import os, sys  # noqa: E401
 # RobCo-Core's harness.plugin. Pip-OS adds --build-dir for the image under
 # test. robco_build() builds into build or build/<variant> only, so a BUILD
 # flag picks any other directory and image names the result inside it.
+# hosttiming adds the session rule for "host timing:" skips and
+# --timing-skips-max.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "sdk", "testing"))
-pytest_plugins = ["pipos_testing.plugin"]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+pytest_plugins = ["pipos_testing.plugin", "hosttiming"]
 
 import pytest  # noqa: E402
 

@@ -229,7 +229,7 @@ test: test-host
 	$(MAKE) test-target
 
 test-target: all venv
-	$(VENV)/bin/pytest tests -v --board $(BOARD) --build-dir $(BUILD)
+	$(VENV)/bin/pytest tests -v -rs --board $(BOARD) --build-dir $(BUILD)
 
 # DOC_ROOT: the tree whose Markdown links check-doc-links reads. The
 # submodule path is relative to it. tests/host/check_doc_links_test.sh
