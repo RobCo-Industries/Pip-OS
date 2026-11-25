@@ -12,6 +12,7 @@ side for a loaded machine. The tests do not count PCM IRQs.
 import time
 import zlib
 
+from hosttiming import gap_too_long, judged, strict_unless
 from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, config, dump, make_card,
                            no_exception, one, pipos_markers, rom_one, wait_markers)
 
@@ -126,30 +127,47 @@ def play_ms(n):
 
 
 def test_sample_queue(board, kernel_image, test_rom, tmp_path, need_mtools):
-    sd = card(tmp_path, test_rom("audio_queue"), config(volume=70, beep="no"))
-    with booted(kernel_image, board, sd=sd) as vm:
-        assert_rom_checks(vm, CHECKS)
-        assert one(vm, "rom_exit")["status"] == "0"
-        wait_markers(vm, "audio", count=len(TRACE))
-        tr = trace(vm)
-        no_exception(vm)
-    assert [t[0] for t in tr] == TRACE, tr
-    assert not pipos_markers(vm, "audio_drop"), vm.serial
-    # Each chunk plays in full, the next one right after it. A switch can come
-    # late by up to one timer IRQ, which shortens the following interval, so
-    # the strict bounds run from the start: the engine keeps one time base.
-    span(tr, 0, 1, play_ms(4000))
-    span(tr, 0, 2, play_ms(8000))
-    span(tr, 3, 4, play_ms(2400))
-    span(tr, 3, 5, play_ms(4000))
-    span(tr, 3, 6, play_ms(4800))
-    span(tr, 9, 10, play_ms(400))
-    for i in (11, 15, 19, 23):  # cut after about 50 ms, nothing chained
-        cut(tr, i, 50)
-    span(tr, 13, 14, play_ms(800))
-    # The long chain: no restart, and at least the whole length.
-    for i in range(1, LONG_N + 1):
-        span(tr, LONG, LONG + i, play_ms(i * LONG_LEN), 500)
+    """The long chain needs the ROM to queue within a chunk, 250 ms.
+
+    The ROM reports the longest time between its queue calls there. When a
+    stalled host made that reach a chunk, a wrong long chain cannot be
+    judged. Everything before the long chain is judged in every run.
+    """
+    def attempt():
+        sd = card(tmp_path, test_rom("audio_queue"), config(volume=70, beep="no"))
+        with booted(kernel_image, board, sd=sd) as vm:
+            assert_rom_checks(vm, CHECKS)
+            assert one(vm, "rom_exit")["status"] == "0"
+            gap = int(rom_one(vm, "l_gap")["max_ms"])
+            wait_markers(vm, "audio", count=len(TRACE))
+            tr = trace(vm)
+            no_exception(vm)
+        assert [t[0] for t in tr[:LONG]] == TRACE[:LONG], tr
+        assert not pipos_markers(vm, "audio_drop"), vm.serial
+        # Each chunk plays in full, the next one right after it. A switch can come
+        # late by up to one timer IRQ, which shortens the following interval, so
+        # the strict bounds run from the start: the engine keeps one time base.
+        span(tr, 0, 1, play_ms(4000))
+        span(tr, 0, 2, play_ms(8000))
+        span(tr, 3, 4, play_ms(2400))
+        span(tr, 3, 5, play_ms(4000))
+        span(tr, 3, 6, play_ms(4800))
+        span(tr, 9, 10, play_ms(400))
+        for i in (11, 15, 19, 23):  # cut after about 50 ms, nothing chained
+            cut(tr, i, 50)
+        span(tr, 13, 14, play_ms(800))
+
+        def long_chain():
+            assert [t[0] for t in tr] == TRACE, tr
+            # The long chain: no restart, and at least the whole length.
+            for i in range(1, LONG_N + 1):
+                span(tr, LONG, LONG + i, play_ms(i * LONG_LEN), 500)
+
+        strict_unless(gap_too_long(gap, play_ms(LONG_LEN)),
+                      f"the ROM queued {gap} ms apart at most in the long chain, "
+                      f"a chunk lasts {play_ms(LONG_LEN)} ms", long_chain)
+
+    judged(attempt)
 
 
 def test_exit_stops_both(board, kernel_image, test_rom, tmp_path, need_mtools):

@@ -50,6 +50,24 @@ static int32_t queue(uint32_t seed, uint32_t len)
     return rc;
 }
 
+/*
+ * The longest time between two queue calls of the long chain, from its
+ * first call. Under a chunk's length, every chunk found the next queued.
+ * Off (gap_last < 0) outside the long chain.
+ */
+static int32_t gap_last = -1, gap_max;
+
+static void gap_mark(void)
+{
+    int32_t now;
+
+    if (gap_last >= 0) {
+        now = pip_ticks_ms();
+        gap_max = now - gap_last > gap_max ? now - gap_last : gap_max;
+        gap_last = now;
+    }
+}
+
 /* Queues until the kernel takes the chunk. The last rc: 0, or another error. */
 static int32_t queue_retry(uint32_t seed, uint32_t len, uint32_t *tries)
 {
@@ -58,6 +76,7 @@ static int32_t queue_retry(uint32_t seed, uint32_t len, uint32_t *tries)
 
     *tries = 0;
     while ((rc = queue(seed, len)) == -PIP_EBUSY) {
+        gap_mark();
         (*tries)++;
         if (pip_ticks_ms() - t0 > WAIT_MAX_MS) {
             break;
@@ -202,11 +221,19 @@ static void long_chain(void)
 
     for (i = 0; i < LONG_N; i++) {
         rc = queue_retry(60 + i, LONG_LEN, &tries);
+        gap_mark();
+        if (i == 0) {
+            gap_last = pip_ticks_ms();
+        }
         if (rc != 0 && bad == 0) {
             bad = rc;
         }
     }
+    gap_last = -1;
     CK("l_all", bad, 0);
+    rt_begin("l_gap");
+    rt_dec("max_ms", gap_max);
+    rt_end();
     ms = wait_quiet();
     rt_check("l_wait", ms >= 0 && ms < (int32_t)WAIT_MAX_MS);
 }
