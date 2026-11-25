@@ -56,6 +56,7 @@ typedef struct {
     unsigned backend;       /* PIPOS_BACKEND_* */
     pipos_tft_settings_t tft;
     unsigned tft_bad;       /* backend and tft_* values refused, each reported once */
+    int holo_slot;          /* [holotape] slot: 1 on, 0 off (the default) */
 } pipos_settings_t;
 
 /*

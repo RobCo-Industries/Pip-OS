@@ -82,7 +82,7 @@ TEST(file_holo_offsets)
 
     CHECK_EQ(offsetof(pip_holo_info_t, file), 0x00);
     CHECK_EQ(offsetof(pip_holo_info_t, subtype), 0x0D);
-    CHECK_EQ(offsetof(pip_holo_info_t, reserved), 0x0E);
+    CHECK_EQ(offsetof(pip_holo_info_t, flags), 0x0E);
     CHECK_EQ(offsetof(pip_holo_info_t, size), 0x10);
     CHECK_EQ(offsetof(pip_holo_info_t, image_version), 0x14);
     CHECK_EQ(offsetof(pip_holo_info_t, name), 0x18);

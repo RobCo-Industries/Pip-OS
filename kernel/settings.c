@@ -299,6 +299,12 @@ static int on_key(const char *section, const char *key, const char *value, unsig
         } else {
             ok = 0;
         }
+    } else if (k_strcmp(section, "holotape") == 0 && k_strcmp(key, "slot") == 0) {
+        if (same_word(value, "on") || same_word(value, "off")) {
+            p->s.holo_slot = same_word(value, "on");
+        } else {
+            ok = 0;
+        }
     } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "beep") == 0) {
         if (parse_bool(value, &v) == 0) {
             p->s.beep = v;

@@ -145,7 +145,7 @@ TEST(info_fill)
     CHECK_STR(info.file, "GAME.HTP");
     CHECK_EQ(info.file[12], 0);
     CHECK_EQ(info.subtype, RIMG_HOLO_UTILITY);
-    CHECK_EQ(info.reserved, 0);
+    CHECK_EQ(info.flags, 0);
     CHECK_EQ(info.size, 0x400);
     CHECK_EQ(info.image_version, 0x00010203);
     CHECK(memcmp(info.name, "SIXTEEN-BYTES-NM", 16) == 0);

@@ -382,3 +382,22 @@ TEST(display_test_key_is_unknown_when_shipped)
     CHECK_EQ(is.count, 1);
     CHECK_STR(is.text[0], "unknown display.tft_test 2");
 }
+
+TEST(holotape_slot)
+{
+    pipos_settings_t s;
+    issues_t is;
+    unsigned line = 0;
+
+    pipos_settings_default(&s);
+    CHECK_EQ(s.holo_slot, 0);
+    CHECK_EQ(parse("[holotape]\nslot = on\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 0);
+    CHECK_EQ(s.holo_slot, 1);
+    CHECK_EQ(parse("[holotape]\nslot = OFF\n", &s, &is, &line), 0);
+    CHECK_EQ(s.holo_slot, 0);
+    CHECK_EQ(parse("[holotape]\nslot = yes\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 1);
+    CHECK_STR(is.text[0], "badvalue holotape.slot 2");
+    CHECK_EQ(s.holo_slot, 0);
+}
