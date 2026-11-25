@@ -2,7 +2,7 @@
 
 This page is for a person with a Raspberry Pi who wants to run Pip-OS. It does not need kernel knowledge.
 
-Pip-OS has only run in QEMU so far. Results on a real board are pending.
+Pip-OS has run on one real board so far: commit `2d10c2c` on a Pi Zero W 1.1, with serial keys as the controls. The screen, GPIO buttons, the dial, sound and the RTC chip have not been tried on a board. See [Hardware results](TESTING.md#hardware-results).
 
 ## What you need
 

@@ -263,6 +263,245 @@ Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` on
 
 `tests/test_conformance.py` builds the card with `make conformance-card` and boots it on each board. One run presses SELECT on the intro, answers every prompt through the script channel, turns every page with DOWN, goes back from the summary to the last page once, then ends on SELECT. A second run, on `raspi0` and `raspi2b` only, presses LEFT on the intro: every interactive check must be SKIP. It asserts the exact list of check names, no FAIL, the ABSENT and SKIP sets, exit status 0, one results row per serial check line with the last check on the last page, and golden screens of the intro, the picture prompt, the first results page and the summary, `tests/golden/conform_intro.png`, `conform_picture.png`, `conform_page1.png` and `conform_summary.png`. The ROM has room for 319 results. A check past that is not shown: the ROM adds a FAIL named `results_overflow` instead, so the run fails. QEMU plays no sound a person can hear, so the "heard" answers are scripted and prove only that the prompts work. The script holds each button until its `_state` check shows, taps UP once to see the ROM ask again, and replays the sample once. A third run in auto mode must end by itself with every interactive check SKIP.
 
+## Hardware results
+
+Each run on a real board is recorded here, with the commit that ran. A result holds only for that board and that commit.
+
+### Hardware checklist
+
+| Item | Status |
+|---|---|
+| Boot to the ROM on a Pi Zero or Zero W | Done on a Zero W 1.1 at `2d10c2c`, see [Zero W 1.1 run](#zero-w-11-run-2026-11-24) |
+| Boot on a Pi Zero, Pi 1, Pi 2 or Pi 3 | Open |
+| MMU, heap and 100 Hz tick start | Done on a Zero W 1.1 at `2d10c2c` |
+| Serial console: boot log and markers on the PL011 | Done on a Zero W 1.1 at `2d10c2c` |
+| Serial console keys as ROM input | Done on a Zero W 1.1 at `2d10c2c`: arrow keys, select and back, one press at a time |
+| Card: mount, `PIPOS.CFG`, ROM check and load | Done on a Zero W 1.1 at `2d10c2c`, with the default `PIPOS.CFG` on one FAT32 partition |
+| Holotapes | Partly done on a Zero W 1.1 at `2d10c2c`: one holotape ran from the ROM, took serial keys and exited with status 0, and the ROM went on. See [run 2](#zero-w-11-run-2-2026-11-24). No holotape fault or kill. |
+| ROM in user mode with system calls | Partly done on a Zero W 1.1 at `2d10c2c`: file reads, saves, input, the system information, a holotape launch. No fault was tested. |
+| Saves on the card | Partly done on a Zero W 1.1 at `2d10c2c`: the kernel made `PIPBOY/SAVE/`, five saves left no work file, and the save was read back at the next boot. A power cut during a save and a save by a holotape are not tested. |
+| HDMI picture | Open |
+| GPIO buttons | Open |
+| Dial | Open |
+| Sound on the PWM output | Open. The PWM registers answered the probe; nobody listened. |
+| RTC chip | Open. Only `rtc=absent` with no chip is seen. |
+| SPI panel | Open |
+| The conformance ROM, see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) | Open |
+
+### Zero W 1.1 run, 2026-11-24
+
+| Field | Value |
+|---|---|
+| Board | Raspberry Pi Zero W rev 1.1, BCM2835 |
+| Revision code | `0x009000c1` |
+| Pip-OS | [`2d10c2c`](https://github.com/RobCo-Industries/Pip-OS/commit/2d10c2c), before the SPI panel backend |
+| RobCo-Core | `f5bba36`, the submodule of that commit |
+| ROM | Deitrix `ba21d5a`, built against Pip-OS `2d10c2c`, as `PIPBOY/ROM1.ROM` |
+| Firmware | Tag `1.20260915` |
+| Date | 2026-11-24 |
+| Card | 16 GB SDHC, one FAT32 partition with an MBR. 22 files from Deitrix `make bootdir`: the firmware, `PIPOS.IMG`, `config.txt`, the default `PIPBOY/PIPOS.CFG`, `PIPBOY/ROM1.ROM`, `PIPBOY/HOLO/CULVERT.HTP` and the `PIPBOY/DATA` tree. No `.dtb` and no `overlays/`. |
+| Serial | CP2102 USB adapter at 3.3 V on header pins 6, 8 and 10, 115200 8N1 |
+| Nothing else wired | No HDMI screen, speaker, buttons, dial or clock chip |
+
+The boot log, exact:
+
+```
+@RC stage=pipos ev=boot midr=0x410fb767 soc=bcm2835 base=0x20000000 board_rev=0x009000c1 mem=0x1c000000 entry_mode=svc
+@RC stage=pipos ev=mmu on=1
+@RC stage=pipos ev=heap base=0x0006f8d0 size=3737392
+@RC stage=pipos ev=tick hz=100
+@RC stage=pipos ev=input gpio=0 serial=0 mini=0 script=0 repeat=0
+@RC stage=pipos ev=audio_init rc=0 backend=pwm probe=ok
+@RC stage=pipos ev=clock rtc=absent time=unset
+@RC stage=pipos ev=card rc=ok
+@RC stage=pipos ev=mount part=0 type=0x0b lba=8192 blocks=31107072 marker=1
+@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=green line_delay_ms=150 volume=80 beep=1
+@RC stage=pipos ev=gfx bb=0x00c00000 size=307200 user=0 heap_end=0x00400000
+@RC stage=pipos ev=syscalls served=0000000f00ff07ff0003007f000ffffe
+*************** PIP-OS(R) V7.1.0.8 ***************
+COPYRIGHT 2075 ROBCO IND.
+**************************************************
+LOADER V1.1
+EXEC VERSION 41.10
+64K RAM SYSTEM
+38911 BYTES FREE
+@RC stage=pipos ev=holo count=1
+1 HOLOTAPE FOUND
+@RC stage=pipos ev=load path=/PIPBOY/ROM1.ROM size=71672 crc=0xacfaddef addr=0x00400000 name=DEITRIX
+@RC stage=pipos ev=rom rc=ok name=DEITRIX version=0.1.0 size=71672 crc=0xacfaddef
+LOAD ROM(1): DEITRIX 0.1.0
+**************************************************
+PIP-OS KERNEL INITIALIZED
+PIP-OS READY
+**************************************************
+@RC stage=pipos ev=jump entry=0x00400000
+deitrix: load PROFILE.INI gauges=4 attrs=6 about=3
+deitrix: load ITEMS.INI items=14 categories=4
+deitrix: load NOTES notes=4
+deitrix: load MAP.INI maps=2 lines=16 places=12
+deitrix: load RADIO.INI stations=5
+deitrix: load RADIO/MORNING.TUN notes=49 ms=28800
+deitrix: load RADIO/WALK.TUN notes=56 ms=14530
+deitrix: load RADIO/LULLABY.TUN notes=19 ms=19994
+deitrix: load RADIO/HEARTH.PCM bytes=256000
+deitrix: load RADIO/DRIFT.PCM bytes=256000
+deitrix: load DEITRIX.SAV missing tab=0 volume=80 sound=1 station=0
+deitrix: load INV.SAV missing
+deitrix: ready
+```
+
+Key lines:
+
+- `ev=boot ... board_rev=0x009000c1 entry_mode=svc`: the firmware started the kernel on a Zero W 1.1.
+- `ev=mmu on=1`: the MMU enable bit was set after `mmu_enable()`.
+- `ev=input gpio=0 serial=0 mini=0 script=0`: each input backend's start returned 0, which is success.
+- `ev=audio_init rc=0 backend=pwm probe=ok`: the PWM registers answered and kept a write.
+- `ev=mount part=0 type=0x0b ... marker=1`: the kernel mounted MBR slot 0, FAT32, and found a Pip-OS file on it.
+- `ev=rom rc=ok` and `ev=jump entry=0x00400000`: the ROM passed the check and the kernel entered it.
+- The `deitrix:` lines: the ROM read its files from the card.
+
+Then 19 keys went to the PL011 as ANSI sequences, about 1.5 s apart. Each key gave `ev=key type=key src=serial code=<key> value=1`, then `value=0`, then an answer from Deitrix. Deitrix changed tabs, moved rows, opened and closed an item, picked two radio stations and set the volume to 70, then 60. Its system page showed `ABI=1.2 | SoC=BCM2835 | RAM=448 MiB` and `Time=no clock`, and its uptime moved from `0d 00:01:01` to `0d 00:01:09`. Deitrix logged `save DEITRIX.SAV ok` five times. No `ev=exception` line and no `deitrix: radio underrun` line appeared. The capture ended about 15 s after the second station started.
+
+The card afterwards, read on a computer:
+
+- `PIPBOY/SAVE/` exists. The copied files did not hold it, so the kernel made it.
+- `PIPBOY/SAVE/DEITRIX.SAV` is 20 bytes: `44 58 53 54 01 00 01 00 d0 6b 77 b0 04 3c 01 04 00 00 00 00`. In Deitrix's format, that is the `DXST` header, version 1, one record and a CRC, then last tab 4, volume 60, UI sound on and station 4. It matches the last keys.
+- No `~DEITRIX.SAV` or `#DEITRIX.SAV` work file is left. There is no `INV.SAV`, as the inventory did not change.
+- The folder and the file are dated 1 January 2026, as no clock chip was fitted.
+
+What this run confirms, on this board at `2d10c2c` only:
+
+- The kernel boots from the Pi firmware, turns the MMU on and starts the heap and the tick.
+- The serial console prints the boot log and the markers.
+- The input backends start with no error. Serial keys reach the ROM as press and release events.
+- The PWM audio registers answer the probe.
+- The SD driver reads the card, mounts the FAT32 boot volume and reads `PIPOS.CFG`.
+- The ROM check passes on a real ROM and the kernel runs it in user mode. The ROM reads files, takes input, reads the system information and writes saves through system calls. `ev=syscalls` lists the calls the kernel serves, one bit per call.
+- `write_save` creates `PIPBOY/SAVE/` and replaces a save five times with no work file left.
+
+What it does not show:
+
+- Any picture, on HDMI or a panel. No screen was connected.
+- Any sound. No speaker was connected. `backend=pwm`, `probe=ok` and "Playing" show only that the calls did not fail.
+- GPIO buttons or the dial. `gpio=0` shows the backend started with nothing wired.
+- The RTC chip.
+- A holotape run, and a power cut during a save.
+- Any other board, or any other commit. Pip-OS `master` has the SPI panel backend and later work that did not run here.
+
+`64K RAM SYSTEM` and `38911 BYTES FREE` are presentation text, see [Lore numbers](BOOT.md#lore-numbers).
+
+### Zero W 1.1 run 2, 2026-11-24
+
+The same board, card, files, firmware, serial setup and commits as [run 1](#zero-w-11-run-2026-11-24): Pip-OS `2d10c2c`, RobCo-Core `f5bba36`, Deitrix `ba21d5a`. This was the second power-on of the card. Between the runs, a computer only read `PIPBOY/SAVE/DEITRIX.SAV`.
+
+The kernel lines of the boot match run 1. The ROM's lines after `ev=jump`, exact:
+
+```
+deitrix: load PROFILE.INI gauges=4 attrs=6 about=3
+deitrix: load ITEMS.INI items=14 categories=4
+deitrix: load NOTES notes=4
+deitrix: load MAP.INI maps=2 lines=16 places=12
+deitrix: load RADIO.INI stations=5
+deitrix: load RADIO/MORNING.TUN notes=49 ms=28800
+deitrix: load RADIO/WALK.TUN notes=56 ms=14530
+deitrix: load RADIO/LULLABY.TUN notes=19 ms=19994
+deitrix: load RADIO/HEARTH.PCM bytes=256000
+deitrix: load RADIO/DRIFT.PCM bytes=256000
+deitrix: load DEITRIX.SAV ok tab=4 volume=60 sound=1 station=4
+deitrix: load INV.SAV missing
+deitrix: ready
+```
+
+Then the keys went to the PL011 as in run 1. LEFT five times went through `tab=MAP`, `tab=DATA`, `tab=INV`, `tab=STAT` and back to `tab=RADIO`. Then the holotape, exact:
+
+```
+@RC stage=pipos ev=key type=key src=serial code=left value=1
+@RC stage=pipos ev=key type=key src=serial code=left value=0
+deitrix: tab=MAP
+@RC stage=pipos ev=key type=key src=serial code=left value=1
+@RC stage=pipos ev=key type=key src=serial code=left value=0
+deitrix: data notes sel=0 top=0 count=4
+deitrix: tab=DATA
+@RC stage=pipos ev=key type=key src=serial code=right value=1
+@RC stage=pipos ev=key type=key src=serial code=right value=0
+deitrix: data tapes sel=0 top=0 count=1 | 
+deitrix: save DEITRIX.SAV ok
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+deitrix: data launch CULVERT.HTP
+@RC stage=pipos ev=holo_start name=CULVERT.HTP
+culvert: load rc=-2
+culvert: title
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+culvert: level n=1 w=5 h=4 seed=0x128f528f
+@RC stage=pipos ev=key type=key src=serial code=right value=1
+@RC stage=pipos ev=key type=key src=serial code=right value=0
+culvert: cursor x=3 y=2
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+culvert: turn x=3 y=2 connected=7
+@RC stage=pipos ev=key type=key src=serial code=down value=1
+@RC stage=pipos ev=key type=key src=serial code=down value=0
+culvert: cursor x=3 y=3
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+culvert: turn x=3 y=3 connected=7
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+culvert: turn x=3 y=3 connected=7
+@RC stage=pipos ev=key type=key src=serial code=left value=1
+@RC stage=pipos ev=key type=key src=serial code=left value=0
+culvert: cursor x=2 y=3
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+culvert: turn x=2 y=3 connected=6
+@RC stage=pipos ev=key type=key src=serial code=back value=1
+@RC stage=pipos ev=key type=key src=serial code=back value=0
+culvert: pause
+@RC stage=pipos ev=key type=key src=serial code=down value=1
+@RC stage=pipos ev=key type=key src=serial code=down value=0
+culvert: menu item=1
+@RC stage=pipos ev=key type=key src=serial code=down value=1
+@RC stage=pipos ev=key type=key src=serial code=down value=0
+culvert: menu item=2
+@RC stage=pipos ev=key type=key src=serial code=select value=1
+@RC stage=pipos ev=key type=key src=serial code=select value=0
+culvert stats: grid draws=8 ms=70
+culvert: exit rc=0
+@RC stage=pipos ev=holo_exit status=0
+deitrix: data tape rc=0
+deitrix: data tapes sel=0 top=0 count=1 | Tape ended, status 0.
+@RC stage=pipos ev=key type=key src=serial code=left value=1
+@RC stage=pipos ev=key type=key src=serial code=left value=0
+deitrix: data notes sel=0 top=0 count=4
+```
+
+Key lines:
+
+- `deitrix: load DEITRIX.SAV ok tab=4 volume=60 sound=1 station=4`: the ROM read back the save run 1 wrote, through `read_save`, call `0x50`.
+- `ev=holo_start name=CULVERT.HTP`: the ROM called `holo_launch` and the kernel entered the holotape.
+- The `culvert:` lines between them: the holotape ran, took serial keys and logged.
+- `ev=holo_exit status=0`: the holotape called `exit` or returned, with exit status 0.
+- `deitrix: data tape rc=0` and the last LEFT: `holo_launch` returned 0 to the ROM, and the ROM kept taking keys.
+
+No `ev=exception`, `ev=panic`, `ev=rom_kill` or `ev=holo_kill` line appeared.
+
+What this run confirms, on this board at `2d10c2c` only:
+
+- A save written in one boot is read back with `read_save` at the next.
+- `holo_launch` loads a holotape from `PIPBOY/HOLO/` into the holotape slot at `0x00800000` and runs it in user mode inside the ROM's call, on the same `umode_run()` path as the ROM.
+- A holotape gets serial key events and makes system calls.
+- When the holotape exits, the kernel prints `ev=holo_exit`, `holo_launch` returns the exit status to the ROM, and the ROM goes on.
+
+What it does not show:
+
+- A fault or a `kill` in a holotape, so neither the kill path nor the sandbox's protection.
+- A `write_save` by a holotape. No level was solved, so `CULVERT.SAV` was neither written nor read.
+- Any picture or sound. Culvert's drawing calls ran, but nobody saw the result.
+- GPIO buttons, the dial, the RTC chip, and any other board or commit.
+- The card after this run. Nobody read it on a computer.
+
 ## CI
 
 `.github/workflows/ci.yml` calls RobCo-Core's reusable workflow. It builds with `make CI=1 all test-host` in the RobCo CI container, uploads `build/pipos.img`, then runs `make CI=1 test-target BOARD=<board>` on each of the four boards.

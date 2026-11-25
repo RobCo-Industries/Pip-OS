@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sample_queue` (0x26) plays a sample right after the one that plays, with no gap. One sample can wait; a second call returns `-PIP_EBUSY`. With no sample playing it acts as `sample`.
 - `pip_sample_queue()` in `libpip.a` and `PIP_SYS_SAMPLE_QUEUE` in `abi.h`.
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
+- "Hardware results" in `docs/TESTING.md`: the first board run, Pip-OS `2d10c2c` with Deitrix on a Pi Zero W 1.1, and a hardware checklist.
+- A second Zero W 1.1 run in "Hardware results": the save read back at the next boot and a holotape that ran and returned to the ROM.
 
 ### Changed
 - `test_stream_while_redrawing` and the panel tests that count sends park cores 1 to 3 of `raspi3b`. They spun in an exception loop and made a full present take 8.8 s on a GitHub runner.
