@@ -80,15 +80,17 @@ A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 400
 
 ## Host timing
 
-QEMU runs without icount, so the guest clock follows the host. A stalled host stretches guest time, and a test with a time limit can fail with a correct kernel. `tests/hosttiming.py` judges such tests with numbers from the same run:
+QEMU runs without icount, so the guest clock follows the host. A stalled host stretches guest time, and a test with a time limit can fail with a correct kernel. `tests/hosttiming.py` judges such tests with numbers from the same run.
 
-- `test_stream_while_redrawing`: the ROM reports `max_gap_ms`, the longest time between two queue calls. The claim holds only when that gap plus one 10 ms tick is shorter than a chunk.
-- `test_sample_queue`: the ROM reports `ev=l_gap max_ms`, the same gap in the long chain of 250 ms chunks. The rest of the trace is judged in every run.
-- The `tft` tests that check exact sends: a send with `why=retry` after `ev=display_error op=present` shows the SPI deadline expired.
+Host timing may excuse only the checks that host timing can break. A test states its checks in two parts with `split_checks()` or `judged_split()`. The strict part holds every check a slow host cannot break, and it fails in every run. The timed part holds the checks a slow host can break. Its failure is excused only when the same run shows evidence of a slow host:
 
-When the strict check fails and the run's numbers show the host was too slow, the test runs again, up to 4 runs. Then it skips with a reason that starts with `host timing:` and prints the numbers. Any other failure fails at once. A run whose numbers are normal keeps the strict check.
+- `test_stream_while_redrawing`: the ROM reports `max_gap_ms`, the longest time between two queue calls. The evidence is that gap plus one 10 ms tick reaching a chunk. Strict: every chunk plays once, in order, with its CRC, and the stream ends. Timed: no underrun and the chunk spans.
+- `test_sample_queue`: the ROM reports `ev=l_gap max_ms`, the same gap in the long chain of 250 ms chunks. Strict: the whole trace before the long chain, and every long chain chunk once, in order, with its length and CRC. Timed: no underrun and the chain spans. An underrun is the only trace change a slow host can cause: a `pcm_end` then a fresh `pcm` of the same chunk in place of its `pcm_next`.
+- The `tft` tests that check exact sends: the evidence is a send with `why=retry` after `ev=display_error op=present`, which shows the SPI deadline expired. Strict: pixels against the HDMI frame, ROM checks, markers and no exception. Timed: the exact sends.
 
-A skip must not hide a failure. The session counts `host timing:` skips, lists them at the end, and fails when there are more than one per board in the session. `--timing-skips-max=<n>` sets another limit. `make test-target` prints every skip reason with `-rs`. `tests/tools/test_hosttiming.py` tests the judgement and the rule without QEMU.
+When the timed part fails with evidence, the test runs again, up to 4 runs. Then it skips with a reason that starts with `host timing:` and prints the numbers. Any other failure fails at once.
+
+A skip must not hide a failure. The session counts `host timing:` skips per board, lists them at the end, and fails when any board has more than one. A skip belongs to the `board` parameter of its test. Skips of tests without one count together under `no board`. `--timing-skips-max=<n>` allows n skips per board. `make test-target` prints every skip reason with `-rs`. `tests/tools/test_hosttiming.py` tests the judgement and the rule without QEMU.
 
 ## Test ROMs
 
