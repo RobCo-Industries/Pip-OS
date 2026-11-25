@@ -13,7 +13,7 @@ jobs:
   ci:
     # The commit and the image tag must match the external/robco-core
     # submodule and its ci/IMAGE_TAG. `make check-pins` checks both.
-    uses: RobCo-Industries/RobCo-Core/.github/workflows/robco-ci.yml@cab5f69b88f982e145adba717962ae69b47dc866
+    uses: RobCo-Industries/RobCo-Core/.github/workflows/robco-ci.yml@2e79ee009d7a9e7c8554100138df0a525701911c
     with:
       image-tag: ba6372158e4b
       make-targets: all test-host
