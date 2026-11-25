@@ -1,6 +1,6 @@
 # Hardware validation
 
-Nothing in Pip-OS has been validated on a real Raspberry Pi yet. The tests run in QEMU only. This page tells you how to run the conformance ROM on a real board and what to send back. The ROM itself is described in [TESTING.md](TESTING.md#conformance-rom).
+The conformance ROM has not run on a real Raspberry Pi yet. One run of Pip-OS `2d10c2c` with another ROM is in [Hardware results](TESTING.md#hardware-results). This page tells you how to run the conformance ROM on a real board and what to send back. The ROM itself is described in [TESTING.md](TESTING.md#conformance-rom).
 
 ## What you need
 
