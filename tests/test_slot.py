@@ -283,6 +283,22 @@ def test_shadowing(board, holo_build, test_rom, test_holo, tmp_path, need_mtools
         no_exception(vm)
 
 
+def test_slot_folder_named_like_tape(board, holo_build, test_rom, test_holo, tmp_path,
+                                     need_mtools):
+    """A folder SLOT.HTP on the slot card counts as missing: the boot card tape shows and runs."""
+    tape = test_holo("tape")
+    sd = boot_card(tmp_path, test_rom, {"SLOT.HTP": tape})
+    card = tape_card(tmp_path, 0, {"SLOT.HTP/": b"", "MORE.HTP": tape})
+    with run(holo_build, board, sd, {0: card}) as vm:
+        insert(vm)
+        assert mask(vm) == INS
+        assert listing(vm) == [("MORE.HTP", 1), ("SLOT.HTP", 0)]
+        assert launch(vm, "dial") == 200
+        assert one(vm, "holo_start")["name"] == "SLOT.HTP"
+        assert mask(vm) == 0
+        no_exception(vm)
+
+
 def test_32_entries_over_both(board, holo_build, test_rom, test_holo, tmp_path, need_mtools):
     tape = test_holo("tape")
     sd = boot_card(tmp_path, test_rom, {f"B{i:02d}.HTP": tape for i in range(20)})
