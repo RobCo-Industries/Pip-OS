@@ -17,6 +17,9 @@ static pipos_slot_out_t go(pipos_slot_t *s, unsigned state, unsigned action, uin
 {
     s->state = state;
     s->pending |= bits;
+    if (state != PIPOS_SLOT_SETTLING) {
+        s->attaching = 0;
+    }
     return out(action, bits);
 }
 
@@ -24,6 +27,7 @@ void pipos_slot_reset(pipos_slot_t *s)
 {
     s->state = PIPOS_SLOT_EMPTY;
     s->pending = 0;
+    s->attaching = 0;
 }
 
 pipos_slot_out_t pipos_slot_tick(pipos_slot_t *s, int card, int present)
@@ -33,11 +37,18 @@ pipos_slot_out_t pipos_slot_tick(pipos_slot_t *s, int card, int present)
         return card ? go(s, PIPOS_SLOT_SETTLING, PIPOS_SLOT_DO_NOTHING, 0)
                     : out(PIPOS_SLOT_DO_NOTHING, 0);
     case PIPOS_SLOT_SETTLING:
-        /* Left in the debounce or between attach tries: never reported, no bit. */
+        /*
+         * Left in the debounce, between attach tries or during a stepped
+         * attach: never reported, no bit. The detach ends the attach.
+         */
         if (!card) {
             return go(s, PIPOS_SLOT_EMPTY, PIPOS_SLOT_DO_DETACH, 0);
         }
-        return out(present ? PIPOS_SLOT_DO_ATTACH : PIPOS_SLOT_DO_NOTHING, 0);
+        /* One step per pass while an attach runs, whatever the debounce reads. */
+        if (s->attaching) {
+            return out(PIPOS_SLOT_DO_STEP, 0);
+        }
+        return out(present ? PIPOS_SLOT_DO_START : PIPOS_SLOT_DO_NOTHING, 0);
     case PIPOS_SLOT_MOUNTED:
         return card ? out(PIPOS_SLOT_DO_NOTHING, 0)
                     : go(s, PIPOS_SLOT_EMPTY, PIPOS_SLOT_DO_EJECT, PIP_HOLO_EV_REMOVED);
@@ -55,9 +66,16 @@ pipos_slot_out_t pipos_slot_attached(pipos_slot_t *s, int r)
         return out(PIPOS_SLOT_DO_NOTHING, 0);
     }
     switch (r) {
+    case PIPOS_ATTACH_PENDING:
+        /* No bit: the ROM sees SETTLING until the mount. */
+        s->attaching = 1;
+        return out(PIPOS_SLOT_DO_NOTHING, 0);
     case PIPOS_ATTACH_OK:
+        s->attaching = 0;
         return out(PIPOS_SLOT_DO_MOUNT, 0);
     case PIPOS_ATTACH_AGAIN:
+        /* Nothing began: the next pass starts again. */
+        s->attaching = 0;
         return out(PIPOS_SLOT_DO_NOTHING, 0);
     case PIPOS_ATTACH_NOMEDIA:
         return go(s, PIPOS_SLOT_EMPTY, PIPOS_SLOT_DO_DETACH, 0);

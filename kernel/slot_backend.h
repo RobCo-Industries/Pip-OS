@@ -22,8 +22,15 @@ typedef struct pipos_slot_backend {
     int (*card)(void);
     /* Card detect has read "in" for HOLO_SETTLE_MS. Samples the pins too. */
     int (*present)(void);
-    /* 0, SD_ERR_AGAIN, BLK_ERR_NOMEDIA or another error. May block. */
-    int (*attach)(void);
+    /*
+     * The stepped attach of holo.h. attach_start: 0 when an attach runs,
+     * or SD_ERR_AGAIN, BLK_ERR_NOMEDIA or another error. attach_step: one
+     * bounded piece of work, SD_PENDING while work remains, 0 once the
+     * device is live, or an error. Neither waits.
+     */
+    int (*attach_start)(void);
+    int (*attach_step)(void);
+    /* Slot off. Ends a running attach. */
     void (*detach)(void);
     /* The attached card's read-only device, or NULL. */
     blk_dev_t *(*blkdev)(void);

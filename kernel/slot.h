@@ -6,7 +6,9 @@
  * States follow the diagram in PIPOS_ABI.md, "Slot changes":
  *
  *   EMPTY    no card, or a card that left
- *   SETTLING card detect low: the debounce, the attach and the mount
+ *   SETTLING card detect low: the debounce, the attach and the mount.
+ *            `attaching` is 1 while a stepped attach runs: each work
+ *            pass then takes one step of it.
  *   MOUNTED  the "tape" volume is mounted
  *   BAD      the card cannot be used until it leaves
  *
@@ -28,23 +30,29 @@ enum {
 /* What slot.c does after an input. */
 enum {
     PIPOS_SLOT_DO_NOTHING,
-    PIPOS_SLOT_DO_ATTACH,   /* call the backend's attach */
+    PIPOS_SLOT_DO_START,    /* call the backend's attach_start */
+    PIPOS_SLOT_DO_STEP,     /* call the backend's attach_step, once */
     PIPOS_SLOT_DO_MOUNT,    /* mount the backend's device as "tape", read-only */
     PIPOS_SLOT_DO_DETACH,   /* backend detach; no volume is mounted */
     PIPOS_SLOT_DO_EJECT,    /* fs_eject("tape"), then backend detach */
 };
 
-/* What the attach returned, mapped by slot.c from SD_ERR_* and BLK_ERR_*. */
+/*
+ * What the attach start or step returned, mapped by slot.c from
+ * SD_PENDING, SD_ERR_* and BLK_ERR_*.
+ */
 enum {
-    PIPOS_ATTACH_OK,
+    PIPOS_ATTACH_OK,        /* a step returned 0: "holo0" is live */
+    PIPOS_ATTACH_PENDING,   /* the start returned 0, or a step SD_PENDING */
     PIPOS_ATTACH_AGAIN,     /* SD_ERR_AGAIN: still settling */
     PIPOS_ATTACH_NOMEDIA,   /* BLK_ERR_NOMEDIA: the card left */
-    PIPOS_ATTACH_REFUSED,   /* any other error */
+    PIPOS_ATTACH_REFUSED,   /* any other error, SD_ERR_SLOW included */
 };
 
 typedef struct pipos_slot {
     unsigned state;         /* PIPOS_SLOT_* */
     uint32_t pending;       /* PIP_HOLO_EV_* bits the ROM has not taken */
+    int attaching;          /* SETTLING only: a stepped attach runs */
 } pipos_slot_t;
 
 typedef struct pipos_slot_out {
@@ -60,7 +68,7 @@ void pipos_slot_reset(pipos_slot_t *s);
  */
 pipos_slot_out_t pipos_slot_tick(pipos_slot_t *s, int card, int present);
 
-/* The attach returned `r` (PIPOS_ATTACH_*). */
+/* The attach start or one attach step returned `r` (PIPOS_ATTACH_*). */
 pipos_slot_out_t pipos_slot_attached(pipos_slot_t *s, int r);
 
 /* The mount returned `ok` (1 or 0); `card` is the raw card detect after it. */

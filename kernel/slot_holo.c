@@ -18,7 +18,7 @@ static int holo_be_card(void)
     return (holo_status() & HOLO_ST_CARD) != 0;
 }
 
-/* holo_poll() samples card detect and detaches at once on a pull. */
+/* holo_poll() samples card detect, and on a pull detaches at once and ends a running attach. */
 static int holo_be_present(void)
 {
     (void)holo_poll();
@@ -26,5 +26,6 @@ static int holo_be_present(void)
 }
 
 const pipos_slot_backend_t pipos_slot_holo = {
-    "holo", holo_be_init, holo_be_card, holo_be_present, holo_attach, holo_detach, holo_blkdev,
+    "holo", holo_be_init, holo_be_card, holo_be_present, holo_attach_start, holo_attach_step,
+    holo_detach, holo_blkdev,
 };
