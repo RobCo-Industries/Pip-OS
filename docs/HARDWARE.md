@@ -43,7 +43,7 @@ RobCo-Core picks the audio pins from the board:
 
 ## SPI panel
 
-The kernel can drive an ILI9341 panel on SPI0 with RobCo-Core's `tft.h`. `[display] backend` in `PIPOS.CFG` turns it on, see [CONFIG.md](CONFIG.md#spi-panel). The default wiring is RobCo-Core's, from the "SPI display" part of [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/BOARD_SUPPORT.md#spi-display):
+The kernel can drive an ILI9341 panel on SPI0 with RobCo-Core's `tft.h`. `[display] backend` in `PIPOS.CFG` turns it on, see [CONFIG.md](CONFIG.md#spi-panel). The default wiring is RobCo-Core's, from the "SPI display" part of [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/BOARD_SUPPORT.md#spi-display):
 
 | Panel pin | Pin | Key |
 |---|---|---|

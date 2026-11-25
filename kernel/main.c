@@ -27,6 +27,7 @@
 #include "bootlines.h"
 #include "display.h"
 #include "pipos.h"
+#include "slot_backend.h"
 #include "storage.h"
 #include "sys.h"
 
@@ -108,7 +109,7 @@ static void dump_char(char c)
 
 /*
  * Project commands on the script channel: dump, state, rtc, kill,
- * panic <reason>, and tftdump in test builds.
+ * panic <reason>, and tftdump and holo in test builds.
  */
 static int script_command(int argc, char *argv[], input_script_reply_t *reply, void *ctx)
 {
@@ -126,9 +127,9 @@ static int script_command(int argc, char *argv[], input_script_reply_t *reply, v
     }
     if (k_strcmp(argv[0], "state") == 0 && argc == 1) {
         k_heap_stats(&heap);
-        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u files=%u holo=%d\n",
+        k_snprintf(line, sizeof(line), "ready=%d rom=%d heap_free=%u files=%u holo=%d slot=%s\n",
                    ready_flag, rom_loaded, (unsigned)heap.free, pipos_storage_open_count(),
-                   pipos_holo_running());
+                   pipos_holo_running(), pipos_slot_state_name());
         reply->write(line);
         return 0;
     }
@@ -155,6 +156,12 @@ static int script_command(int argc, char *argv[], input_script_reply_t *reply, v
     if (k_strcmp(argv[0], "tftdump") == 0 && argc == 1 && pipos_display_dump(reply) == 0) {
         return 0;
     }
+#ifdef PIPOS_HOLO_TEST
+    /* Test builds: drives the RAM slot backend, see slot_test.c. */
+    if (k_strcmp(argv[0], "holo") == 0) {
+        return pipos_slot_test_command(argc, argv, reply);
+    }
+#endif
     if (k_strcmp(argv[0], "panic") == 0 && argc >= 2) {
         for (i = 1; i < argc; i++) {
             n += (size_t)k_snprintf(why + n, sizeof(why) - n, "%s%s", i > 1 ? " " : "",
@@ -305,10 +312,18 @@ static void report_event(const input_event_t *ev)
     }
 }
 
+static uint32_t poll_passes;
+
+uint32_t pipos_poll_passes(void)
+{
+    return poll_passes;
+}
+
 void pipos_poll(void)
 {
     input_event_t ev;
 
+    poll_passes++;
     audio_poll();
     while (input_poll(&ev)) {
         report_event(&ev);
@@ -356,6 +371,7 @@ void robco_main(void)
     pipos_config_load(card, &settings);
     apply_settings(&settings);
     pipos_display_start(&settings);
+    pipos_slot_start(settings.holo_slot);
     pipos_sys_init();
 
     rom = boot_screen(card, &res);

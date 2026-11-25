@@ -382,3 +382,129 @@ TEST(display_test_key_is_unknown_when_shipped)
     CHECK_EQ(is.count, 1);
     CHECK_STR(is.text[0], "unknown display.tft_test 2");
 }
+
+TEST(holotape_slot)
+{
+    pipos_settings_t s;
+    issues_t is;
+    unsigned line = 0;
+
+    pipos_settings_default(&s);
+    CHECK_EQ(s.holo_slot, 0);
+    CHECK_EQ(parse("[holotape]\nslot = on\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 0);
+    CHECK_EQ(s.holo_slot, 1);
+    CHECK_EQ(parse("[holotape]\nslot = OFF\n", &s, &is, &line), 0);
+    CHECK_EQ(s.holo_slot, 0);
+    CHECK_EQ(parse("[holotape]\nslot = yes\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 1);
+    CHECK_STR(is.text[0], "badvalue holotape.slot 2");
+    CHECK_EQ(s.holo_slot, 0);
+}
+
+/* One clash: the slot goes off with one slot_clash report on `key`. */
+static void check_clash(const char *display, const char *key)
+{
+    char text[160];
+    char want[64];
+    pipos_settings_t s;
+    issues_t is;
+    unsigned line = 0;
+
+    snprintf(text, sizeof(text), "[holotape]\nslot = on\n[display]\n%s", display);
+    snprintf(want, sizeof(want), "slot_clash display.%s 0", key);
+    CHECK_EQ(parse(text, &s, &is, &line), 0);
+    CHECK_EQ(is.count, 1);
+    CHECK_STR(is.text[0], want);
+    CHECK_EQ(s.holo_slot, 0);
+    CHECK_STR(pipos_slot_clash(&s, 0), key);
+    CHECK(pipos_slot_clash(&s, 1) == NULL);
+}
+
+/* No clash: the slot stays on and nothing is reported. */
+static void check_apart(const char *display)
+{
+    char text[160];
+    pipos_settings_t s;
+    issues_t is;
+    unsigned line = 0;
+
+    snprintf(text, sizeof(text), "[holotape]\nslot = on\n[display]\n%s", display);
+    CHECK_EQ(parse(text, &s, &is, &line), 0);
+    CHECK_EQ(is.count, 0);
+    CHECK_EQ(s.holo_slot, 1);
+    CHECK(pipos_slot_clash(&s, 0) == NULL);
+}
+
+TEST(slot_clash_defaults)
+{
+    pipos_settings_t s;
+
+    pipos_settings_default(&s);
+    CHECK(pipos_slot_clash(&s, 0) == NULL);
+    s.backend = PIPOS_BACKEND_BOTH;
+    CHECK(pipos_slot_clash(&s, 0) == NULL);
+    s.backend = PIPOS_BACKEND_TFT;
+    CHECK(pipos_slot_clash(&s, 0) == NULL);
+    check_apart("");
+    check_apart("backend = tft\n");
+    check_apart("backend = both\n");
+    /* Free pins off the slot. */
+    check_apart("backend = both\ntft_dc = 19\ntft_reset = 0\ntft_backlight = 1\n");
+}
+
+TEST(slot_clash_each)
+{
+    static const char *const backends[] = { "tft", "both" };
+    static const int pins[] = { 12, 13, 20, 21 };
+    char text[96];
+    unsigned b, i;
+
+    for (b = 0; b < 2; b++) {
+        snprintf(text, sizeof(text), "backend = %s\ntft_cs = 1\n", backends[b]);
+        check_clash(text, "tft_cs");
+        for (i = 0; i < 4; i++) {
+            snprintf(text, sizeof(text), "backend = %s\ntft_dc = %d\n", backends[b], pins[i]);
+            check_clash(text, "tft_dc");
+            snprintf(text, sizeof(text), "backend = %s\ntft_reset = %d\n", backends[b], pins[i]);
+            check_clash(text, "tft_reset");
+            snprintf(text, sizeof(text), "backend = %s\ntft_backlight = %d\n", backends[b],
+                     pins[i]);
+            check_clash(text, "tft_backlight");
+        }
+    }
+}
+
+TEST(slot_clash_rules)
+{
+    pipos_settings_t s;
+    issues_t is;
+    unsigned line = 0;
+
+    /* With hdmi, the panel keys are not used: no clash. */
+    check_apart("tft_cs = 1\ntft_dc = 12\n");
+    /* With the slot off, nothing to refuse. */
+    CHECK_EQ(parse("[display]\nbackend = tft\ntft_cs = 1\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 0);
+    CHECK_EQ(s.holo_slot, 0);
+    /* Several clashes: one report each, in key order. */
+    CHECK_EQ(parse("[holotape]\nslot = on\n[display]\nbackend = both\ntft_cs = 1\n"
+                   "tft_dc = 20\ntft_reset = 21\ntft_backlight = 13\n",
+                   &s, &is, &line),
+             0);
+    CHECK_EQ(is.count, 4);
+    CHECK_STR(is.text[0], "slot_clash display.tft_cs 0");
+    CHECK_STR(is.text[1], "slot_clash display.tft_dc 0");
+    CHECK_STR(is.text[2], "slot_clash display.tft_reset 0");
+    CHECK_STR(is.text[3], "slot_clash display.tft_backlight 0");
+    CHECK_EQ(s.holo_slot, 0);
+    CHECK_EQ(s.backend, PIPOS_BACKEND_BOTH);
+    /* A D/C clash between panel lines turns the panel off first: no slot clash. */
+    CHECK_EQ(parse("[holotape]\nslot = on\n[display]\nbackend = tft\ntft_dc = 12\n"
+                   "tft_reset = 12\n",
+                   &s, &is, &line),
+             0);
+    CHECK_EQ(is.count, 1);
+    CHECK_STR(is.text[0], "pin_twice display.tft_reset 0");
+    CHECK_EQ(s.holo_slot, 1);
+}

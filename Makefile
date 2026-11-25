@@ -45,6 +45,7 @@ PURE_SRCS  := \
               kernel/holo_rules.c \
               kernel/input_events.c \
               kernel/settings.c \
+              kernel/slot_rules.c \
               kernel/storage_rules.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \

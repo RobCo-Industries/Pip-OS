@@ -418,7 +418,15 @@ static void check_hw_flags(const pip_sys_info_t *si)
     ck_res("sysinfo_hw_audio", si != NULL && conform_hw_audio_ok(f, tone, status) ?
            R_PASS : R_FAIL, 1, tone, (f & PIP_HW_AUDIO) ? 0 : -PIP_EIO);
     ck_res("sysinfo_hw_reserved", si != NULL && conform_hw_reserved_ok(f) ? R_PASS : R_FAIL,
-           1, (int32_t)f, (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO)));
+           1, (int32_t)f, (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE)));
+}
+
+/* hw_flags for the ABI 1.4 holotape checks. */
+static uint32_t hw_now(void)
+{
+    pip_sys_info_t si;
+
+    return pip_sys_info(&si) == 0 ? si.hw_flags : 0;
 }
 
 void check_sys_info(void)
@@ -664,11 +672,13 @@ void check_holo_enumerate(void)
 {
     static pip_holo_info_t hi[PIP_HOLO_ENUM_MAX];
     int32_t n = pip_holo_enumerate(hi, PIP_HOLO_ENUM_MAX), i;
-    int tape = -1, data = -1;
+    int tape = -1, data = -1, flags_ok = 1;
+    uint32_t hw = hw_now();
 
     n = n > PIP_HOLO_ENUM_MAX ? PIP_HOLO_ENUM_MAX : n;
 
     for (i = 0; i < n; i++) {
+        flags_ok &= conform_holo_flags_ok(hi[i].flags, hw);
         if (strcmp(hi[i].file, TAPE_FILE) == 0) {
             tape = hi[i].subtype;
         } else if (strcmp(hi[i].file, DATA_FILE) == 0) {
@@ -682,6 +692,7 @@ void check_holo_enumerate(void)
     } else {
         ck_res("enum_data_tape", data == PIP_HOLO_DATA ? R_PASS : R_FAIL, 1, data, PIP_HOLO_DATA);
     }
+    ck_eq("enum_flags", flags_ok, 1);
     ck_eq("enum_max0", pip_holo_enumerate(hi, 0), -PIP_EINVAL);
     ck_eq("enum_max33", pip_holo_enumerate(hi, PIP_HOLO_ENUM_MAX + 1), -PIP_EINVAL);
     ck_eq("enum_null", pip_holo_enumerate(PTR(0), 1), -PIP_EFAULT);
@@ -725,9 +736,15 @@ void check_holo_last_status(void)
     ck_eq("last_error", pip_holo_last_status(), -PIP_ENOENT);
 }
 
+/* ABI 1.4: 0 without a slot, else only PIP_HOLO_EV_* bits; a second call reads what came since. */
 void check_holo_eject_event(void)
 {
-    ck_eq("eject_none", pip_holo_eject_event(), 0);
+    uint32_t hw = hw_now();
+    int32_t mask = pip_holo_eject_event();
+
+    ck_res("eject_mask", conform_eject_mask_ok(mask, hw) ? R_PASS : R_FAIL, 1, mask,
+           (hw & PIP_HW_TAPE) ? mask : 0);
+    ck_eq("eject_ev_tape", PIP_EV_TAPE, 3);
 }
 
 /* ---- the rest ---------------------------------------------------------- */

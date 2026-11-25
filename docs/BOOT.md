@@ -20,6 +20,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
 | 11a | The SPI panel when `[display] backend` asks for it, see [The display backend](#the-display-backend) | `ev=display` |
+| 11b | The holotape slot when `[holotape] slot = on`. With `off`, the default, no slot pin is touched and no marker prints. A panel setting that clashes with the slot keeps it off, see [CONFIG.md](CONFIG.md#slot-and-panel). A card in at boot is reported later, from the first slot work. | `ev=holo_slot` |
 | 12 | Boot text, holotape check, ROM check | `ev=holo`, `ev=load` or `ev=error`, `ev=rom` |
 | 13 | The ROM, if it passed the check, see [Running the ROM](#running-the-rom) | `ev=jump`, then `ev=rom_exit` or `ev=rom_kill` |
 | 14 | Main loop | `ev=ready` |
@@ -51,7 +52,7 @@ With the default `backend = hdmi` the kernel prints no `ev=display` marker and d
 
 ## The card
 
-The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
+The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
 
 1. Entries with a FAT type byte (`0x01`, `0x04`, `0x06`, `0x0B`, `0x0C`, `0x0E`), in slot order.
 2. Then the other entries, in slot order. Some tools write a wrong type byte, and the mount reads the boot sector anyway.
@@ -114,11 +115,11 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
 
 ## Running the ROM
 
-After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/guide/api/umode.md) with the MMU on.
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/guide/api/umode.md) with the MMU on.
 
 1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
 2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
@@ -132,7 +133,7 @@ After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-
 | r0 | `0x017F0000`, the startup block |
 | r1 to r3 | 0 |
 | lr | `0x017F0080`, the return stub. Returning acts like `exit(r0)`. |
-| `abi_version`, `size` | `0x00010003`, 128 |
+| `abi_version`, `size` | `0x00010004`, 128 |
 | `heap_base`, `heap_size` | `0x01000000`, `0x007F0000` |
 | `stack_top`, `kind`, `flags`, `args` | `0x01800000`, 0, 0, empty |
 
@@ -163,12 +164,12 @@ The kernel answers its own commands on the mini UART script channel, next to the
 | Command | Reply |
 |---|---|
 | `dump` | The screen as text: an `ev=screen` line, one `\|`-prefixed line per row, an `ev=screen_end` line, then `ok` |
-| `state` | One line, `ready=<0\|1> rom=<0\|1> heap_free=<bytes> files=<n> holo=<0\|1>`, then `ok`. `ready=1` once the main loop runs. `files` counts the open file handles of the ROM and the holotape. `holo=1` while a holotape runs. |
+| `state` | One line, `ready=<0\|1> rom=<0\|1> heap_free=<bytes> files=<n> holo=<0\|1> slot=<state>`, then `ok`. `ready=1` once the main loop runs. `files` counts the open file handles of the ROM and the holotape. `holo=1` while a holotape runs. `slot` is `off`, `empty`, `settling`, `mounted` or `bad`. |
 | `rtc` | One line, `rc=0 time=<ISO 8601>` with the time the RTC chip holds, or `rc=<error> time=none`, then `ok`. It reads the chip, not the software clock. `rc=-11` means no chip answered at boot. |
 | `kill` | Ends the innermost running image: the holotape if one runs, else the ROM. It prints `ev=holo_kill` or `ev=rom_kill` with `reason=killed code=1`. |
 | `panic <reason>` | Takes the panic path with `<reason>` as the message. No status line follows. |
 
-Any other line that is not a RobCo-Core command gets `err unknown command`.
+Test builds add `tftdump`, see [TESTING.md](TESTING.md#spi-panel), and `holo`, see [TESTING.md](TESTING.md#holotape-slot). Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Panic
 
@@ -176,7 +177,7 @@ Any other line that is not a RobCo-Core command gets `err unknown command`.
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -206,8 +207,13 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr`, or `reason=killed code pc` | The ROM faulted, or the `kill` command ended it |
 | `holo_start` | `name` | The kernel enters a holotape |
 | `holo_exit` | `status` | The holotape called `exit` or returned. `status` is 0 to 255. |
-| `holo_kill` | As `rom_kill` | The holotape faulted, or the `kill` command ended it. Not shown on the screen. |
+| `holo_kill` | As `rom_kill`, or `reason=eject pc` | The holotape faulted, the `kill` command ended it, or its slot card left. For `eject`, `pc` is the tape's program counter at the system call where Pip-OS ended it, as `0x` and 8 hex digits like a fault's. Not shown on the screen. |
 | `holo_error` | `code name` | The holotape failed to load. `code` is a `rimg` error name. |
+| `holo_slot` | `backend rc` | `[holotape] slot = on` only: the slot backend at boot. `backend` is `holo`, or `ram` in a test build. |
+| `holo_slot` | `state bits` | One slot change: the new state and the `PIP_HOLO_EV_*` bits it set |
+| `holo_mount` | `rc` | The slot card's volume did not mount. `rc` is an `fs_strerror()` name. |
+| `holo_slot_error` | `rc` | A slot card read failed in `holo_enumerate`. `rc` is an `fs_strerror()` name. |
+| `holo_attach` | `rc ms polls t0_ms t1_ms pcm0 pos0 pcm1 pos1` | Test builds only, one per attach. `t0_ms` and `t1_ms` are `tick_ms()` at its start and end, within one tick of the audio trace's `t_ms`. `pcm0` and `pcm1` are `audio_busy()` at its start and end. `pos0` and `pos1` are the samples the current PCM play has output then. See [TESTING.md](TESTING.md#holotape-slot). |
 | `reboot` | none | `power(0)`, right before the watchdog reset |
 | `halt` | none | `power(1)`, right before the halt |
 | `error` | `code=umode rc` | `umode_run()` refused the ROM or holotape task |
@@ -230,7 +236,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|

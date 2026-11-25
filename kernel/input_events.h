@@ -49,6 +49,12 @@ uint32_t pipos_input_stamp(pipos_input_state_t *s, uint32_t ev_ms, uint32_t time
 int pipos_input_feed(pipos_input_state_t *s, const input_event_t *ev, int deliver,
                      uint32_t timer_now, uint32_t tick_now);
 
+/*
+ * Queues a PIP_EV_TAPE event with `bits` in value, stamped tick_now, never
+ * before the last stamp. A full queue drops its oldest event.
+ */
+void pipos_input_push_tape(pipos_input_state_t *s, uint32_t bits, uint32_t tick_now);
+
 /* Removes the oldest event into *out. Returns 1, or 0 when empty. */
 int pipos_input_pop(pipos_input_state_t *s, pip_event_t *out);
 

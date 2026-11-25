@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.3: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.4: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010003  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010004  /* (major << 16) | minor */
 
 /* log: at most this many bytes, NUL included. */
 #define PIP_LOG_MAX         256
@@ -212,6 +212,7 @@
 #define PIP_DIAL_DETENT_DEG 15
 #define PIP_EV_BUTTON       1           /* pip_event_t.type */
 #define PIP_EV_DIAL         2
+#define PIP_EV_TAPE         3           /* holotape slot change, since ABI 1.4 */
 #define PIP_EV_RELEASE      0           /* PIP_EV_BUTTON value */
 #define PIP_EV_PRESS        1
 #define PIP_EV_REPEAT       2
@@ -266,6 +267,11 @@
 #define PIP_HOLO_GAME       0           /* pip_holo_info_t.subtype */
 #define PIP_HOLO_UTILITY    1
 #define PIP_HOLO_DATA       2
+#define PIP_HOLO_SLOT       (1u << 0)   /* pip_holo_info_t.flags: on the slot card, since ABI 1.4 */
+/* holo_eject_event bits, since ABI 1.4 */
+#define PIP_HOLO_EV_INSERTED (1u << 0)  /* a card came in and its volume is mounted */
+#define PIP_HOLO_EV_REMOVED (1u << 1)   /* the card left */
+#define PIP_HOLO_EV_BAD     (1u << 2)   /* the card in the slot cannot be used */
 #define PIP_ARGS_MAX        99          /* holo_launch args: bytes before the NUL */
 #define PIP_ARGS_SIZE       100         /* pipos_startup_t.args */
 #define PIP_EXIT_STATUS_MAX 255
@@ -355,7 +361,7 @@ PIP_ABI_AT(pip_blit_t, color, 0x10);
 
 /* poll_event and wait_event */
 typedef struct __attribute__((packed)) pip_event {
-    uint32_t type;          /* PIP_EV_BUTTON or PIP_EV_DIAL */
+    uint32_t type;          /* PIP_EV_BUTTON, PIP_EV_DIAL or PIP_EV_TAPE */
     uint32_t code;          /* button number, or 0 for the dial */
     int32_t  value;         /* PIP_EV_PRESS/RELEASE/REPEAT, or signed detents */
     uint32_t time_ms;       /* ticks_ms when the event happened */
@@ -395,7 +401,7 @@ PIP_ABI_AT(pip_dirent_t, size, 0x10);
 typedef struct __attribute__((packed)) pip_holo_info {
     char     file[PIP_NAME83_SIZE]; /* 8.3 file name, for holo_launch */
     uint8_t  subtype;       /* PIP_HOLO_GAME, _UTILITY or _DATA */
-    uint16_t reserved;      /* 0 */
+    uint16_t flags;         /* PIP_HOLO_*, since ABI 1.4. 0 before. */
     uint32_t size;          /* file size in bytes */
     uint32_t image_version;
     char     name[16];      /* from the image header */
@@ -406,7 +412,7 @@ typedef struct __attribute__((packed)) pip_holo_info {
 PIP_ABI_SIZE(pip_holo_info_t, 232);
 PIP_ABI_AT(pip_holo_info_t, file, 0x00);
 PIP_ABI_AT(pip_holo_info_t, subtype, 0x0D);
-PIP_ABI_AT(pip_holo_info_t, reserved, 0x0E);
+PIP_ABI_AT(pip_holo_info_t, flags, 0x0E);
 PIP_ABI_AT(pip_holo_info_t, size, 0x10);
 PIP_ABI_AT(pip_holo_info_t, image_version, 0x14);
 PIP_ABI_AT(pip_holo_info_t, name, 0x18);
@@ -429,9 +435,10 @@ typedef struct __attribute__((packed)) pip_sys_info {
     uint32_t reserved;       /* 0 */
 } pip_sys_info_t;
 
-/* sys_info hw_flags bits. Bit 1 and bits 3 to 31 are 0. */
+/* sys_info hw_flags bits. Bit 1 and bits 4 to 31 are 0. */
 #define PIP_HW_RTC          (1u << 0)  /* a clock chip answered at boot */
 #define PIP_HW_AUDIO        (1u << 2)  /* the audio driver started at boot */
+#define PIP_HW_TAPE         (1u << 3)  /* a holotape slot exists, since ABI 1.4 */
 
 PIP_ABI_SIZE(pip_sys_info_t, 32);
 PIP_ABI_AT(pip_sys_info_t, size, 0x00);

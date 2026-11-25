@@ -16,12 +16,21 @@
 
 static pipos_input_state_t state;
 static int image_running;
+static int holotape_running;
 
 void pipos_input_event(const input_event_t *ev)
 {
     uint32_t timer_now = timer_now_ms();
 
     pipos_input_feed(&state, ev, image_running, timer_now, tick_ms());
+}
+
+void pipos_input_tape(uint32_t bits)
+{
+    /* The ROM's queue only: a running holotape never gets PIP_EV_TAPE. */
+    if (image_running && !holotape_running) {
+        pipos_input_push_tape(&state, bits, tick_ms());
+    }
 }
 
 void pipos_input_flush(void)
@@ -119,7 +128,7 @@ void pipos_input_init(void)
  */
 void pipos_input_image_start(int kind)
 {
-    (void)kind;
+    holotape_running = kind == PIP_KIND_HOLOTAPE;
     image_running = 0;
     pipos_poll();
     pipos_input_flush();
@@ -130,6 +139,7 @@ void pipos_input_image_start(int kind)
 void pipos_input_image_end(int kind)
 {
     image_running = kind == PIP_KIND_HOLOTAPE;
+    holotape_running = 0;
     pipos_input_flush();
 }
 

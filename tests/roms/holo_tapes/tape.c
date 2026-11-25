@@ -15,6 +15,9 @@
  *   wr X        writes the word at X, then returns 1
  *   jmp X       branches to X, then returns 1
  *   undef       runs an undefined instruction
+ *   loop        logs ev=tloop, then calls sleep_ms(20) until the kernel ends it
+ *   ticks       logs ev=tloop, then calls only ticks_ms until the kernel ends it
+ *   eject       returns holo_eject_event()
  *
  * Checks print "@RC stage=testrom ev=tcheck name=<name> ok=<0|1>", apart
  * from the ROM's ev=check lines. Faults print "ev=tfault pc=<hex>" first.
@@ -204,6 +207,21 @@ int pip_main(const pipos_startup_t *startup)
         say_fault(to);
         ((void (*)(void))(uintptr_t)to)();
         return 1;
+    }
+    if (starts(a, "loop") || starts(a, "ticks")) {
+        int sleep = starts(a, "loop");
+
+        pip_log("@RC stage=testrom ev=tloop\n");
+        for (;;) {
+            if (sleep) {
+                pip_sleep_ms(20);
+            } else {
+                (void)pip_ticks_ms();
+            }
+        }
+    }
+    if (starts(a, "eject")) {
+        return pip_holo_eject_event();
     }
     if (starts(a, "undef")) {
         say_fault((uint32_t)(uintptr_t)fault_insn);

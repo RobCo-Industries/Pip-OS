@@ -56,13 +56,14 @@ typedef struct {
     unsigned backend;       /* PIPOS_BACKEND_* */
     pipos_tft_settings_t tft;
     unsigned tft_bad;       /* backend and tft_* values refused, each reported once */
+    int holo_slot;          /* [holotape] slot: 1 on, 0 off (the default) */
 } pipos_settings_t;
 
 /*
  * Called once per problem: rc is "badvalue", "unknown" or, for a panel
- * pin, "pin_input", "pin_audio", "pin_bus" or "pin_twice". key is
- * "section.key", line counts from 1 (0 for pin_twice, found after the
- * whole file).
+ * pin, "pin_input", "pin_audio", "pin_bus", "pin_twice" or "slot_clash".
+ * key is "section.key", line counts from 1 (0 for pin_twice and
+ * slot_clash, found after the whole file).
  */
 typedef void (*pipos_config_report_t)(const char *rc, const char *key, unsigned line,
                                       void *ctx);
@@ -87,6 +88,18 @@ const char *pipos_backend_name(unsigned backend);
  * "pin_bus").
  */
 const char *pipos_tft_pin_refusal(int pin);
+
+/*
+ * The holotape slot against the panel. The slot drives GPIO 12, 13, 20,
+ * 21 and 7, its card's chip select, and runs SPI0 with chip select 1,
+ * whose CE1 pin is GPIO 7. With backend tft or both, a panel chip select
+ * on CE1 or a panel line on a slot pin clashes. Returns the key of the
+ * clash numbered `which`, from 0, as "tft_cs", "tft_dc", "tft_reset" or
+ * "tft_backlight", or NULL past the last one. The parser then reports
+ * "slot_clash" on each and turns the slot off. The buttons, the dial,
+ * audio, I2C and the PL011 use no slot pin.
+ */
+const char *pipos_slot_clash(const pipos_settings_t *s, unsigned which);
 
 /* Scheme number for a name (green, amber, blue, white; any case), or -1. */
 int pipos_scheme_from_name(const char *name);

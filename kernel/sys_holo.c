@@ -15,12 +15,18 @@
 #include "holo.h"
 #include "pipos.h"
 #include "rom.h"
+#include "slot.h"
 #include "storage.h"
 #include "sys.h"
 
 #define VOL             PIPOS_VOLUME ":"
 #define HOLO_DIR        VOL PIPOS_HOLO_DIR
+/* The slot card's root folder. Its paths are shorter than the boot card's. */
+#define TAPE_DIR        PIPOS_TAPE_VOLUME ":"
 #define PATH_SIZE       (sizeof(HOLO_DIR "/") + PIPOS_HOLO_NAME_SIZE)
+
+/* list_dir() and has_slot_file(): the slot card failed, drop its entries. */
+#define SLOT_FAILED     2
 
 /*
  * The Sandbox table of PIPOS_ABI.md: the holotape's own slot and heap
@@ -42,42 +48,56 @@ static uint8_t head[PIPOS_HOLO_HEAD];
 static fs_file_t file;
 static fs_dir_t dir;
 static fs_stat_t st;
+static fs_stat_t shadow_st;
 
 int pipos_holo_running(void)
 {
     return running;
 }
 
-static void holo_path(char *path, const char *name)
+/* `folder` is HOLO_DIR or TAPE_DIR. */
+static void holo_path(char *path, const char *folder, const char *name)
 {
-    k_strncpy(path, HOLO_DIR "/", PATH_SIZE);
-    k_strncpy(path + sizeof(HOLO_DIR "/") - 1, name, PIPOS_HOLO_NAME_SIZE);
+    size_t n = k_strlen(folder);
+
+    k_strncpy(path, folder, PATH_SIZE);
+    path[n++] = '/';
+    k_strncpy(path + n, name, PIPOS_HOLO_NAME_SIZE);
     path[PATH_SIZE - 1] = '\0';
 }
 
-/* 1 when the entry in `st` is a file holo_enumerate lists by name, the name in listed. */
-static int listed_entry(char *listed)
+/*
+ * 1 when the entry in `e` is a file holo_enumerate lists by name, the name
+ * in listed. The skip rule for dot names, hidden and system entries holds
+ * on both cards.
+ */
+static int listed_entry_of(const fs_stat_t *e, char *listed)
 {
-    const char *n = pipos_holo_listed_name(st.name, st.short_name);
+    const char *n = pipos_holo_listed_name(e->name, e->short_name);
 
-    if (st.is_dir || pipos_dir_entry_skipped(st.name, st.attr) ||
+    if (e->is_dir || pipos_dir_entry_skipped(e->name, e->attr) ||
         pipos_holo_name(n, listed) != 0) {
         return 0;
     }
     return k_strcmp(listed, n) == 0;
 }
 
+static int listed_entry(char *listed)
+{
+    return listed_entry_of(&st, listed);
+}
+
 /*
  * Reads the first PIPOS_HOLO_HEAD bytes of `name`. 1 when all were read,
  * 0 when the file ends first, or the FS error of the open or a read.
  */
-static int read_head(const char *name)
+static int read_head(const char *folder, const char *name)
 {
     char path[PATH_SIZE];
     size_t got = 0;
     int n;
 
-    holo_path(path, name);
+    holo_path(path, folder, name);
     n = fs_open(&file, path, FS_READ);
     if (n != FS_OK) {
         return n;
@@ -93,11 +113,93 @@ static int read_head(const char *name)
     return n < 0 ? n : got == sizeof(head);
 }
 
+/*
+ * The shadow rule: 1 when the slot card holds a file that holo_enumerate
+ * would name `listed`, whatever its content; 0 when not; SLOT_FAILED when
+ * the slot card cannot answer. FAT compares names without case.
+ */
+static int has_slot_file(const char *listed)
+{
+    char path[PATH_SIZE];
+    char name[PIPOS_HOLO_NAME_SIZE];
+    int frc;
+
+    holo_path(path, TAPE_DIR, listed);
+    frc = fs_stat(path, &shadow_st);
+    if (frc == FS_ERR_NOENT) {
+        return 0;
+    }
+    if (frc != FS_OK) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=holo_slot_error rc=%s\n", fs_strerror(frc));
+        return SLOT_FAILED;
+    }
+    return listed_entry_of(&shadow_st, name) && k_strcmp(name, listed) == 0;
+}
+
+/*
+ * Lists the tapes of one folder into infos[*count...]. from_slot: the slot
+ * card's root. shadow: skip boot card names the slot card holds. 0, a
+ * negative FS error, or SLOT_FAILED from the shadow lookup.
+ */
+static int list_dir(const char *folder, int from_slot, int shadow, uint32_t *count, uint32_t max)
+{
+    char listed[PIPOS_HOLO_NAME_SIZE];
+    int frc = fs_opendir(&dir, folder);
+
+    if (frc == FS_ERR_NOENT && !from_slot) {
+        return 0;
+    }
+    if (frc != FS_OK) {
+        return frc;
+    }
+    /* A full listing reads no next entry: its error could only spoil it. */
+    while (!pipos_holo_list_full(*count, max) && (frc = fs_readdir(&dir, &st)) == 1) {
+        int named = listed_entry(listed) && st.size >= PIPOS_HOLO_HEAD;
+        int hidden = 0, ok = 0, rule;
+
+        if (named && shadow) {
+            hidden = has_slot_file(listed);
+            if (hidden == SLOT_FAILED) {
+                frc = SLOT_FAILED;
+                break;
+            }
+        }
+        if (named && !hidden) {
+            /* A card error ends the listing. A short file is only skipped. */
+            int hrc = read_head(folder, listed);
+
+            if (hrc < 0) {
+                frc = hrc;
+                break;
+            }
+            ok = hrc == 1 && pipos_holo_listed(head, sizeof(head), st.size);
+        }
+        rule = pipos_holo_list_rule(named, ok, hidden, *count, max);
+        if (rule == PIPOS_LIST_STOP) {
+            frc = 0;
+            break;
+        }
+        if (rule == PIPOS_LIST_ADD) {
+            pipos_holo_info_fill(&infos[*count], listed, st.size, head);
+            infos[*count].flags = pipos_holo_flags(from_slot);
+            (*count)++;
+        }
+        pipos_poll();
+    }
+    fs_closedir(&dir);
+    return frc < 0 || frc == SLOT_FAILED ? frc : 0;
+}
+
+/*
+ * Slot tapes first, then the boot card's tapes whose name the slot card
+ * does not hold. A slot card error drops every slot entry, marks the card
+ * (BAD, or REMOVED when it left) and lists the boot card alone.
+ */
 static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint32_t max,
                                   uint32_t a2, uint32_t a3)
 {
-    char listed[PIPOS_HOLO_NAME_SIZE];
     uint32_t count = 0;
+    int slot_ok;
     int32_t rc;
     int frc;
 
@@ -109,31 +211,25 @@ static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint
     if (rc != 0) {
         return rc;
     }
-    frc = fs_opendir(&dir, HOLO_DIR);
-    if (frc == FS_ERR_NOENT) {
-        return 0;
+    pipos_poll();
+    slot_ok = pipos_slot_mounted_now();
+    frc = slot_ok ? list_dir(TAPE_DIR, 1, 0, &count, max) : 0;
+    if (frc != 0) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=holo_slot_error rc=%s\n", fs_strerror(frc));
+        pipos_slot_read_error();
+        slot_ok = 0;
+        count = 0;
     }
-    if (frc != FS_OK) {
-        return pipos_storage_errno(frc);
-    }
-    while (count < max && (frc = fs_readdir(&dir, &st)) == 1) {
-        int hrc;
-
-        if (!listed_entry(listed) || st.size < PIPOS_HOLO_HEAD) {
-            continue;
-        }
-        /* A card error ends the listing. A short file is only skipped. */
-        hrc = read_head(listed);
-        if (hrc < 0) {
-            frc = hrc;
+    frc = 0;
+    while (!pipos_holo_list_full(count, max)) {
+        frc = list_dir(HOLO_DIR, 0, slot_ok, &count, max);
+        if (frc != SLOT_FAILED) {
             break;
         }
-        if (hrc == 1 && pipos_holo_listed(head, sizeof(head), st.size)) {
-            pipos_holo_info_fill(&infos[count++], listed, st.size, head);
-        }
-        pipos_poll();
+        pipos_slot_read_error();
+        slot_ok = 0;
+        count = 0;
     }
-    fs_closedir(&dir);
     if (frc < 0) {
         return pipos_storage_errno(frc);
     }
@@ -146,36 +242,37 @@ static int32_t sys_holo_enumerate(const pipos_sys_ctx_t *ctx, uint32_t out, uint
  * it: the first entry whose long name or 8.3 alias matches. That entry
  * must be a file holo_enumerate lists under exactly this name, so an
  * alias cannot reach a folder, a work file, or a file listed under
- * another name. 0, -PIP_ENOENT, or an FS error.
+ * another name. 0 found, 1 missing, or a negative FS error.
  */
-static int32_t find_tape(const char *want)
+static int32_t find_tape(const char *folder, const char *want)
 {
     char listed[PIPOS_HOLO_NAME_SIZE];
-    int32_t rc = -PIP_ENOENT;
-    int frc = fs_opendir(&dir, HOLO_DIR);
+    int32_t rc = 1;
+    int frc = fs_opendir(&dir, folder);
 
     if (frc == FS_ERR_NOENT) {
-        return -PIP_ENOENT;
+        return 1;
     }
     if (frc != FS_OK) {
-        return pipos_storage_errno(frc);
+        return frc;
     }
     while ((frc = fs_readdir(&dir, &st)) == 1) {
         if (pipos_holo_entry_match(want, st.name, st.short_name)) {
-            rc = listed_entry(listed) && k_strcmp(listed, want) == 0 ? 0 : -PIP_ENOENT;
+            rc = listed_entry(listed) && k_strcmp(listed, want) == 0 ? 0 : 1;
             break;
         }
     }
     fs_closedir(&dir);
-    return frc < 0 ? pipos_storage_errno(frc) : rc;
+    return frc < 0 ? frc : rc;
 }
 
 /*
  * Loads, runs and reports one holotape of `size` bytes, the folder entry's
  * size. Returns holo_launch's result.
  */
-static int32_t run_tape(const char *name, const char *args, uint32_t size)
+static int32_t run_tape(const char *folder, const char *name, const char *args, uint32_t size)
 {
+    int from_slot = folder[0] == TAPE_DIR[0];
     static const loader_slot_t slot = { PIPOS_HOLO_BASE, PIPOS_HOLO_SIZE, NULL };
     static const rimg_expect_t expect = { .magic = RIMG_MAGIC_ROBCO78,
                                           .abi_major = PIP_ABI_VERSION >> 16 };
@@ -187,11 +284,15 @@ static int32_t run_tape(const char *name, const char *args, uint32_t size)
     int32_t result;
     int rc;
 
-    holo_path(path, name);
+    holo_path(path, folder, name);
     rc = loader_load(path, &slot, &expect, &res);
     if (rc != RIMG_OK) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=holo_error code=%s name=%s\n",
                  rimg_strerror(rc), name);
+        /* The file was there: a failed open or read is the card's. */
+        if (from_slot && (rc == RIMG_E_IO || rc == RIMG_E_NOFILE)) {
+            pipos_slot_read_error();
+        }
         return pipos_holo_load_errno(rc, size);
     }
     pipos_startup_holo((pipos_startup_t *)(uintptr_t)PIPOS_HOLO_STARTUP, args);
@@ -207,11 +308,18 @@ static int32_t run_tape(const char *name, const char *args, uint32_t size)
     im.start_line = start;
 
     running = 1;
+    pipos_slot_tape_running(from_slot);
     rc = pipos_image_run(&im, &ex);
+    pipos_slot_tape_running(0);
     running = 0;
     if (rc != 0) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=error code=umode rc=%d\n", rc);
         return -PIP_ENOEXEC;
+    }
+    if (ex.reason == UMODE_KILLED && ex.code == PIPOS_KILL_EJECT) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=holo_kill reason=eject pc=0x%08x\n",
+                 (unsigned)ex.pc);
+        return -PIP_ENODEV;
     }
     result = pipos_holo_result(ex.reason, ex.code);
     if (result >= 0) {
@@ -240,10 +348,25 @@ static int32_t launch(const pipos_sys_ctx_t *ctx, uint32_t uname, uint32_t uargs
         return (int32_t)len;
     }
     rc = pipos_holo_name(raw, name);
-    if (rc == 0) {
-        rc = find_tape(name);
+    if (rc != 0) {
+        return rc;
     }
-    return rc != 0 ? rc : run_tape(name, args, st.size);
+    /* The slot card first, while its volume is mounted. */
+    if (pipos_slot_mounted_now()) {
+        rc = find_tape(TAPE_DIR, name);
+        if (rc == 0) {
+            return run_tape(TAPE_DIR, name, args, st.size);
+        }
+        if (rc < 0) {
+            /* BAD with the card in: -PIP_EIO. A pull: REMOVED and -PIP_ENOENT. No boot card try. */
+            return pipos_slot_read_error() ? -PIP_EIO : -PIP_ENOENT;
+        }
+    }
+    rc = find_tape(HOLO_DIR, name);
+    if (rc < 0) {
+        return pipos_storage_errno(rc);
+    }
+    return rc != 0 ? -PIP_ENOENT : run_tape(HOLO_DIR, name, args, st.size);
 }
 
 static int32_t sys_holo_launch(const pipos_sys_ctx_t *ctx, uint32_t uname, uint32_t uargs,
@@ -266,11 +389,13 @@ static int32_t sys_holo_last_status(const pipos_sys_ctx_t *ctx, uint32_t a0, uin
     return last_status;
 }
 
+/* The ROM's pending slot bits. A holotape gets 0 and clears nothing. */
 static int32_t sys_holo_eject_event(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1,
                                     uint32_t a2, uint32_t a3)
 {
-    (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
-    return 0;
+    (void)a0, (void)a1, (void)a2, (void)a3;
+    pipos_poll();
+    return (int32_t)pipos_slot_take_bits(ctx->kind == PIP_KIND_ROM);
 }
 
 static const pipos_sys_entry_t holo_calls[] = {
@@ -298,6 +423,8 @@ void pipos_holo_image_end(int kind)
     (void)kind;
 }
 
+/* Slot work runs in every pass of main-loop work. */
 void pipos_holo_poll(void)
 {
+    pipos_slot_work();
 }
