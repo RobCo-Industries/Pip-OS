@@ -134,7 +134,10 @@ int32_t pip_holo_enumerate(pip_holo_info_t *out, uint32_t max);
 int32_t pip_holo_launch(const char *name, const char *args);
 /* What the last pip_holo_launch() returned, or -PIP_ENOENT. */
 int32_t pip_holo_last_status(void);
-/* 1 if a holotape came or went since the last call. 0 in ABI 1.0. */
+/*
+ * PIP_HOLO_EV_* bits of the slot changes since the last call, which it
+ * clears. 0 from a holotape, with PIP_HW_TAPE clear, and before ABI 1.4.
+ */
 int32_t pip_holo_eject_event(void);
 
 /* rect and set_clip with w and h apart: PIP_WH() packs them. */

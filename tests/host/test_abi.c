@@ -194,3 +194,16 @@ TEST(constants)
     CHECK_EQ(PIP_ARGS_MAX + 1, PIP_ARGS_SIZE);
     CHECK_EQ(PIP_LOG_MAX, 256);
 }
+
+/* ABI 1.4: the holotape slot. */
+TEST(abi_1_4)
+{
+    CHECK_EQ(PIP_ABI_VERSION, 0x00010004);
+    CHECK_EQ(PIP_EV_TAPE, 3);
+    CHECK_EQ(PIP_HW_TAPE, 0x8u);
+    CHECK_EQ(PIP_HOLO_SLOT, 0x1u);
+    CHECK_EQ(PIP_HOLO_EV_INSERTED, 0x1u);
+    CHECK_EQ(PIP_HOLO_EV_REMOVED, 0x2u);
+    CHECK_EQ(PIP_HOLO_EV_BAD, 0x4u);
+    CHECK_EQ(sizeof(((pip_holo_info_t *)0)->flags), 2);
+}
