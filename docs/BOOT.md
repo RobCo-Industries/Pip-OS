@@ -207,7 +207,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr`, or `reason=killed code pc` | The ROM faulted, or the `kill` command ended it |
 | `holo_start` | `name` | The kernel enters a holotape |
 | `holo_exit` | `status` | The holotape called `exit` or returned. `status` is 0 to 255. |
-| `holo_kill` | As `rom_kill`, or `reason=eject pc` | The holotape faulted, the `kill` command ended it, or its slot card left. Not shown on the screen. |
+| `holo_kill` | As `rom_kill`, or `reason=eject pc` | The holotape faulted, the `kill` command ended it, or its slot card left. For `eject`, `pc` is the tape's program counter at the system call where Pip-OS ended it, as `0x` and 8 hex digits like a fault's. Not shown on the screen. |
 | `holo_error` | `code name` | The holotape failed to load. `code` is a `rimg` error name. |
 | `holo_slot` | `backend rc` | `[holotape] slot = on` only: the slot backend at boot. `backend` is `holo`, or `ram` in a test build. |
 | `holo_slot` | `state bits` | One slot change: the new state and the `PIP_HOLO_EV_*` bits it set |

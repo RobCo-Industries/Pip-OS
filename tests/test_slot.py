@@ -11,6 +11,7 @@ card. Nothing here ran on hardware.
 """
 
 import os
+import re
 import time
 
 import pytest
@@ -29,6 +30,9 @@ CARD_BASE = 0x02000000
 CARD_STRIDE = 0x00800000
 CARD_MIB = 8
 CARD_BLOCKS = CARD_MIB * 2048
+# kernel/holo.h
+HOLO_BASE = 0x00800000
+HOLO_SIZE = 0x00400000
 
 INS, REM, BAD = 1, 2, 4
 ENODEV, ENOEXEC, EFAULT = -41, -40, -14
@@ -352,7 +356,10 @@ def test_pull_while_slot_tape_runs(board, holo_build, test_rom, test_holo, tmp_p
         wait_rom(vm, "tloop")
         assert int(wait_rom(vm, "launch", n + 1)[-1]["rc"]) == ENODEV
         kill = one(vm, "holo_kill")
-        assert kill["reason"] == "eject" and kill["pc"].startswith("0x"), kill
+        assert kill["reason"] == "eject", kill
+        # The fault format, and an address inside the tape: kernel/holo.h.
+        assert re.fullmatch(r"0x[0-9a-f]{8}", kill["pc"]), kill
+        assert HOLO_BASE <= int(kill["pc"], 16) < HOLO_BASE + HOLO_SIZE, kill
         assert mask(vm) == INS | REM
         # When the call entry sees the pull first, the ROM's next work pass
         # reports it; when sleep_ms does, the tape runs and gets no event.
