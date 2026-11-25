@@ -51,8 +51,9 @@ include $(PIPOS_SDK)/pipos-app.mk
 | `CFLAGS_EXTRA` | More compiler flags |
 | `ROBCO_CORE` | RobCo-Core, `$(PIPOS_SDK)/../external/robco-core` by default |
 | `CI=1` | Warnings become errors |
+| `FLAGS_JSON` | Where `flags-json` writes, `$(BUILD)/flags.json` by default |
 
-Targets are `all` and `clean`. The fragment compiles with the kernel's CPU flags: ARMv6, ARM state, soft float, `-ffreestanding -nostdlib`. It builds `libpip.a` in `$(BUILD)/libpip`, links with `-lgcc` for division and other compiler helpers, seals with `rimg.py seal` and checks the result with `rimg.py verify`.
+Targets are `all`, `clean` and `flags-json`. The fragment compiles with the kernel's CPU flags: ARMv6, ARM state, soft float, `-ffreestanding -nostdlib`. It builds `libpip.a` in `$(BUILD)/libpip`, links with `-lgcc` for division and other compiler helpers, seals with `rimg.py seal` and checks the result with `rimg.py verify`.
 
 `make` rebuilds what a change affects: an edited source or header, a new setting, a source added to or removed from `SRCS`. Every object lands under `$(BUILD)/obj` with its source extension, so `start.c` and `start.S` can sit side by side. If sealing or verifying fails, no image is left behind. Paths with spaces are not supported.
 
@@ -79,6 +80,14 @@ The calls hidden by target, from the spec's change list:
 | 1.1 to 1.4 | Nothing |
 
 ABI 1.2, 1.3 and 1.4 added no call. A change of `ABI` rebuilds the startup code and every source.
+
+### flags.json
+
+`make flags-json` writes the build flags as the section "flags.json" of RobCo-Core's `docs/spec/SDK_PACKAGE.md` describes them, for a tool that builds without `make`. It writes the variables the build rules use, so the file and the build cannot drift apart. Paths are relative to a package root: `include`, `lib/crt0.S`, `lib/holotape.ld`, `lib/rom.ld`, `lib/libpip.a`. No flag holds a path.
+
+The file leaves out what is the project's or `make`'s own: `CFLAGS_EXTRA`, `-Werror` of `CI=1`, `-MMD -MP` and the map file. `-Wl,--no-warn-rwx-segments` is in `ldflags` only when the linker of the machine that writes the file knows it.
+
+`tests/host/flags_json_test.sh` builds the example tape and the example ROM twice, by `make` and by `tests/host/flags_json_build.py`, which follows the spec's build order and reads only `flags.json` and a package folder. Both give the same SHA-256. This is tested on one machine only.
 
 ## Writing a holotape
 

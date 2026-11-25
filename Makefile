@@ -262,15 +262,18 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 	$(HOST_CC) -std=c99 -O2 -Wall -Wextra -Werror -I$(ROBCO_CORE)/tests/host -o $@ $<
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
-test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test sdk-rebuild-test \
+test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
 
-.PHONY: sdk-example-test sdk-abi-target-test sdk-rebuild-test sdimage-rom-test outside-project-test
+.PHONY: flags-json-test sdk-example-test sdk-abi-target-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
 	tests/host/sdk_example_test.sh
 
 sdk-abi-target-test:
 	tests/host/sdk_abi_target_test.sh
+
+flags-json-test:
+	tests/host/flags_json_test.sh
 
 sdk-rebuild-test:
 	tests/host/sdk_rebuild_test.sh
