@@ -277,3 +277,9 @@ unsigned pipos_handle_count(uint32_t used)
     }
     return n;
 }
+
+int pipos_dir_entry_skipped(const char *name, unsigned attr)
+{
+    return name[0] == '.' ||
+           (attr & (FS_ATTR_HIDDEN | FS_ATTR_SYSTEM | PIPOS_FAT_ATTR_VOLUME)) != 0;
+}

@@ -197,6 +197,7 @@ The name and path rules, the 64 KiB save limit and the read-only card rules are 
 - `/PIPBOY/SAVE` and everything in it return `-PIP_EPERM` to the file calls. A PC tool can give `PIPBOY` or `SAVE` an 8.3 alias such as `SAVE~1`, so Pip-OS also looks the first two components up on the card by long and short name. That costs one scan of the root for a path with two or more components, and one more scan of `/PIPBOY` when the first component is that folder. A path with one component costs no scan.
 - `file_read` takes any `size` and reads through a 4 KiB kernel buffer. It runs the kernel's main-loop work between chunks, so script commands keep working during long reads.
 - `dir_list` shows the save folder under the name that returns `-PIP_EPERM`.
+- A listing skips an entry whose long name starts with a dot, and an entry with the hidden, system or volume label attribute. A card written from a Mac holds `._<name>` side files and folders such as `.Spotlight-V100`, `.fseventsd` and `.Trashes`; FAT gives `._CULVERT.HTP` the 8.3 alias `_CULVE~1.HTP`, so the rule reads the long name. `dir_list` skips them too, and `start` counts only the entries it shows. `file_open` still opens such a file by its path.
 - Pip-OS keeps a 64 KiB static buffer for saves and file reads, 8 file handles of 640 bytes each, and a 1280-byte buffer for `dir_list`.
 - On a missing card each call can take about 3 seconds before it returns `-PIP_EIO`: the SD driver's time-out.
 - In QEMU a 64 KiB `write_save` takes 20 to 120 ms, depending on the board.
@@ -213,6 +214,7 @@ The name and path rules, the 64 KiB save limit and the read-only card rules are 
 The listing, the launch steps, the name rules and what a holotape may touch are in the spec's [Holotapes](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/PIPOS_ABI.md#holotapes) and [Sandbox](https://github.com/RobCo-Industries/RobCo-Core/blob/79cbd82d42c1ae6df371b05f7a3f1165ec86003f/docs/spec/PIPOS_ABI.md#sandbox) sections. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#writing-a-holotape) shows how to build one.
 
 - `holo_enumerate` skips a file smaller than 288 bytes, the stub, header and META block it reads.
+- `holo_enumerate` and `holo_launch` skip the entries `dir_list` skips, see [Saves and files](#saves-and-files). A hidden tape is not listed, and `holo_launch` returns `-PIP_ENOENT` for it.
 - `holo_launch` copies both strings in before it checks anything else. A `NULL` `args` returns `-PIP_EFAULT`.
 - The holotape runs inside the ROM's call, loaded at `0x00800000`. `exit` and a return from `pip_main` end the holotape only. A fault or a `kill` script command ends it with `-PIP_EFAULT`, and the ROM goes on.
 - When `umode_run()` refuses the holotape task, `holo_launch` returns `-PIP_ENOEXEC` and the kernel prints `ev=error code=umode`.

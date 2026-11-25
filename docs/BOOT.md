@@ -97,7 +97,7 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 | Line | Rule |
 |---|---|
-| Holotape line | `NO HOLOTAPE FOUND` when `/PIPBOY/HOLO/` holds no file ending in `.HTP`. Otherwise `1 HOLOTAPE FOUND` or `<n> HOLOTAPES FOUND`. |
+| Holotape line | `NO HOLOTAPE FOUND` when `/PIPBOY/HOLO/` holds no file ending in `.HTP`. Otherwise `1 HOLOTAPE FOUND` or `<n> HOLOTAPES FOUND`. The count skips a name that starts with a dot, such as a Mac's `._CULVERT.HTP`, and a hidden or system file. |
 | ROM line | `LOAD ROM(1): <NAME> <version>` with the name and version from the ROM's header, only after the ROM passed every check. Otherwise `ROM(1) NOT LOADED: <reason>`. |
 
 | ROM result | Reason on screen |
@@ -191,7 +191,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `mount` | `part type lba blocks marker` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. `marker` is `1` when it holds a Pip-OS file. |
 | `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep` | A configuration problem, or the summary. See [CONFIG.md](CONFIG.md). |
 | `syscalls` | `served` | The calls the kernel serves: a 128-bit hex number, bit n set for call n |
-| `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/` |
+| `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/`, without dot names and hidden or system files |
 | `load` | `path size crc addr name` | The ROM passed every check |
 | `error` | `code path` | The ROM failed. `code` is a `rimg` error name. |
 | `rom` | `rc name version size crc` | ROM result. `rc` is `ok` or a `rimg` error name. `name` and `version` are `-` on failure. |

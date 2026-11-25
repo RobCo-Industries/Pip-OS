@@ -60,7 +60,8 @@ static int listed_entry(char *listed)
 {
     const char *n = pipos_holo_listed_name(st.name, st.short_name);
 
-    if (st.is_dir || pipos_holo_name(n, listed) != 0) {
+    if (st.is_dir || pipos_dir_entry_skipped(st.name, st.attr) ||
+        pipos_holo_name(n, listed) != 0) {
         return 0;
     }
     return k_strcmp(listed, n) == 0;

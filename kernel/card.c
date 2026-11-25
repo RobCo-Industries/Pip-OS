@@ -10,6 +10,7 @@
 
 #include "bootlines.h"
 #include "pipos.h"
+#include "storage.h"
 
 #define VOL(path)       PIPOS_VOLUME ":" path
 #define CFG_TEXT_MAX    4096u
@@ -124,7 +125,8 @@ unsigned pipos_holo_count(int card)
 
     if (card && fs_opendir(&d, VOL(PIPOS_HOLO_DIR)) == FS_OK) {
         while ((rc = fs_readdir(&d, &st)) == 1) {
-            if (!st.is_dir && pipos_is_holotape_name(st.name)) {
+            if (!st.is_dir && !pipos_dir_entry_skipped(st.name, st.attr) &&
+                pipos_is_holotape_name(st.name)) {
                 count++;
             }
         }

@@ -46,6 +46,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_time.py` | The time, sensor, battery and power calls, with and without QEMU's RTC model |
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
+| `tests/test_side_files.py` | A card with macOS side files, dot folders, hidden and system files: the holotape count, `holo_enumerate`, `dir_list` and a save match a clean card |
 | `tests/test_rom.py` | Running the test ROMs: exit and return, entry state, each system call, the `sleep_ms` range and lengths, bad pointers, unknown numbers, saved registers, faults, script commands while a ROM sleeps or spins, the `libpip` self-check |
 | `tests/tools/test_card_tool.py` | `tools/card.py` on its own, without a build or QEMU: the `TAPE` and `CARD_DIR` rules, the staged-card check and each `bootdir` stop, links at every position in `DIR` and in the sources, `BOOTDIR.LST` lines, read-only folders, and a sweep of 300 random trees from a fixed seed. Either a run stops and `DIR` is unchanged, or it holds exactly the staged files plus the files it left alone, and a file outside `DIR` that links point at never changes. Cases that need two spellings of a name run only on a case-sensitive temp folder; the run prints which branch it took. The read-only cases skip as root, as in the CI container. |
 | `tests/tools/test_hosttiming.py` | `tests/hosttiming.py` on its own, without a build or QEMU: the stream judgement on the numbers of the failing CI run and of normal runs, the chains, the panel retries, and the session rule. See [Host timing](#host-timing). |
@@ -113,6 +114,7 @@ A skip must not hide a failure. The session counts `host timing:` skips per boar
 | `tft_*` | Panel frames for `test_tft.py`: a scene, small changes and `power`, streaming while redrawing, and changes outside the window the panel shows at 0 degrees |
 | `time_*` | The clock with and without an RTC, `power` reboot, halt and screen off and on |
 | `storage_*` | Saves, recovery, files, aliases of the save folder, saves over 64 KiB, a card that goes away, a save kept across two boots |
+| `side_files` | Prints the holotape listing, `dir_list` of four folders and a save's size, for `test_side_files.py` |
 | `holo_*` | Holotape listing, launch, card errors and the state handover. `holo_tapes/tape.c` is the test holotape. |
 
 ## Writing a test ROM
