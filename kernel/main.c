@@ -25,6 +25,7 @@
 #include <robco/umode.h>
 
 #include "bootlines.h"
+#include "display.h"
 #include "pipos.h"
 #include "storage.h"
 #include "sys.h"
@@ -105,7 +106,10 @@ static void dump_char(char c)
 /* The umode_request_kill() reason of the kill script command. */
 #define PIPOS_KILL_SCRIPT 1
 
-/* Project commands on the script channel: dump, state, rtc, kill, panic <reason>. */
+/*
+ * Project commands on the script channel: dump, state, rtc, kill,
+ * panic <reason>, and tftdump in test builds.
+ */
 static int script_command(int argc, char *argv[], input_script_reply_t *reply, void *ctx)
 {
     static char why[PIPOS_LINE_MAX];
@@ -145,6 +149,10 @@ static int script_command(int argc, char *argv[], input_script_reply_t *reply, v
     /* Ends the innermost running image, as a watchdog would. */
     if (k_strcmp(argv[0], "kill") == 0 && argc == 1) {
         umode_request_kill(PIPOS_KILL_SCRIPT);
+        return 0;
+    }
+    /* Test builds: the panel transcript since tft_init(). */
+    if (k_strcmp(argv[0], "tftdump") == 0 && argc == 1 && pipos_display_dump(reply) == 0) {
         return 0;
     }
     if (k_strcmp(argv[0], "panic") == 0 && argc >= 2) {
@@ -347,6 +355,7 @@ void robco_main(void)
     card = pipos_card_mount();
     pipos_config_load(card, &settings);
     apply_settings(&settings);
+    pipos_display_start(&settings);
     pipos_sys_init();
 
     rom = boot_screen(card, &res);

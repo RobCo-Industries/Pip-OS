@@ -535,3 +535,66 @@ uint32_t gfx_scale_copy(const uint32_t *src, uint32_t w, uint32_t h, uint8_t *ds
     }
     return f;
 }
+
+static int row_same(const uint32_t *a, const uint32_t *b, uint32_t w)
+{
+    uint32_t i;
+
+    for (i = 0; i < w; i++) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int gfx_dirty_rect(const uint32_t *cur, const uint32_t *last, uint32_t stride, uint32_t w,
+                   uint32_t h, gfx_rect_t *r)
+{
+    uint32_t y0 = 0, y1 = h, x0 = w, x1 = 0;
+    uint32_t x, y;
+
+    while (y0 < h && row_same(cur + y0 * stride, last + y0 * stride, w)) {
+        y0++;
+    }
+    if (y0 == h) {
+        return 0;
+    }
+    while (row_same(cur + (y1 - 1u) * stride, last + (y1 - 1u) * stride, w)) {
+        y1--;
+    }
+    /* Each row only needs a look left of x0 and right of x1. */
+    for (y = y0; y < y1; y++) {
+        const uint32_t *a = cur + y * stride;
+        const uint32_t *b = last + y * stride;
+
+        for (x = 0; x < x0; x++) {
+            if (a[x] != b[x]) {
+                x0 = x;
+                break;
+            }
+        }
+        for (x = w; x > x1; x--) {
+            if (a[x - 1u] != b[x - 1u]) {
+                x1 = x;
+                break;
+            }
+        }
+    }
+    r->x = x0;
+    r->y = y0;
+    r->w = x1 - x0;
+    r->h = y1 - y0;
+    return 1;
+}
+
+void gfx_copy_rect(const uint32_t *src, uint32_t *dst, uint32_t w, const gfx_rect_t *r)
+{
+    uint32_t x, y;
+
+    for (y = r->y; y < r->y + r->h; y++) {
+        for (x = r->x; x < r->x + r->w; x++) {
+            dst[y * w + x] = src[y * w + x];
+        }
+    }
+}

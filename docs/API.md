@@ -77,18 +77,18 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 | `0x0B` | `set_clip` | `int32 x, y`, `uint32 wh` | 0 | `EINVAL` when `wh` is not 0 but `w` or `h` is 0 |
 | `0x0C` | `set_color` | `uint32 fg, bg` | 0 | none |
 | `0x0D` | `text_metrics` | `const char *text`, `uint32 scale` | `(width << 16) \| height` | As `draw_text` |
-| `0x0E` | `present` | none | 0 | `ENODEV` with no framebuffer, or one smaller than 320x240 |
+| `0x0E` | `present` | none | 0 | `ENODEV` with no framebuffer, or one smaller than 320x240. `EIO` when the panel refused the frame. |
 | `0x0F` | `set_font` | `uint32 font_id` | 0 | `EINVAL` for any font but 0 |
 
 The drawing rules, the pixel rules of lines, rectangles, arcs and text, and the check order are in the spec's [Display](https://github.com/RobCo-Industries/RobCo-Core/blob/796607fc019706694e226c9b77d05ffa431fec1b/docs/spec/PIPOS_ABI.md#display) section.
 
-- `gfx_info` reports `backend` 0, HDMI, and `fg_default` as the normal text colour of the `PIPOS.CFG` scheme. Green is `0x33E066`.
+- `gfx_info` reports `backend` 1, `PIP_GFX_BACKEND_SPI`, while the panel takes frames, else 0, HDMI. The ABI has no value for both, so `backend = both` reports 1. It reports `fg_default` as the normal text colour of the `PIPOS.CFG` scheme. Green is `0x33E066`.
 - The back buffer is 320x240 words at `0x00C00000`, in kernel-only memory. The boot prints `ev=gfx bb=0x00c00000 size=307200 user=0 heap_end=...` and panics if an image could reach that memory or the kernel heap overlaps it.
 - `present` scales the back buffer by 2 onto the 640x480 framebuffer and centres it on black. Each `present` takes about 1.4 ms in QEMU.
 - When the ROM starts, the back buffer is cleared to black and the drawing state is reset. The boot screen stays until the ROM's first `present`.
 - When the ROM ends, by exit, return or fault, the console redraws the whole boot screen and the kernel prints its exit or fault line below it.
 - A holotape gets a fresh drawing state when it starts. The ROM's state comes back when the holotape ends.
-- The SPI display is not supported.
+- With the SPI panel, `present` sends the smallest rectangle that changed since the last frame sent. A full frame is 153611 bytes: about 128 ms at 9.62 MHz, the rate set for the default 10 MHz. A 40-character line of text, 320x16 pixels, is 10251 bytes, about 8.5 ms. An unchanged frame sends nothing. The call returns when the bytes are out, so it blocks the ROM that long. Sound keeps playing: it runs from a timer interrupt. A ROM that streams with `sample_queue` must queue chunks that last longer than one `present`. See [ARCHITECTURE.md](ARCHITECTURE.md#display-path).
 
 ## Input
 
@@ -153,7 +153,7 @@ A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` 
 @RC stage=pipos ev=audio op=pcm_end n=78 last=795 t_ms=280
 ```
 
-`t_ms` is the audio driver's millisecond clock. A rest in a sequence prints `op=stop`. On some hosts QEMU delivers far fewer timer interrupts than samples, so `n` can be much smaller than `len`.
+`t_ms` is the audio driver's millisecond clock. A rest in a sequence prints `op=stop`. So does every sound cut by another one, once. On some hosts QEMU delivers far fewer timer interrupts than samples, so `n` can be much smaller than `len`.
 
 ## Time, sensors and power
 
@@ -175,8 +175,8 @@ The clock and sensor rules are in the spec's [Time, sensors and power](https://g
 |---|---|
 | 0 | Prints `ev=reboot`, then resets the board through the watchdog |
 | 1 | Prints `ev=halt`, stops the sound, redraws the console and shows `PIP-OS HALTED. SAFE TO POWER OFF.`, then stops with interrupts masked |
-| 2 | Turns the screen black. Drawing and `present` keep working on the back buffer. |
-| 3 | Shows the back buffer as it is now, or the console when the image has not called `present` |
+| 2 | Turns the screen black. Drawing and `present` keep working on the back buffer. The panel gets display off, then sleep in. The backlight line goes low. |
+| 3 | Shows the back buffer as it is now, or the console when the image has not called `present`. The panel gets sleep out and display on first, then the whole frame. |
 
 ## Saves and files
 

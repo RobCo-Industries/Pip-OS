@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - ABI 1.3: `sys_info` reports `hw_flags` at offset `0x18`. `PIP_HW_RTC`, bit 0, is set when a clock chip answered at boot. `PIP_HW_AUDIO`, bit 2, is set when the audio driver started, also on the trace backend after a PWM error. The conformance ROM checks the flags, and a new conformance run uses QEMU's clock chip.
+- The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
+- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. At `tft_rotation = 0` or `180` it looks only at the left 240 columns and top 240 rows the panel shows. `power` drives the panel's display and sleep and the backlight. A panic wakes a blanked panel before it shows.
+- With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
+- `gfx_info` reports `backend` 1 while the panel takes frames.
+- A test build with `-DPIPOS_TFT_TEST`, the `tftdump` script command in it, and `tests/test_tft.py`, which compares the panel picture rebuilt by RobCo-Core's ILI9341 model with HDMI.
 - `make kernel` builds only the kernel image and its ELF, for a ROM project that calls Pip-OS's Makefile from another repository.
 - `CARD_DIR=<dir>` copies a folder tree onto the card for `make sdimage`, `run` and `bootdir`. A file at the path of a standard card file stops the build. `TAPE` takes several files.
 - "Using Pip-OS from another repository" in `docs/ROM_DEVELOPMENT.md`, with a complete Makefile, and `tests/host/outside_project_test.sh`.
@@ -22,10 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Playing long audio" in `docs/ROM_DEVELOPMENT.md`: a streaming loop for a ROM.
 
 ### Changed
+- A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
 - The kernel finds the card's volume with RobCo-Core's `fs_mount_boot()`. It prefers the first FAT volume that holds `/PIPBOY/PIPOS.CFG` or `/PIPBOY/ROM1.ROM`, and falls back to the first that mounts. `ev=mount` gains `marker`. `ev=card rc=nomount` gains `why`. A card with an empty partition table now reports `rc=nomount why=nofat` instead of `rc=nopart`.
 - `PIP_ABI_VERSION` is `0x00010003`. Images sealed for 1.0, 1.1 and 1.2 still run.
 - `pip_sys_info_t.reserved` is one word, not an array of two. Code that read `reserved[0]` reads `hw_flags` now.
-- RobCo-Core moved to `796607f` for ABI 1.3 in the spec, a TFT panel driver, screen adopt calls, `ini_parse_sections()` and word-wise memory copies. The audio trace now prints one `op=stop` line when a start replaces a playing sound. The audio tests expect it.
+- RobCo-Core moved to `796607f` for ABI 1.3 in the spec, the ILI9341 panel driver, screen adopt calls and `ini_parse_sections()`. Its audio trace now prints one `op=stop` line when a start replaces a playing sound, so the audio tests expect it. Its console scrolls and clears only its grid, and memory copies run a word at a time.
 - RobCo-Core moved to `f5bba36` for `fs_mount_boot()`, `board_model_name()`, `rimg_self_check()` and a console backend that leaves bytes in the UART while the input queue is full.
 - `make bootdir` writes the same files as `make sdimage`, the example ROM and tape included, plus the firmware. It builds only the kernel and the files it copies, not `all`.
 - With `ROM=<file>`, `make sdimage`, `run` and `bootdir` no longer build the hello example. The tape example builds only when `TAPE` is left at its default.
@@ -57,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The screen dump and the panic trigger moved from Ctrl-D and Ctrl-P on the console to the `dump` and `panic` commands on the script channel.
 
 ### Added
+- The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
+- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. `power` drives the panel's display and sleep and the backlight.
+- With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
+- `gfx_info` reports `backend` 1 while the panel takes frames.
+- A test build with `-DPIPOS_TFT_TEST`, the `tftdump` script command in it, and `tests/test_tft.py`, which compares the panel picture rebuilt by RobCo-Core's ILI9341 model with HDMI.
 - `SUBTYPE` in `sdk/pipos-app.mk` seals a holotape as a game, 0, or a utility, 1. It refuses data tapes and any non-zero subtype for a ROM.
 - Graphics calls `0x01` to `0x0F`: lines, points, text, rectangles, polylines, arcs, 1-bit and RGB blits, clip, colours, font and `present`. They draw on a 320x240 back buffer in kernel-only memory at `0x00C00000`, and `present` scales it by 2 onto the 640x480 framebuffer.
 - The console redraws the boot screen when a ROM ends, so the ROM's last frame never stays on screen.
@@ -115,6 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: this entry overstated the state of the code. Most listed items are stubs. See the Status section in [README.md](README.md#status).
 
 ### Added
+- The ILI9341 SPI panel. `[display] backend = hdmi | tft | both` in `PIPOS.CFG` and `tft_cs`, `tft_dc`, `tft_reset`, `tft_backlight`, `tft_hz`, `tft_rotation`, `tft_bgr`, `tft_invert`. Pins the input layer, audio or a bus uses are refused by name. `ev=display` reports the panel at boot. A panel that fails to start leaves HDMI in use.
+- `present` on the panel sends only the smallest rectangle that changed since the last frame sent. `power` drives the panel's display and sleep and the backlight.
+- With the panel in use, boot text and the panic text also show on it, as 15 lines of 40 characters.
+- `gfx_info` reports `backend` 1 while the panel takes frames.
+- A test build with `-DPIPOS_TFT_TEST`, the `tftdump` script command in it, and `tests/test_tft.py`, which compares the panel picture rebuilt by RobCo-Core's ILI9341 model with HDMI.
 - Complete PIP-OS V7.1.0.8 implementation from scratch
 - Matrix-style boot display with cascading characters
 - Boot audio sequence (power-on beep, data stream, relay clicks, ready chime)
@@ -148,6 +164,7 @@ Note: this entry overstated the state of the code. Most listed items are stubs. 
 - Added k_memcmp to kernel libc for ROM verification
 
 ### Changed
+- A command-line `EXTRA_CFLAGS` now adds to the kernel flags instead of replacing `-Isdk/include`.
 - Updated version from V0.1.0.0 to V7.1.0.8 (matching Fallout canon)
 - Boot messages now display authentic PIP-OS format
   - LOADER V1.1

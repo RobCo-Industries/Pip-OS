@@ -52,7 +52,8 @@ PURE_SRCS  := \
 
 SRCS       := $(sort $(wildcard kernel/*.c))
 # The ABI header in sdk/include is shared with ROM code.
-EXTRA_CFLAGS += -Isdk/include
+# override: a command-line EXTRA_CFLAGS, such as a test build's, adds to it.
+override EXTRA_CFLAGS += -Isdk/include
 
 # Host unit tests: tests/host/test_<name>.c with the pure kernel files.
 HOST_TEST_DIR := tests/host
@@ -248,6 +249,16 @@ check-pins-test:
 
 build-dir-test:
 	tests/host/build_dir_test.sh
+
+# The panel model of tests/test_tft.py: RobCo-Core's ILI9341 model fed
+# with a test build's tftdump reply.
+PANEL_MODEL := $(BUILD)/host/panel_model
+.PHONY: panel-model
+panel-model: $(PANEL_MODEL)
+all: $(PANEL_MODEL)
+$(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.h
+	@mkdir -p $(dir $@)
+	$(HOST_CC) -std=c99 -O2 -Wall -Wextra -Werror -I$(ROBCO_CORE)/tests/host -o $@ $<
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-rebuild-test \
