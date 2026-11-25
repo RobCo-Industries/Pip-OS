@@ -271,7 +271,6 @@ Each run on a real board is recorded here, with the commit that ran. A result ho
 | Sound on the PWM output | Open. The PWM registers answered the probe; nobody listened. |
 | RTC chip | Open. Only `rtc=absent` with no chip is seen. |
 | SPI panel | Open |
-| ABI 1.3 | Open |
 | The conformance ROM, see [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) | Open |
 
 ### Zero W 1.1 run, 2026-11-24
@@ -280,7 +279,7 @@ Each run on a real board is recorded here, with the commit that ran. A result ho
 |---|---|
 | Board | Raspberry Pi Zero W rev 1.1, BCM2835 |
 | Revision code | `0x009000c1` |
-| Pip-OS | [`2d10c2c`](https://github.com/RobCo-Industries/Pip-OS/commit/2d10c2c), before the SPI panel backend and ABI 1.3 |
+| Pip-OS | [`2d10c2c`](https://github.com/RobCo-Industries/Pip-OS/commit/2d10c2c), before the SPI panel backend |
 | RobCo-Core | `f5bba36`, the submodule of that commit |
 | ROM | Deitrix `ba21d5a`, built against Pip-OS `2d10c2c`, as `PIPBOY/ROM1.ROM` |
 | Firmware | Tag `1.20260915` |
