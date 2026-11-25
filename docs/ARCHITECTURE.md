@@ -23,7 +23,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | ABI header shared with ROM code | `sdk/include/pipos/abi.h` |
 | ROM and holotape SDK | `sdk/` |
 
-The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/guide/API.md).
+The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/cab5f69b88f982e145adba717962ae69b47dc866/docs/guide/API.md).
 
 ## Boot flow
 
@@ -54,7 +54,7 @@ A failure in `mmu_init()`, `fb_init()`, `console_init()`, the heap or the tick c
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
+The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/cab5f69b88f982e145adba717962ae69b47dc866/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
 
 | Range | Use | Defined in |
 |---|---|---|
@@ -82,7 +82,7 @@ The startup block of each image sits at the bottom of its stack, `stack_top - 0x
 
 ## How an image runs
 
-`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
+`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/cab5f69b88f982e145adba717962ae69b47dc866/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
 
 `pipos_image_run()` in `kernel/rom.c` runs both kinds of image:
 
@@ -202,9 +202,9 @@ One module owns the slot of ABI 1.4: its state, the bits pending for the ROM, th
 
 | File | Role |
 |---|---|
-| `slot_rules.c`, `slot.h` | Pure. The state machine of the spec's diagram and the listing rule. Inputs: card detect, the attach result, the mount result, a failed read on the tape volume. Outputs: the action to take and the `PIP_HOLO_EV_*` bits. |
+| `slot_rules.c`, `slot.h` | Pure. The state machine of the spec's diagram and the listing rule. Inputs: card detect, the attach start and step results, the mount result, a failed read on the tape volume. Outputs: the action to take and the `PIP_HOLO_EV_*` bits. |
 | `slot.c` | Runs the machine on a backend. Mounts the card as volume `tape` with `FS_MOUNT_RDONLY`, ejects it with `fs_eject()`, queues `PIP_EV_TAPE`. |
-| `slot_backend.h` | The backend interface: `init`, `card`, `present`, `attach`, `detach`, `blkdev` |
+| `slot_backend.h` | The backend interface: `init`, `card`, `present`, `attach_start`, `attach_step`, `detach`, `blkdev` |
 | `slot_holo.c` | The real backend on RobCo-Core's `holo.h`, `HOLO_CONFIG_DEFAULT` pins |
 | `slot_test.c` | A RAM card for QEMU. Built only with `-DPIPOS_HOLO_TEST`. See [TESTING.md](TESTING.md#holotape-slot). |
 
@@ -226,34 +226,66 @@ Slot work runs in `pipos_holo_poll()`, so in every pass of `pipos_poll()` and of
 
 When the card of a running slot tape leaves, `on_svc()` in `syscall.c` sees it at the tape's next call of any kind. It reads the backend's card detect there, so a tape that never calls a work call is still caught. It calls `umode_request_kill()` and skips the call. The tape ends through the same path as a fault or the `kill` command, and `sys_holo.c` prints `ev=holo_kill reason=eject` and returns `-PIP_ENODEV`. A tape from the boot card is never marked.
 
-#### A slow attach
+#### The stepped attach
 
-`holo_attach()` blocks for up to about 1.2 s on a slow card, inside a work pass. `test_slow_attach_blocks_main_loop` measures it with the test backend and a 1200 ms delay, while the ROM plays a 7.5 s sample. The `holo_attach` marker reports these values for the attach:
+A card attaches in steps, with RobCo-Core's `holo_attach_start()` and `holo_attach_step()`. The machine starts the attach once the debounce is over. Then each work pass takes one step, until the step returns `0` or an error. A step never waits: during the card's power wait or a retry pause it returns `SD_PENDING` at once. Otherwise it clocks one protocol step, 64 bytes at most at 400 kHz, about 1.3 ms of wire time. That is the most one step holds the loop. Between two steps the bus is off and SPI0 is free for the panel. The mount runs in the pass of the last step and reads a few blocks.
 
-- `ms`: how long it blocked.
-- `polls`: the `pipos_poll()` passes that ran meanwhile. It is 0 on every run: the main loop's work stops for the whole attach. The test asserts it.
+```mermaid
+stateDiagram-v2
+    [*] --> Empty
+    Empty --> Settling: card detect low
+    state Settling {
+        [*] --> Debounce
+        Debounce --> Attaching: present, start returns 0
+        Debounce --> Debounce: start returns SD_ERR_AGAIN
+        Attaching --> Attaching: one step per pass, SD_PENDING
+        Attaching --> Mount: step returns 0
+    }
+    Settling --> Empty: card left, no bit
+    Settling --> Mounted: mount ok, INSERTED
+    Settling --> Bad: start, step or mount fails, BAD
+    Mounted --> Empty: card left, REMOVED
+    Mounted --> Bad: read error, card in, BAD
+    Bad --> Empty: card left, REMOVED
+```
+
+Debounce, Attaching and Mount are inside the ABI's `Settling`. The ROM sees none of them apart. While an attach runs:
+
+- The slot is `Settling`. `holo_enumerate` lists no slot tape and `holo_launch` looks on the boot card only, as with an empty slot. The `tape` volume is not mounted, so no call can reach a half-ready card.
+- `holo_eject_event` returns no bit for the card and no `PIP_EV_TAPE` comes. `INSERTED` comes after the mount, as before. Only later.
+- A pull ends the attach: `holo_poll()` or the detach stops it and no bit is set. A second card then starts its own debounce.
+- A step that fails, `SD_ERR_SLOW` included, makes the card `Bad` with `PIP_HOLO_EV_BAD`. Pip-OS does not try it again until it leaves.
+
+A new attach needs the slot `Empty` first. If a slot tape runs, its card was then seen to leave, so the tape is already marked to end at its next call. The 250 ms debounce of the next card comes after that.
+
+How fast the steps come depends on the ROM. A ROM in `wait_event` or `sleep_ms` gets a work pass each 10 ms tick, so about a dozen passes for a card that leaves idle at its fourth ACMD41. A ROM that makes no work call stalls the attach, as it stalls every other slot change. The library's waits keep their time budget, so a card does not fail sooner when steps come slowly.
+
+#### A slow card
+
+A slow card now costs time, not the loop. The test backend fakes one: `holo delay 1200` makes the attach step for 1200 ms before its result, and each step returns at once. Nothing here ran on a real card. The `holo_attach` marker reports, for each attach:
+
+- `ms`: from the start to the result.
+- `polls`: the `pipos_poll()` passes in that time, after the start's own pass.
+- `steps`: the step calls. One step per pass, so `steps` equals `polls`.
 - `pcm0` and `pcm1`: `audio_busy()` at its start and its end, 1 while a sound plays.
 - `pos0` and `pos1`: the samples the current PCM play has output at its start and its end, from `audio_pcm_samples()`.
 
 Each pair is read with IRQs masked, so the PCM interrupt cannot run between the two reads.
 
-The attach runs in `pipos_slot_work()`, inside whichever work call the ROM made: `sleep_ms`, `poll_event`, `wait_event`, `read_buttons`, `read_dial`, `file_read`, `holo_enumerate` or `holo_eject_event`. The ROM stays blocked in that call for the whole attach. What the listener hears depends on how the ROM plays sound:
+`test_slow_attach_keeps_main_loop` plays a 7.5 s sample and inserts the slow card. It checks that `polls` equals `steps` and both are 2 or more, that a script command is served while the attach runs, and that the sample plays at both ends with the interrupt output samples in between. `test_slow_attach_keeps_a_stream_live` streams 100 ms chunks through `sample_queue`, at most 200 ms ahead. The stream lives through the 1200 ms attach only because the ROM keeps queueing during it. The test checks that a play runs at both ends of the attach, that the trace has no `pcm_end` in it and a chunk switch every 100 ms through it.
 
-- `sample` plays through. The kernel copies the whole buffer, and the channel 3 timer interrupt reads it with no refill from the main loop.
-- A stream through `sample_queue` lasts only as long as what was queued. The kernel has two buffers: one plays and one waits. Each holds at most 65536 bytes, 8.192 s at 8 kHz. So at most the rest of the playing buffer plus one waiting buffer is queued ahead, up to 16.4 s. A ROM that queues less than the attach takes runs dry. The play ends with the trace marker `ev=audio op=pcm_end`, the output goes silent, and `audio_status` returns 0 when the ROM can call it again. After the attach, the ROM's next `sample_queue` starts a new play: `ev=audio op=pcm`.
+`pos1 - pos0` does not measure the sound's pace. It counts the samples the PCM interrupt output, one per interrupt QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. How many interrupts arrive depends on the host. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`.
 
-`test_slow_attach_runs_a_stream_dry` shows it. The ROM streams 100 ms chunks from a `sleep_ms` loop, so at most 200 ms are queued ahead. It streams until it gets the card's `PIP_EV_TAPE`, and the test inserts the card once the stream runs, so the attach always lands in a live stream. The test reads the kernel's PCM state from the `holo_attach` marker. A play runs at the attach's start and none at its end. The play outputs at most the 1600 samples, 200 ms, that were queued at the start. The next `pcm` in the trace comes after the attach ends. `test_slow_attach_blocks_main_loop` checks that its sample plays at both ends of the attach and that the interrupt output samples in between.
+One limit is new. A card whose CSD or CID data token comes later than the library's step budget ends as a bad card. The budget is `SDSPI_STEP_TOKEN_BYTES` in `sdspi.h`: 29 bytes, token included, about 0.58 ms at 400 kHz, for each of `SDSPI_TOKEN_TRIES`, 4, sends of CMD9 or CMD10. Then the step returns `SD_ERR_SLOW`. The blocking attach of the first ABI 1.4 kernel waited up to 100 ms for that token. No real card has been tried, so nobody knows yet whether such cards exist. The cure belongs in RobCo-Core: a stepped wait for the token by time, up to 100 ms.
 
-`pos1 - pos0` does not measure the sound's pace. It counts the samples the PCM interrupt output, one per interrupt QEMU delivered. A late interrupt skips to the sample its clock says is due, so the sound keeps its pace with fewer interrupts. The driver keeps the clock's position in the buffer to itself, and RobCo-Core has no call that reads it. How many interrupts arrive depends on the host. On a macOS host, QEMU delivers about 800 to 1000 a second, idle or not: 1149 during one 1200 ms attach. On the Linux CI runners it delivered all 8000 a second: 9602 during the attach. With `-icount` the count is 9600. The test asserts only that it is above 0 and at most what 8 kHz makes due in `ms`. That the sound plays through rests on `pcm1`: the play still runs when the attach ends.
-
-The display freezes for the whole attach: the ROM waits inside its call, so it presents nothing, and the kernel draws nothing. Input is not lost: GPIO buttons and the dial are sampled by the tick and queued. A card that settles fast attaches in milliseconds, so this cost hits only a slow card, once per insertion. Nothing here is hidden from the ROM, and no fix is in place.
+Before RobCo-Core `cab5f69`, `holo_attach()` blocked for the whole attach, up to about 1.2 s: no work pass ran, a stream ran dry and the display froze. That limit is gone.
 
 #### SPI0 and the panel
 
 The ILI9341 panel and the slot card share SPI0. RobCo-Core's slot driver enables the card's bus only around its own transfers and needs the panel idle then. The two never overlap:
 
 - Panel transfers start only in main context: `present` and `power` from a system call, boot text and the panic text from `pipos_screen_line()` and `pipos_panic()`, the script command `panic` from `pipos_poll()`. Pip-OS installs no interrupt handler that touches the display. The tick and the PCM interrupt belong to RobCo-Core and never use SPI0.
-- Card reads happen only in main context too: the attach and the mount in `pipos_slot_work()`, and the file system reads of `holo_enumerate` and `holo_launch`.
+- Card reads happen only in main context too: each attach step and the mount in `pipos_slot_work()`, and the file system reads of `holo_enumerate` and `holo_launch`.
 - Main context runs one thing at a time, and no panel or card function calls `pipos_poll()` in the middle of a transfer. `holo_enumerate` calls `pipos_poll()` only between two files, after each read finished.
 
 So a panel transfer can never start during a card read, and the reverse. The same proof sits in the header comment of `kernel/slot.c`.
@@ -272,7 +304,7 @@ The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c
 | `kill` | Ends the innermost running image with `umode_request_kill()` |
 | `panic <reason>` | Takes the panic path |
 
-Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/ec1677971cbb5261d0eacec92b2af8fe91325495/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
+Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/cab5f69b88f982e145adba717962ae69b47dc866/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
 
 ## Build
 

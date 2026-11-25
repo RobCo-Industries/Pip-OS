@@ -21,8 +21,8 @@ static pipos_slot_t fresh(void)
     return s;
 }
 
-/* EMPTY, card in, debounce over, attach ok: the slot asks for the mount. */
-static pipos_slot_t settled(void)
+/* EMPTY, card in, debounce over, the attach started and runs: one step per pass. */
+static pipos_slot_t attaching(void)
 {
     pipos_slot_t s = fresh();
     pipos_slot_out_t o;
@@ -30,11 +30,28 @@ static pipos_slot_t settled(void)
     o = pipos_slot_tick(&s, 1, 0);
     CHECK_EQ(o.action, PIPOS_SLOT_DO_NOTHING);
     o = pipos_slot_tick(&s, 1, 1);
-    CHECK_EQ(o.action, PIPOS_SLOT_DO_ATTACH);
+    CHECK_EQ(o.action, PIPOS_SLOT_DO_START);
+    o = pipos_slot_attached(&s, PIPOS_ATTACH_PENDING);
+    CHECK_EQ(o.action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(o.bits, 0);
+    CHECK_EQ(s.state, PIPOS_SLOT_SETTLING);
+    CHECK_EQ(s.attaching, 1);
+    return s;
+}
+
+/* The attach's last step returned 0: the slot asks for the mount. */
+static pipos_slot_t settled(void)
+{
+    pipos_slot_t s = attaching();
+    pipos_slot_out_t o;
+
+    o = pipos_slot_tick(&s, 1, 1);
+    CHECK_EQ(o.action, PIPOS_SLOT_DO_STEP);
     o = pipos_slot_attached(&s, PIPOS_ATTACH_OK);
     CHECK_EQ(o.action, PIPOS_SLOT_DO_MOUNT);
     CHECK_EQ(o.bits, 0);
     CHECK_EQ(s.state, PIPOS_SLOT_SETTLING);
+    CHECK_EQ(s.attaching, 0);
     return s;
 }
 
@@ -117,8 +134,109 @@ TEST(attach_again)
     o = pipos_slot_attached(&s, PIPOS_ATTACH_AGAIN);
     CHECK_EQ(o.action, PIPOS_SLOT_DO_NOTHING);
     CHECK_EQ(s.state, PIPOS_SLOT_SETTLING);
-    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_ATTACH);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_START);
     CHECK_EQ(s.pending, 0);
+}
+
+/*
+ * A pending attach: each pass takes one step, with no bit, whatever the
+ * debounce reads, and never starts a second attach.
+ */
+TEST(pending_steps_each_pass)
+{
+    pipos_slot_t s = attaching();
+    pipos_slot_out_t o;
+    int i;
+
+    for (i = 0; i < 100; i++) {
+        o = pipos_slot_tick(&s, 1, i & 1);
+        CHECK_EQ(o.action, PIPOS_SLOT_DO_STEP);
+        CHECK_EQ(o.bits, 0);
+        o = pipos_slot_attached(&s, PIPOS_ATTACH_PENDING);
+        CHECK_EQ(o.action, PIPOS_SLOT_DO_NOTHING);
+        CHECK_EQ(o.bits, 0);
+        CHECK_EQ(s.state, PIPOS_SLOT_SETTLING);
+    }
+    CHECK_EQ(pipos_slot_take(&s, 1), 0);
+}
+
+/* Settling --> Empty: pulled while the attach is pending. Detach, no bit, no step. */
+TEST(pending_pulled)
+{
+    pipos_slot_t s = attaching();
+    pipos_slot_out_t o = pipos_slot_tick(&s, 0, 0);
+
+    CHECK_EQ(o.action, PIPOS_SLOT_DO_DETACH);
+    CHECK_EQ(o.bits, 0);
+    CHECK_EQ(s.state, PIPOS_SLOT_EMPTY);
+    CHECK_EQ(s.attaching, 0);
+    CHECK_EQ(pipos_slot_take(&s, 1), 0);
+    /* A second card right after starts a fresh attach, after its debounce. */
+    CHECK_EQ(pipos_slot_tick(&s, 1, 0).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 0).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_START);
+}
+
+/* Settling --> Empty: a step saw the card gone, BLK_ERR_NOMEDIA. No bit. */
+TEST(pending_step_nomedia)
+{
+    pipos_slot_t s = attaching();
+    pipos_slot_out_t o;
+
+    pipos_slot_tick(&s, 1, 1);
+    o = pipos_slot_attached(&s, PIPOS_ATTACH_NOMEDIA);
+    CHECK_EQ(o.action, PIPOS_SLOT_DO_DETACH);
+    CHECK_EQ(s.state, PIPOS_SLOT_EMPTY);
+    CHECK_EQ(s.attaching, 0);
+    CHECK_EQ(pipos_slot_take(&s, 1), 0);
+}
+
+/* Settling --> Bad: a step failed, SD_ERR_SLOW or another. BAD, then a later card works. */
+TEST(pending_step_refused)
+{
+    pipos_slot_t s = attaching();
+    pipos_slot_out_t o;
+
+    pipos_slot_tick(&s, 1, 1);
+    o = pipos_slot_attached(&s, PIPOS_ATTACH_REFUSED);
+    CHECK_EQ(o.action, PIPOS_SLOT_DO_DETACH);
+    CHECK_EQ(o.bits, BAD);
+    CHECK_EQ(s.state, PIPOS_SLOT_BAD);
+    CHECK_EQ(s.attaching, 0);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(pipos_slot_tick(&s, 0, 0).bits, REM);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_START);
+    pipos_slot_attached(&s, PIPOS_ATTACH_PENDING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_STEP);
+    CHECK_EQ(pipos_slot_attached(&s, PIPOS_ATTACH_OK).action, PIPOS_SLOT_DO_MOUNT);
+    CHECK_EQ(pipos_slot_mounted(&s, 1, 1).bits, INS);
+    CHECK_EQ(pipos_slot_take(&s, 1), BAD | REM | INS);
+}
+
+/* A step that gives SD_ERR_AGAIN ends the attach: the next pass starts again. */
+TEST(pending_step_again)
+{
+    pipos_slot_t s = attaching();
+
+    pipos_slot_tick(&s, 1, 1);
+    CHECK_EQ(pipos_slot_attached(&s, PIPOS_ATTACH_AGAIN).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(s.attaching, 0);
+    CHECK_EQ(s.state, PIPOS_SLOT_SETTLING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_START);
+}
+
+/* A result outside SETTLING changes nothing: a late step after a pull. */
+TEST(pending_result_after_leave)
+{
+    pipos_slot_t s = attaching();
+
+    pipos_slot_tick(&s, 0, 0);
+    CHECK_EQ(pipos_slot_attached(&s, PIPOS_ATTACH_OK).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(pipos_slot_attached(&s, PIPOS_ATTACH_PENDING).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(s.attaching, 0);
+    CHECK_EQ(s.state, PIPOS_SLOT_EMPTY);
+    CHECK_EQ(pipos_slot_take(&s, 1), 0);
 }
 
 /* Settling --> Mounted: debounce over, mount ok / INSERTED. */
@@ -223,7 +341,10 @@ TEST(second_card)
     pipos_slot_t s = mounted();
 
     pipos_slot_tick(&s, 0, 0);
-    pipos_slot_tick(&s, 1, 1);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_NOTHING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_START);
+    pipos_slot_attached(&s, PIPOS_ATTACH_PENDING);
+    CHECK_EQ(pipos_slot_tick(&s, 1, 1).action, PIPOS_SLOT_DO_STEP);
     CHECK_EQ(pipos_slot_attached(&s, PIPOS_ATTACH_OK).action, PIPOS_SLOT_DO_MOUNT);
     pipos_slot_mounted(&s, 1, 1);
     CHECK_EQ(pipos_slot_take(&s, 1), REM | INS);

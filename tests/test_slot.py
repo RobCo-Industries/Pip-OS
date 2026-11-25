@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from hosttiming import TICK_MS, CannotJudge, judged
+from hosttiming import TICK_MS, CannotJudge, gap_too_long, judged
 
 from pipos_helpers import (TIMEOUT, booted, config, corrupt, make_card, no_exception, one,
                            pipos_markers, rom_markers)
@@ -666,11 +666,37 @@ SAMPLE_RATE = 8000
 SAMPLE_MS = 7500                # the ROM's dial_push sample: 60000 bytes at 8 kHz
 
 
-def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tmp_path,
-                                      need_mtools):
-    """holo_attach() may block 1.2 s inside a work pass: no pipos_poll()
-    pass runs meanwhile. The PCM interrupt plays from the kernel's copy of
-    the sample, so the sound goes on. Recorded in docs/ARCHITECTURE.md.
+def pending(vm):
+    """(attaching, t_ms) from the test backend: is an attach running now."""
+    reply = holo(vm, "pending")
+    m = re.fullmatch(r"attaching=([01]) t_ms=(\d+)", reply.lines[0])
+    assert m, reply
+    return m.group(1) == "1", int(m.group(2))
+
+
+def start_ms(vm):
+    """tick_ms() at the attach's start, from ev=holo_attach_start."""
+    return int(wait_markers_ev(vm, "holo_attach_start")["t_ms"])
+
+
+# A slow card: the test backend steps this long before its result.
+SLOW_MS = 1200
+
+
+def check_stepped(m):
+    """The stepped attach's own witness, in every run: the loop ran during
+    it, one step per pass. polls counts the passes after the start's pass,
+    steps the step calls, each in its own pass."""
+    assert m["rc"] == "0" and int(m["ms"]) >= SLOW_MS, m
+    assert int(m["steps"]) >= 2, m
+    assert int(m["polls"]) == int(m["steps"]), m
+
+
+def test_slow_attach_keeps_main_loop(board, holo_build, test_rom, test_holo, tmp_path,
+                                     need_mtools):
+    """A slow card attaches in steps, one per pipos_poll() pass: the loop
+    keeps running, script commands are served and a sample keeps playing.
+    Recorded in docs/ARCHITECTURE.md.
 
     The sound part reads the kernel's PCM state from the attach marker.
     The trace gives only the sample's start, read after a barrier."""
@@ -679,41 +705,45 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
 
     def attempt():
         with run(holo_build, board, sd, {0: card}) as vm:
-            holo(vm, "delay", "1200")
+            holo(vm, "delay", str(SLOW_MS))
             wait_rom(vm, "wait")
             key(vm, "dial_push")
             assert wait_rom(vm, "sample")[0]["rc"] == "0"
             count = len(tape_events(vm))
             t_in = holo_at(vm, "insert", "0", str(CARD_BLOCKS))
+            s0 = start_ms(vm)
+            # A script command served while the attach runs: the loop runs.
+            live, t_p = pending(vm)
             wait_rom(vm, "tapeev", count + 1)
             assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
-            ms, polls = int(m["ms"]), int(m["polls"])
+            assert a0 == s0, m
+            polls = int(m["polls"])
             pcm0, pos0, pcm1, pos1 = pcm_state(m)
             # ev=tapeev comes after the attach.
             tr = trace_after(vm, "tapeev")
-            print(f"\nattach: {m} insert={t_in} audio={tr}")
-            assert ms >= 1200, m
-            # The witness: the main loop's work did not run during the attach.
-            assert polls == 0, m
+            print(f"\nattach: {m} insert={t_in} pending={live}@{t_p} audio={tr}")
+            # The witness: the main loop's work ran during the attach.
+            check_stepped(m)
+            assert polls > 0, m
             no_exception(vm)
-            # The sample started before the insert, so before the barrier.
             assert tr and tr[0][0] == "pcm" and tr[0][1] <= t_in + CLOCKS_MS, (m, tr)
+            if not live:
+                # Only a reply that came after the attach's end on the
+                # guest clock excuses it.
+                assert t_p + CLOCKS_MS >= a1, (t_p, m)
+                raise CannotJudge(f"the pending query ran at {t_p} ms, the attach ran "
+                                  f"{a0} to {a1} ms")
             due = tr[0][1] + SAMPLE_MS
             if not (pcm0 and pcm1):
-                # Not playing at the start or at the end. The sample's
-                # length says when it was due to end: only an end due
-                # before then excuses it.
                 edge = a1 if pcm0 else a0
                 assert due <= edge + CLOCKS_MS, \
                     f"the sound stopped with {due - edge} ms of the sample left: {m} {tr}"
                 raise CannotJudge(f"the insert came at {t_in} ms, the sample was due to end at "
                                   f"{due} ms, the attach ran {a0} to {a1} ms")
             # Playing at both ends, and the PCM interrupt output samples
-            # in between, never more than 8 kHz makes due in ms. The count
-            # depends on how often QEMU delivers the interrupt on this host:
-            # a late interrupt skips to the sample due.
-            assert 0 < pos1 - pos0 <= ms * SAMPLE_RATE // 1000 + 8, m
+            # in between, never more than 8 kHz makes due in ms.
+            assert 0 < pos1 - pos0 <= int(m["ms"]) * SAMPLE_RATE // 1000 + 8, m
 
     judged(attempt)
 
@@ -723,61 +753,197 @@ STREAM_CHUNK_MS = 100
 STREAM_AHEAD_MS = 2 * STREAM_CHUNK_MS
 
 
-def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, tmp_path,
-                                       need_mtools):
+def test_slow_attach_keeps_a_stream_live(board, holo_build, test_rom, test_holo, tmp_path,
+                                         need_mtools):
     """A ROM streams 100 ms chunks with sample_queue and sleeps in sleep_ms.
-    The attach runs inside that sleep_ms for 1200 ms. At most two chunks,
-    200 ms, were queued ahead, so the play ends during the attach and the
-    next chunk starts a new play after it. Recorded in docs/ARCHITECTURE.md.
+    The attach runs in steps for 1200 ms, inside the ROM's calls. At most
+    two chunks, 200 ms, are queued ahead, so the stream lives through the
+    attach only if the ROM keeps queueing during it. Recorded in
+    docs/ARCHITECTURE.md.
 
     The ROM streams until it gets the card's PIP_EV_TAPE, and the test
     inserts the card after ev=stream. So the stream is live when the attach
-    begins and goes on after it ends: the kernel's order makes the overlap.
-    The stream has no time cap. Only a ROM that queued a chunk late before
-    the attach could end the stream first."""
+    begins and goes on after it ends."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
 
     def attempt():
         with run(holo_build, board, sd, {0: card}) as vm:
-            holo(vm, "delay", "1200")
+            holo(vm, "delay", str(SLOW_MS))
             wait_rom(vm, "wait")
             assert vm.script("dial -1", timeout=TIMEOUT).status == "ok"
             wait_rom(vm, "stream")
             t_in = holo_at(vm, "insert", "0", str(CARD_BLOCKS))
-            # The stream has no cap: without the tape event this times out.
             wait_rom(vm, "tapeev")
             n = int(wait_rom(vm, "streamed")[0]["n"])
+            gap = int(wait_rom(vm, "maxgap")[0]["ms"])
             assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
-            pcm0, pos0, pcm1, pos1 = pcm_state(m)
-            # ev=streamed comes after the stream's last queue call.
-            tr = trace_after(vm, "streamed")
-            lastq = rom_markers(vm, "lastq")
-            print(f"\nstream: chunks={n} {m} insert={t_in} lastq={lastq} audio={tr}")
-            assert int(m["ms"]) >= 1200 and m["polls"] == "0", m
+            pcm0, _, pcm1, _ = pcm_state(m)
+            tr = trace_after(vm, "maxgap")
+            print(f"\nstream: chunks={n} gap={gap} {m} insert={t_in} audio={tr}")
+            check_stepped(m)
             no_exception(vm)
-            # The attach comes a debounce after the insert.
             assert a0 + CLOCKS_MS >= t_in + SETTLE_MS, (t_in, m)
-            if not pcm0:
-                # The stream ran dry before the attach. The ROM's last queue
-                # call before the attach was full, or filled it, so at least
-                # a chunk was queued then: only a ROM late by a chunk explains it.
-                dry = [t for op, t in tr if op == "pcm_end" and t <= a0 + CLOCKS_MS]
-                assert dry and len(lastq) == 1, (m, tr, lastq)
-                tq = int(lastq[0]["t_ms"])
-                late = dry[-1] - tq
-                assert late + 2 * CLOCKS_MS >= STREAM_CHUNK_MS, \
-                    f"the stream ran dry {late} ms after the ROM's last queue call at {tq} ms, " \
-                    f"before the attach: {m} {tr}"
-                raise CannotJudge(f"the ROM's last queue call before the attach came at {tq} ms, "
-                                  f"the stream ran dry at {dry[-1]} ms, {late} ms later, "
-                                  f"before the attach at {a0} ms")
-            # 1. Live at the start, dry at the end, and the play output no
-            # more than the two chunks queued at the start.
-            assert pcm1 == 0, m
-            assert 0 <= pos1 - pos0 <= STREAM_AHEAD_MS * SAMPLE_RATE // 1000, m
-            # 2. The next chunk starts a new play after the attach ends.
-            assert any(op == "pcm" and t >= a1 - CLOCKS_MS for op, t in tr), (m, tr)
+            # The ROM queued during the attach: 1200 ms of chunks at least.
+            assert n >= SLOW_MS // STREAM_CHUNK_MS, (n, m)
+            dry = [t for op, t in tr if op == "pcm_end" and a0 - CLOCKS_MS <= t <= a1 + CLOCKS_MS]
+            if pcm0 and pcm1 and not dry:
+                # pos counts one chunk's play, so the trace shows the chain:
+                # a chunk switch every 100 ms through the attach.
+                nexts = [t for op, t in tr if op == "pcm_next" and a0 <= t <= a1]
+                assert len(nexts) >= (a1 - a0 - STREAM_AHEAD_MS) // STREAM_CHUNK_MS, (m, tr)
+                return
+            # The stream ran dry near or during the attach. Only a ROM that
+            # waited a chunk or more between two queue calls explains it.
+            assert gap_too_long(gap, STREAM_CHUNK_MS), \
+                f"the stream ran dry at {dry} with queue calls {gap} ms apart at most: {m} {tr}"
+            raise CannotJudge(f"the ROM queued {gap} ms apart at most, a chunk lasts "
+                              f"{STREAM_CHUNK_MS} ms: dry at {dry}, attach {a0} to {a1} ms")
 
     judged(attempt)
+
+
+# ---- A pending attach ----------------------------------------------------------
+
+# Long enough that the test's few commands land inside it on any sane host.
+PENDING_MS = 3000
+
+
+def still_pending(vm, s0):
+    """Asserts the attach still runs, or raises CannotJudge when the guest
+    clock says PENDING_MS ran out under the test's commands. A kernel that
+    held the loop for the attach also lets it run out: the attach marker's
+    own witness, one step per pass, tells the two apart."""
+    live, t = pending(vm)
+    if not live:
+        check_stepped(wait_markers_ev(vm, "holo_attach"))
+        assert t + CLOCKS_MS >= s0 + PENDING_MS, (s0, t, vm.serial)
+        raise CannotJudge(f"the attach started at {s0} ms and the check ran at {t} ms, "
+                          f"past its {PENDING_MS} ms")
+
+
+@pytest.mark.parametrize("boot_copy", [False, True])
+def test_pending_attach_no_tape_yet(board, holo_build, test_rom, test_holo, tmp_path,
+                                    need_mtools, boot_copy):
+    """While the attach runs, the slot is SETTLING: no slot entry in the
+    listing, no slot tape to launch, no bit. A boot card tape of the same
+    name is listed and launched as with no card. Never a half-mounted volume."""
+    tape = test_holo("tape")
+    sd = boot_card(tmp_path, test_rom, tapes={"SLOT.HTP": tape} if boot_copy else None)
+    card = tape_card(tmp_path, 0, {"SLOT.HTP": tape})
+
+    def attempt():
+        with run(holo_build, board, sd, {0: card}) as vm:
+            holo(vm, "delay", str(PENDING_MS))
+            wait_rom(vm, "wait")
+            holo(vm, "insert", "0", str(CARD_BLOCKS))
+            s0 = start_ms(vm)
+            got = listing(vm)
+            rc = launch(vm, "dial")
+            bits = mask(vm)
+            state = vm.script("state", timeout=TIMEOUT).lines[0]
+            still_pending(vm, s0)
+            assert got == ([("SLOT.HTP", 0)] if boot_copy else []), got
+            assert rc == (200 if boot_copy else ENOENT), (rc, vm.serial)
+            assert bits == 0 and tape_events(vm) == [], vm.serial
+            assert state.endswith(" slot=settling"), state
+            assert not pipos_markers(vm, "holo_attach"), vm.serial
+            # Then the card mounts as usual.
+            wait_rom(vm, "tapeev")
+            assert tape_events(vm) == [INS], vm.serial
+            assert listing(vm) == [("SLOT.HTP", 1)]
+            no_exception(vm)
+
+    judged(attempt)
+
+
+def test_pull_in_pending_attach_then_second_card(board, holo_build, test_rom, test_holo,
+                                                 tmp_path, need_mtools):
+    """A pull while the attach runs ends it with no bit. A second card right
+    after attaches from its own debounce and reports INSERTED alone."""
+    tape = test_holo("tape")
+    sd = boot_card(tmp_path, test_rom)
+    first = tape_card(tmp_path, 0, {"FIRST.HTP": tape})
+    second = tape_card(tmp_path, 2, {"SECOND.HTP": tape})
+
+    def attempt():
+        with run(holo_build, board, sd, {0: first, 2: second}) as vm:
+            holo(vm, "delay", str(PENDING_MS))
+            wait_rom(vm, "wait")
+            holo(vm, "insert", "0", str(CARD_BLOCKS))
+            s0 = start_ms(vm)
+            still_pending(vm, s0)
+            holo(vm, "pull")
+            m = wait_markers_ev(vm, "holo_attach")
+            assert m["rc"] == "-4", m  # BLK_ERR_NOMEDIA
+            assert int(m["ms"]) < PENDING_MS, m
+            holo(vm, "delay", "0")
+            insert(vm, 2)
+            assert tape_events(vm) == [INS], vm.serial
+            assert mask(vm) == INS
+            assert listing(vm) == [("SECOND.HTP", 1)]
+            rcs = [a["rc"] for a in pipos_markers(vm, "holo_attach")]
+            assert rcs == ["-4", "0"], rcs
+            no_exception(vm)
+
+    judged(attempt)
+
+
+@pytest.mark.parametrize("how", ["slow", "refuse"])
+def test_attach_fails_in_steps_then_card_works(board, holo_build, test_rom, test_holo,
+                                               tmp_path, need_mtools, how):
+    """A stepped attach that ends in SD_ERR_SLOW or SD_ERR_CMD: BAD and its
+    PIP_EV_TAPE, no slot tape, until the card leaves. A later card works."""
+    tape = test_holo("tape")
+    sd = boot_card(tmp_path, test_rom)
+    card = tape_card(tmp_path, 0, {"SLOT.HTP": tape})
+    with run(holo_build, board, sd, {0: card}) as vm:
+        holo(vm, "delay", "300")
+        holo(vm, how)
+        insert(vm, 0, expect=BAD)
+        m = pipos_markers(vm, "holo_attach")[0]
+        assert m["rc"] == ("-21" if how == "slow" else "-16"), m
+        assert int(m["steps"]) >= 2, m
+        assert mask(vm) == BAD
+        assert listing(vm) == []
+        assert launch(vm, "dial") == ENOENT
+        assert vm.script("state", timeout=TIMEOUT).lines[0].endswith(" slot=bad")
+        time.sleep(0.5)
+        assert len(pipos_markers(vm, "holo_attach")) == 1, vm.serial
+        pull(vm)
+        insert(vm, 0)
+        assert mask(vm) == REM | INS
+        assert listing(vm) == [("SLOT.HTP", 1)]
+        no_exception(vm)
+
+
+def test_new_attach_waits_for_slot_tape_end(board, holo_build, test_rom, test_holo, tmp_path,
+                                            need_mtools):
+    """A new attach needs the slot EMPTY first, so the running slot tape's
+    card was seen to leave: the tape ends at its next call, which comes
+    within its 20 ms sleep, long before a second card's 250 ms debounce. The
+    second card attaches after the tape ended, and its tape is the next."""
+    tape = test_holo("tape")
+    sd = boot_card(tmp_path, test_rom)
+    first = tape_card(tmp_path, 0, {"SLOT.HTP": tape})
+    second = tape_card(tmp_path, 2, {"SLOT.HTP": tape})
+    with run(holo_build, board, sd, {0: first, 2: second}) as vm:
+        insert(vm, 0)
+        n = len(rom_markers(vm, "launch"))
+        key(vm, "right")
+        wait_rom(vm, "tloop")
+        holo(vm, "pull")
+        holo(vm, "insert", "2", str(CARD_BLOCKS))
+        assert int(wait_rom(vm, "launch", n + 1)[-1]["rc"]) == ENODEV
+        t = time.monotonic()
+        while tape_events(vm).count(INS) < 2:
+            assert time.monotonic() - t < TIMEOUT, vm.serial
+            time.sleep(0.02)
+        kill = vm.serial.index("ev=holo_kill")
+        starts = [mm.start() for mm in re.finditer(r"ev=holo_attach_start\b", vm.serial)]
+        assert len(starts) == 2 and starts[1] > kill, vm.serial
+        assert mask(vm) == INS | REM
+        assert listing(vm) == [("SLOT.HTP", 1)]
+        assert launch(vm, "dial") == 200
+        no_exception(vm)

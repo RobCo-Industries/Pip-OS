@@ -143,7 +143,7 @@ To make a tape card:
 
 1. Format a card as FAT, with one partition or none.
 2. Copy each tape to the root folder as `<NAME>.HTP`, 1 to 8 characters, then `.HTP`. Folders, hidden files and other names are ignored.
-3. Insert it. The ROM lists its tapes first. A tape on the tape card hides a tape of the same name on the boot card until you pull the card.
+3. Insert it. A slow card takes longer before its tapes show. The Pip-Boy keeps running meanwhile. The ROM lists its tapes first. A tape on the tape card hides a tape of the same name on the boot card until you pull the card.
 
 Pip-OS never writes to the tape card. Saves still go to the boot card. A card that cannot be read is marked bad until you pull it. Pulling the card while one of its tapes runs ends that tape.
 

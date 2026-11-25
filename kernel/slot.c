@@ -5,7 +5,9 @@
  * "Holotape slot".
  *
  * Context: main context and system calls only. pipos_slot_work() runs
- * inside pipos_poll(), so inside the calls that do main-loop work.
+ * inside pipos_poll(), so inside the calls that do main-loop work. A card
+ * attaches in steps, one holo_attach_step() per pass, so no pass holds
+ * the loop for the card's whole init: see docs/ARCHITECTURE.md.
  * pipos_slot_eject_due() runs at every system call entry.
  *
  * SPI0 is shared with the panel. Every panel transfer starts in main
@@ -64,8 +66,12 @@ int pipos_slot_enabled(void)
     return be != NULL;
 }
 
+/* A step's code. SD_PENDING is positive: an attach still runs. */
 static int attach_class(int rc)
 {
+    if (rc == SD_PENDING) {
+        return PIPOS_ATTACH_PENDING;
+    }
     if (rc == 0) {
         return PIPOS_ATTACH_OK;
     }
@@ -88,8 +94,15 @@ static void act(pipos_slot_out_t o)
             }
         }
         switch (o.action) {
-        case PIPOS_SLOT_DO_ATTACH:
-            o = pipos_slot_attached(&slot, attach_class(be->attach()));
+        case PIPOS_SLOT_DO_START: {
+            int rc = be->attach_start();
+
+            /* 0 from the start means an attach runs, not that it is done. */
+            o = pipos_slot_attached(&slot, rc == 0 ? PIPOS_ATTACH_PENDING : attach_class(rc));
+            continue;
+        }
+        case PIPOS_SLOT_DO_STEP:
+            o = pipos_slot_attached(&slot, attach_class(be->attach_step()));
             continue;
         case PIPOS_SLOT_DO_MOUNT: {
             int rc = fs_mount_flags(PIPOS_TAPE_VOLUME, be->blkdev(), FS_MOUNT_RDONLY);
