@@ -199,6 +199,8 @@ TEST(constants)
 TEST(abi_1_4)
 {
     CHECK_EQ(PIP_ABI_VERSION, 0x00010004);
+    /* Not set by the build, the target is the headers' ABI. */
+    CHECK_EQ(PIPOS_ABI_TARGET, PIP_ABI_VERSION);
     CHECK_EQ(PIP_EV_TAPE, 3);
     CHECK_EQ(PIP_HW_TAPE, 0x8u);
     CHECK_EQ(PIP_HOLO_SLOT, 0x1u);
