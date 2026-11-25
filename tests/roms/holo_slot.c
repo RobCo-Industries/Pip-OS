@@ -14,9 +14,9 @@
  *           It waits with sleep_ms(20) while a chunk already waits. It
  *           streams until a PIP_EV_TAPE comes, logged as ev=tapeev, then
  *           300 ms more, so a card inserted after ev=stream lands in a
- *           live stream. It stops at 10 s if no PIP_EV_TAPE comes. With
- *           the PIP_EV_TAPE it logs ev=lastq t_ms=<ticks_ms of its last
- *           queue call before the call that saw the event>.
+ *           live stream. It has no time cap: a test that never inserts
+ *           fails on its own timeout. With the PIP_EV_TAPE it logs
+ *           ev=lastq t_ms=<ticks_ms of its last queue call before the call that saw the event>.
  *   dial_push  plays a 7.5 s sample, then ev=sample rc=
  *
  * It starts with ev=hw flags= abi= from sys_info and ev=wait before each
@@ -28,7 +28,6 @@ static pip_holo_info_t all[PIP_HOLO_ENUM_MAX];
 static uint8_t pcm[60000];
 
 #define CHUNK       800u            /* 100 ms at 8 kHz */
-#define STREAM_MAX_MS   10000
 #define STREAM_TAIL_MS  300
 
 static uint8_t chunk[CHUNK];
@@ -37,10 +36,9 @@ static void say(const char *ev, const char *k, int32_t v);
 
 static void stream(void)
 {
-    int32_t t0 = pip_ticks_ms();
-    int32_t until = STREAM_MAX_MS;
+    int32_t until = 0;
     int32_t n = 0;
-    int32_t tried = t0;
+    int32_t tried = pip_ticks_ms();
     int tape = 0;
     pip_event_t ev;
     uint32_t i;
@@ -48,12 +46,12 @@ static void stream(void)
     for (i = 0; i < CHUNK; i++) {
         chunk[i] = (uint8_t)(i & 0x20u ? 0xC0u : 0x40u);
     }
-    while (pip_ticks_ms() - t0 < until) {
+    while (!tape || pip_ticks_ms() - until < 0) {
         if (!tape && pip_poll_event(&ev) == 1 && ev.type == PIP_EV_TAPE) {
             say("tapeev", "value", ev.value);
             say("lastq", "t_ms", tried);
             tape = 1;
-            until = pip_ticks_ms() - t0 + STREAM_TAIL_MS;
+            until = pip_ticks_ms() + STREAM_TAIL_MS;
         }
         tried = pip_ticks_ms();
         if (pip_sample_queue(chunk, CHUNK) == 0) {

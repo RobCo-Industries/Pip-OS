@@ -115,7 +115,7 @@ The slot tests in `tests/test_slot.py` raise `CannotJudge` themselves. Each chec
 - `test_pull_while_slot_tape_runs`: the pull must land while the tape runs. The ROM's `ev=launch` carries `t_ms`. A launch that returns before the pull was due fails. A pull before the load is excused only with `-PIP_ENOENT` or `-PIP_EIO` and no `holo_start`. A pull after `holo_start` and before the tape's `ev=tloop` is excused after the kill checks.
 - `test_pull_in_debounce`: the pull must land within the 250 ms debounce. An attach is excused only when the pull came 250 ms or more after the insert, by their `t_ms`.
 - `test_slow_attach_blocks_main_loop`: the sample must play through the attach. A sample that ended first is excused only when it played in full and even an attach right after the debounce would have ended after it.
-- `test_slow_attach_runs_a_stream_dry`: the stream must be live when the attach begins. The cap is excused only when the insert came within the debounce of the cap. A stream that ran dry before the attach is excused only when it ran dry a chunk or more after the ROM's last queue call, which the ROM reports as `ev=lastq t_ms`.
+- `test_slow_attach_runs_a_stream_dry`: the stream must be live when the attach begins. The ROM streams until the tape event, with no time cap, so the stream cannot end before the attach. A stream that ran dry before the attach is excused only when it ran dry a chunk or more after the ROM's last queue call, which the ROM reports as `ev=lastq t_ms`.
 
 When the timed checks fail and each has its evidence, the test runs again, up to 4 runs. Then it skips with a reason that starts with `host timing:` and prints the numbers. Any other failure fails at once.
 

@@ -697,8 +697,6 @@ def test_slow_attach_blocks_main_loop(board, holo_build, test_rom, test_holo, tm
 # The kernel holds two sample_queue buffers: one plays, one waits.
 STREAM_CHUNK_MS = 100
 STREAM_AHEAD_MS = 2 * STREAM_CHUNK_MS
-# tests/roms/holo_slot.c: the stream stops here when no PIP_EV_TAPE comes.
-STREAM_MAX_MS = 10000
 
 
 def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, tmp_path,
@@ -711,8 +709,8 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
     The ROM streams until it gets the card's PIP_EV_TAPE, and the test
     inserts the card after ev=stream. So the stream is live when the attach
     begins and goes on after it ends: the kernel's order makes the overlap.
-    Only the ROM's 10 s cap after a late insert, or a ROM that queued a chunk
-    late before the attach, could end the stream first."""
+    The stream has no time cap. Only a ROM that queued a chunk late before
+    the attach could end the stream first."""
     sd = boot_card(tmp_path, test_rom)
     card = tape_card(tmp_path, 0, {"SLOT.HTP": test_holo("tape")})
 
@@ -723,6 +721,8 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
             assert vm.script("dial -1", timeout=TIMEOUT).status == "ok"
             wait_rom(vm, "stream")
             t_in = holo_at(vm, "insert", "0", str(CARD_BLOCKS))
+            # The stream has no cap: without the tape event this times out.
+            wait_rom(vm, "tapeev")
             n = int(wait_rom(vm, "streamed")[0]["n"])
             assert tape_events(vm) == [INS], vm.serial
             m, a0, a1 = attach_span(vm)
@@ -740,14 +740,6 @@ def test_slow_attach_runs_a_stream_dry(board, holo_build, test_rom, test_holo, t
             before = [k for k, (_, t) in enumerate(tr) if t < a0 - CLOCKS_MS]
             assert before, (m, tr)
             last = before[-1]
-            if tr[last][0] in ("pcm_end", "stop") and last == len(tr) - 1 and \
-                    tr[last][1] - tr[0][1] >= STREAM_MAX_MS - 2 * CLOCKS_MS:
-                # The cap ended the stream first. Only a late insert explains
-                # it: an attach a debounce after it would find the stream live.
-                assert t_in + SETTLE_MS + CLOCKS_MS >= tr[last][1], \
-                    f"the insert at {t_in} ms left time to attach in the stream: {m} {tr}"
-                raise CannotJudge(f"the insert came at {t_in} ms, the stream hit its cap at "
-                                  f"{tr[last][1]} ms, before the attach at {a0} ms")
             if tr[last][0] == "pcm_end":
                 # The stream ran dry before the attach. The ROM's last queue
                 # call before the attach was full, or filled it, so at least
