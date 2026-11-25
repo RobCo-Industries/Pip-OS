@@ -76,7 +76,7 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 A whole frame is about 150 KiB on the wire. The repeat counts shrink flat colours. After a boot with `backend = both`, the transcript holds 189861 bytes, the boot console frames, and the dump is about 85 KB of text. It takes about 0.4 s in QEMU, whose serial ports have no baud rate. At 115200 baud it would take about 7.4 s. A frame with no repeats would be about 300 KB of hex, about 27 s.
 
-A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 400 ms in QEMU. QEMU's `raspi3b` starts all four cores. The harness points only core 0 at its AArch64 shim, so cores 1 to 3 loop through an exception vector and hold QEMU's big lock often. The kernel's polled SPI needs that lock on every register access, so a present took 3 s there on a Mac and 8.8 s on a GitHub runner. The tests that present on the panel park cores 1 to 3 in `WFI` with `park_args()` from `tests/hosttiming.py`. The streaming test uses 8 s chunks, so a present has a margin of about 20 times.
+A full-frame `present` takes about 128 ms on a panel at 9.62 MHz, and 200 to 600 ms in QEMU. QEMU's `raspi3b` starts all four cores. RobCo-Core's harness points cores 1 to 3 at its AArch64 shim too, and the firmware stub parks them in `WFI`, for every boot. Its canary V18 checks this. Before it did, they looped through an exception vector and held QEMU's big lock often. The kernel's polled SPI needs that lock on every register access, so a present took 3 s there on a Mac and 8.8 s on a GitHub runner. The streaming test uses 8 s chunks, so a present has a margin of about 20 times.
 
 ## Host timing
 

@@ -24,7 +24,7 @@ from PIL import Image
 from harness.boot import boot
 from harness.env import minimal_env
 
-from hosttiming import judge_stream, judged, park_args
+from hosttiming import judge_stream, judged
 from panelsends import (FULL_BYTES, H, W, Sends, both_sends, judged_sends, panic_sends,
                         window_sends)
 
@@ -174,8 +174,7 @@ def test_both_panel_matches_hdmi(board, tft_build, test_rom, test_holo, tmp_path
         image, model = tft_build
         sd = card(tmp_path, display_cfg("backend = both"),
                   {ROM: test_rom("tft_frames"), TAPE: test_holo("tape")})
-        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT,
-                  extra_args=park_args(board)) as vm:
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
             wait_rom(vm, "shown", 1)
             disp = one(vm, "display")
             assert (disp["backend"], disp["tft"]) == ("both", "absent"), disp
@@ -231,7 +230,7 @@ def test_stream_while_redrawing(board, tft_build, test_rom, tmp_path, need_mtool
 
     def attempt():
         sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_stream")})
-        with booted(image, board, sd=sd, extra_args=park_args(board)) as vm:
+        with booted(image, board, sd=sd) as vm:
             assert_rom_checks(vm, ["start", "queue"])
             stream = rom_markers(vm, "stream")[0]
             frames = int(stream["frames"])
@@ -253,8 +252,7 @@ def test_rotation_0_sends_only_the_visible_window(board, tft_build, test_rom, tm
         image, model = tft_build
         sd = card(tmp_path, display_cfg("backend = both\ntft_rotation = 0"),
                   {ROM: test_rom("tft_window")})
-        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT,
-                  extra_args=park_args(board)) as vm:
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
             wait_rom(vm, "shown", 1)
             for n in range(1, 3):
                 press(vm, "select")
@@ -278,8 +276,7 @@ def test_panic_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, need_
     def strict():
         image, _ = tft_build
         sd = card(tmp_path, display_cfg("backend = both"), {ROM: test_rom("tft_window")})
-        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT,
-                  extra_args=park_args(board)) as vm:
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
             wait_rom(vm, "shown", 1)
             for n in range(1, 3):
                 press(vm, "select")

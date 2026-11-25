@@ -325,28 +325,3 @@ class TimingSkips:
             verdict = "allowed"
         terminalreporter.write_line(
             f"{len(self.skips)} skips, at most {limit} per board allowed: {verdict}")
-
-
-# ---- raspi3b's spare cores ------------------------------------------------------------
-#
-# QEMU's raspi3b starts all four cores in AArch64 EL3. The harness points only
-# CPU0 at its AArch64 shim. Cores 1 to 3 start at 0x0, run the AArch32 firmware
-# stub as AArch64 code and loop through the EL3 exception vector at 0x200
-# forever: three host threads busy, each exception taken under QEMU's big lock.
-# The kernel's polled SPI takes that lock on every register access, so a full
-# present ran 3 s in guest time on a fast Mac, 8.8 s on a GitHub runner, for
-# about 128 ms on the wire. These words park cores 1 to 3 in WFI at reset.
-PARK_ADDR = 0x80020
-PARK_WORDS = (0xD503207F, 0x17FFFFFF)  # wfi; b .-4
-
-
-def park_args(board):
-    """QEMU arguments that park raspi3b's cores 1 to 3. None on other boards."""
-    if board != "raspi3b":
-        return []
-    args = []
-    for i, w in enumerate(PARK_WORDS):
-        args += ["-device", f"loader,addr={PARK_ADDR + 4 * i:#x},data={w:#010x},data-len=4"]
-    for cpu in (1, 2, 3):
-        args += ["-device", f"loader,addr={PARK_ADDR:#x},cpu-num={cpu}"]
-    return args
