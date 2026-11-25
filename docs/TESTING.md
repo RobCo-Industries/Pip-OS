@@ -45,6 +45,7 @@ The target tests boot `build/pipos.img` in QEMU with RobCo-Core's harness from `
 | `tests/test_tft.py` | The SPI panel in a test build: the panel picture against HDMI, the dirty rectangle, full frames, fallback to HDMI, refused pins, streaming while redrawing. See [SPI panel](#spi-panel). |
 | `tests/test_time.py` | The time, sensor, battery and power calls, with and without QEMU's RTC model |
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
+| `tests/test_runner.py` | The runner ROM on the simulator card: a tape that returns 0 or 3, a missing tape, a bad CRC, a fault, a name the kernel refuses, a card read error, each bad `RUNNER.CFG`, a new key per boot and a tape that prints runner lines of its own |
 | `tests/test_holo.py` | The holotape calls, the sandbox and the state handover between the ROM and a holotape |
 | `tests/test_slot.py` | The ABI 1.4 holotape slot in a test build, with the RAM card backend. See [Holotape slot](#holotape-slot). |
 | `tests/test_side_files.py` | A card with macOS side files, dot folders, hidden and system files: the holotape count, `holo_enumerate`, `dir_list` and a save match a clean card |
