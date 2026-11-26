@@ -155,7 +155,7 @@ sound-table-test:
 
 BOOT_SOUND_BOARD = $(if $(filter all,$(BOARD)),raspi0,$(BOARD))
 .PHONY: boot-sound boot-sound-test
-boot-sound: kernel venv
+boot-sound: kernel venv rom-sleep
 	@mkdir -p $(BUILD)/boot_sound
 	@rm -f $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav
 	$(VENV)/bin/pytest tests/test_boot_sound_log.py -q --tb=short --board $(BOOT_SOUND_BOARD) \
