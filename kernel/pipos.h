@@ -114,10 +114,19 @@ void pipos_dsound_jump(void);
 /* The ROM ended: the boot pace, nothing owed, the gate open. */
 void pipos_dsound_rom_ended(void);
 /*
- * First in every audio call of an image. Stops a kernel click that plays,
- * and polls the trace. sound is 1 for a call that starts or stops a sound.
+ * In an image's audio call, right before it starts or stops a sound.
+ * Stops a kernel click that plays, and no click starts until
+ * pipos_dsound_call_done(). May run with IRQs masked.
  */
-void pipos_dsound_yield(int sound);
+void pipos_dsound_cut_click(void);
+/* 1 while a kernel click plays. */
+int pipos_dsound_click_plays(void);
+/*
+ * Last in every audio call of an image, after a cut or not. outcome is a
+ * PIPOS_ACALL_ value of dsound_rules.h. Lets clicks start again, restarts
+ * the 300 ms for a ROM sound that started or stopped, and polls the trace.
+ */
+void pipos_dsound_call_done(int outcome);
 /* Prints queued audio records with the sound on, before the jump. */
 void pipos_dsound_poll(void);
 /* Waits ms in steps of at most 100 ms, with a pipos_dsound_poll() after each. */

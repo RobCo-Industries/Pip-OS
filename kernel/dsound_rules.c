@@ -20,6 +20,7 @@ void pipos_dsound_init(struct pipos_dsound *s)
     s->since_jump = 0;
     s->quiet = 0;
     s->held = 0;
+    s->in_call = 0;
 }
 
 unsigned pipos_dsound_io_adds(uint32_t count)
@@ -171,12 +172,23 @@ int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
                                     !click_busy);
 }
 
-int pipos_dsound_yields(struct pipos_dsound *s, int click_on, int busy, int sound)
+int pipos_dsound_cut(struct pipos_dsound *s, int click_on, int busy)
 {
-    if (sound && s->rom) {
+    s->in_call = 1;
+    return click_on && busy;
+}
+
+int pipos_dsound_restarts(int outcome)
+{
+    return outcome == PIPOS_ACALL_STARTED || outcome == PIPOS_ACALL_STOPPED;
+}
+
+void pipos_dsound_call_end(struct pipos_dsound *s, int outcome)
+{
+    s->in_call = 0;
+    if (s->rom && pipos_dsound_restarts(outcome)) {
         s->quiet = 0;
     }
-    return click_on && busy;
 }
 
 int pipos_dsound_tick(struct pipos_dsound *s, int can_play)
@@ -186,7 +198,7 @@ int pipos_dsound_tick(struct pipos_dsound *s, int can_play)
     if (s->wait > 0) {
         s->wait--;
     }
-    if (!s->open || s->owed == 0 || s->wait > 0 || !can_play) {
+    if (!s->open || s->owed == 0 || s->wait > 0 || !can_play || s->in_call) {
         return -1;
     }
     if (s->left == 0) {

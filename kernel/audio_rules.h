@@ -77,4 +77,12 @@ void pipos_pcmq_queued(pipos_pcmq_t *q, int buf);
 void pipos_pcmq_started(pipos_pcmq_t *q, int buf);
 void pipos_pcmq_drop(pipos_pcmq_t *q);
 
+/*
+ * audio_status: owned is 1 after the image started a sound, busy is
+ * audio_busy(). Returns the new owned, which is also the answer: 0 once
+ * the driver went idle. The disk click's tick clears owned when it finds
+ * the driver idle, before it starts a click, so a click reads as silence.
+ */
+int pipos_audio_status_of(int owned, int busy);
+
 #endif

@@ -404,29 +404,149 @@ TEST(rom_drops_a_debt_after_3_s)
     CHECK_EQ(s.owed, 3u);
 }
 
-/* The yield: a playing click stops; a sound call counts as a ROM sound. */
-TEST(rom_yield)
+/* A ROM state with one click owed and due on the next tick. */
+static void rom_ready(struct pipos_dsound *s)
+{
+    int t;
+
+    pipos_dsound_init(s);
+    pipos_dsound_rom(s);
+    for (t = 0; t < 100; t++) {
+        pipos_dsound_rom_tick(s, 0, 0);
+    }
+    pipos_dsound_add(s, 1);
+}
+
+/*
+ * Every audio call and return path: does it cut a click, and does it
+ * restart the 300 ms? docs/BOOT.md has the same table.
+ */
+static const struct call_row {
+    const char *call;
+    int cuts;
+    int outcome;
+    int restarts;
+} call_table[] = {
+    { "tone EINVAL", 0, PIPOS_ACALL_REFUSED, 0 },
+    { "tone EIO", 1, PIPOS_ACALL_FAILED, 0 },
+    { "tone started", 1, PIPOS_ACALL_STARTED, 1 },
+    { "sample EINVAL EFAULT on the check", 0, PIPOS_ACALL_REFUSED, 0 },
+    { "sample EFAULT EIO, nothing of the image played", 1, PIPOS_ACALL_FAILED, 0 },
+    { "sample EFAULT EIO, the image's sound stopped", 1, PIPOS_ACALL_STOPPED, 1 },
+    { "sample started", 1, PIPOS_ACALL_STARTED, 1 },
+    { "sample_queue EINVAL EFAULT on the check", 0, PIPOS_ACALL_REFUSED, 0 },
+    { "sample_queue EBUSY", 1, PIPOS_ACALL_REFUSED, 0 },
+    { "sample_queue joins the image's play", 1, PIPOS_ACALL_JOINED, 0 },
+    { "sample_queue EFAULT EIO on the queue", 1, PIPOS_ACALL_FAILED, 0 },
+    { "sample_queue EFAULT EIO, no play to queue behind", 1, PIPOS_ACALL_FAILED, 0 },
+    { "sample_queue started", 1, PIPOS_ACALL_STARTED, 1 },
+    { "play_seq EINVAL EFAULT", 0, PIPOS_ACALL_REFUSED, 0 },
+    { "play_seq EIO", 1, PIPOS_ACALL_FAILED, 0 },
+    { "play_seq started", 1, PIPOS_ACALL_STARTED, 1 },
+    { "audio_stop, the image's sound plays", 1, PIPOS_ACALL_STOPPED, 1 },
+    { "audio_stop, nothing of the image plays", 0, PIPOS_ACALL_IDLE, 0 },
+    { "volume", 0, PIPOS_ACALL_ASKED, 0 },
+    { "audio_status", 0, PIPOS_ACALL_ASKED, 0 },
+};
+
+TEST(rom_call_table)
+{
+    struct pipos_dsound s;
+    size_t i;
+    int t;
+
+    for (i = 0; i < sizeof(call_table) / sizeof(call_table[0]); i++) {
+        const struct call_row *r = &call_table[i];
+
+        CHECK_EQ(pipos_dsound_restarts(r->outcome), r->restarts);
+        rom_ready(&s);
+        if (r->cuts) {
+            /* A click plays: it must stop, and none starts during the call. */
+            CHECK_EQ(pipos_dsound_cut(&s, 1, 1), 1);
+            CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+        }
+        pipos_dsound_call_end(&s, r->outcome);
+        CHECK_EQ(s.in_call, 0);
+        if (r->restarts) {
+            CHECK_EQ(s.quiet, 0u);
+            for (t = 0; t < (int)PIPOS_ROM_QUIET_TICKS; t++) {
+                CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+            }
+        } else {
+            CHECK(s.quiet > PIPOS_ROM_QUIET_TICKS);
+        }
+        CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
+    }
+}
+
+/* The cut stops only a click that plays. */
+TEST(rom_cut)
+{
+    struct pipos_dsound s;
+
+    pipos_dsound_init(&s);
+    CHECK_EQ(pipos_dsound_cut(&s, 1, 1), 1);
+    CHECK_EQ(pipos_dsound_cut(&s, 1, 0), 0); /* the click ended */
+    CHECK_EQ(pipos_dsound_cut(&s, 0, 1), 0); /* the ROM's own sound */
+    CHECK_EQ(pipos_dsound_cut(&s, 0, 0), 0);
+    /* Outside a ROM the call holds the boot pace too, with no quiet time. */
+    pipos_dsound_open(&s);
+    pipos_dsound_add(&s, 1);
+    CHECK_EQ(pipos_dsound_tick(&s, 1), -1);
+    pipos_dsound_call_end(&s, PIPOS_ACALL_STARTED);
+    CHECK(pipos_dsound_tick(&s, 1) >= 0);
+}
+
+/* A refused call repeated every 100 ms never holds the clicks. */
+TEST(rom_refused_calls_hold_nothing)
+{
+    struct pipos_dsound s;
+    int t, played = 0;
+
+    rom_ready(&s);
+    pipos_dsound_add(&s, 7);
+    for (t = 0; t < 1500; t++) {
+        if (t % 10 == 0) {
+            pipos_dsound_call_end(&s, PIPOS_ACALL_REFUSED);
+        }
+        played += pipos_dsound_rom_tick(&s, 0, 0) >= 0;
+    }
+    CHECK_EQ(played, 8);
+    CHECK_EQ(s.owed, 0u);
+}
+
+/* A 2 s tone: the 300 ms count from its own end, not from the call. */
+TEST(rom_quiet_from_the_sound_end)
 {
     struct pipos_dsound s;
     int t;
 
-    pipos_dsound_init(&s);
-    CHECK_EQ(pipos_dsound_yields(&s, 1, 1, 0), 1);
-    CHECK_EQ(pipos_dsound_yields(&s, 1, 0, 1), 0); /* the click ended */
-    CHECK_EQ(pipos_dsound_yields(&s, 0, 1, 1), 0); /* the ROM's own sound */
-    pipos_dsound_rom(&s);
-    for (t = 0; t < 100; t++) {
-        pipos_dsound_rom_tick(&s, 0, 0);
+    rom_ready(&s);
+    CHECK_EQ(pipos_dsound_cut(&s, 0, 0), 0);
+    pipos_dsound_call_end(&s, PIPOS_ACALL_STARTED);
+    for (t = 0; t < 200; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
     }
-    pipos_dsound_add(&s, 1);
-    CHECK_EQ(pipos_dsound_yields(&s, 0, 0, 0), 0); /* audio_status, volume */
-    CHECK(s.quiet > PIPOS_ROM_QUIET_TICKS);
-    CHECK_EQ(pipos_dsound_yields(&s, 1, 1, 1), 1); /* tone, sample, stop */
-    CHECK_EQ(s.quiet, 0u);
     for (t = 0; t < (int)PIPOS_ROM_QUIET_TICKS; t++) {
         CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
     }
     CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
+}
+
+/* audio_status and volume leave a playing click and the rules alone. */
+TEST(rom_questions_leave_a_click)
+{
+    struct pipos_dsound s, before;
+
+    rom_ready(&s);
+    CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0); /* a click starts */
+    pipos_dsound_add(&s, 1);
+    before = s;
+    pipos_dsound_call_end(&s, PIPOS_ACALL_ASKED);
+    CHECK_EQ(s.quiet, before.quiet);
+    CHECK_EQ(s.owed, before.owed);
+    CHECK_EQ(s.in_call, 0);
+    CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 1), -1); /* it plays on */
 }
 
 /* The ROM's end: the boot pace, nothing owed, the gate open. */

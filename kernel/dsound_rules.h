@@ -34,7 +34,17 @@ struct pipos_dsound {
     unsigned since_jump; /* ticks since the jump, up to PIPOS_ROM_START_TICKS + 1 */
     unsigned quiet;      /* ticks since a ROM sound, up to PIPOS_ROM_QUIET_TICKS + 1 */
     unsigned held;       /* ticks in a row the debt waited for a ROM sound */
+    int in_call;         /* an image's audio call runs between its cut and its end */
 };
+
+/* What an image's audio call did. Only STARTED and STOPPED restart the 300 ms. */
+#define PIPOS_ACALL_REFUSED 0 /* refused before the cut: an argument, a pointer, EBUSY */
+#define PIPOS_ACALL_FAILED  1 /* EFAULT or EIO after the cut: no ROM sound started or stopped */
+#define PIPOS_ACALL_STARTED 2 /* a ROM sound started */
+#define PIPOS_ACALL_STOPPED 3 /* a ROM sound that played stopped, and none started */
+#define PIPOS_ACALL_JOINED  4 /* sample_queue queued behind the ROM's own play */
+#define PIPOS_ACALL_IDLE    5 /* audio_stop with no ROM sound playing */
+#define PIPOS_ACALL_ASKED   6 /* audio_status and volume: a question, no cut */
 
 /* Seed 1, nothing owed, the gate closed, the boot pace. */
 void pipos_dsound_init(struct pipos_dsound *s);
@@ -106,12 +116,21 @@ void pipos_dsound_rom_end(struct pipos_dsound *s);
 int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy);
 
 /*
- * A ROM's audio call, IRQs masked. sound is 1 for a call that starts or
- * stops a sound: it counts as a ROM sound for the 300 ms rule. Returns 1
- * when a kernel click plays and must stop: click_on says the last play the
- * kernel started was a click, busy is audio_busy().
+ * An image's audio call is about to start or stop a sound, IRQs masked.
+ * No click starts until pipos_dsound_call_end(). Returns 1 when a kernel
+ * click plays and must stop: click_on says the last play the kernel
+ * started was a click, busy is audio_busy().
  */
-int pipos_dsound_yields(struct pipos_dsound *s, int click_on, int busy, int sound);
+int pipos_dsound_cut(struct pipos_dsound *s, int click_on, int busy);
+
+/* 1 when the outcome, a PIPOS_ACALL_ value, restarts the 300 ms. */
+int pipos_dsound_restarts(int outcome);
+
+/*
+ * The end of an image's audio call, IRQs masked: clicks may start again.
+ * Under a ROM a sound that started or stopped restarts the 300 ms.
+ */
+void pipos_dsound_call_end(struct pipos_dsound *s, int outcome);
 
 /*
  * What is left to wait, in ms at now, before the scroll starts. It starts

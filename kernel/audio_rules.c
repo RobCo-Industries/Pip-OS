@@ -103,3 +103,8 @@ void pipos_pcmq_drop(pipos_pcmq_t *q)
     q->play = -1;
     q->wait = -1;
 }
+
+int pipos_audio_status_of(int owned, int busy)
+{
+    return owned && busy;
+}

@@ -155,16 +155,29 @@ TEST(pcmq_idle_starts)
 /*
  * The image's sample ended and a kernel click took the voice. The state
  * still says buffer 0 plays, and the click makes can_queue 1, so without
- * the yield the plan would queue behind the click. The yield stops the
- * click first: can_queue 0 with a stop pending, and the data starts anew.
+ * the cut the plan would queue behind the click. sample_queue cuts the
+ * click first, in the same irq_save() as the read: can_queue 0 with a stop
+ * pending, and the data starts anew.
  */
-TEST(pcmq_click_yield_starts)
+/* audio_status: a kernel click reads as silence. */
+TEST(status_click_is_silence)
+{
+    int owned = 1;
+
+    CHECK_EQ(pipos_audio_status_of(owned, 1), 1); /* the image's tone plays */
+    owned = 0;                                   /* the tick found the driver idle */
+    CHECK_EQ(pipos_audio_status_of(owned, 1), 0); /* then a click plays */
+    CHECK_EQ(pipos_audio_status_of(1, 0), 0);     /* the image's sound ended */
+    CHECK_EQ(pipos_audio_status_of(0, 0), 0);
+}
+
+TEST(pcmq_click_cut_starts)
 {
     pipos_pcmq_t q = PIPOS_PCMQ_IDLE;
 
     pipos_pcmq_started(&q, 0);
     pipos_pcmq_sync(&q, 1, 1);
-    CHECK_EQ(pipos_pcmq_plan(&q, 1).action, PIPOS_PCMQ_QUEUE); /* why the yield exists */
+    CHECK_EQ(pipos_pcmq_plan(&q, 1).action, PIPOS_PCMQ_QUEUE); /* why the cut exists */
     pipos_pcmq_sync(&q, 0, 1);
     CHECK_EQ(pipos_pcmq_plan(&q, 0).action, PIPOS_PCMQ_START);
     CHECK_EQ(pipos_pcmq_plan(&q, 0).buf, 0);

@@ -27,9 +27,12 @@
  * 8 owed, none in the first 700 ms. The ROM's card and slot calls owe them,
  * a holotape's too: it runs inside the ROM's call. A click plays only when
  * nothing plays and the ROM's last sound is 300 ms old. A debt that waits
- * 3 s in a row for a ROM sound is dropped. Every audio call of an image
- * first calls pipos_dsound_yield(), which stops a click that plays: the
- * image's sound always wins. When the ROM ends the boot pace comes back
+ * 3 s in a row for a ROM sound is dropped. An audio call of an image that
+ * starts or stops a sound first calls pipos_dsound_cut_click(), which stops
+ * a click that plays and holds new ones: the image's sound always wins.
+ * Every call ends with pipos_dsound_call_done(), which lets clicks start
+ * again and, for a sound that started or stopped, restarts the 300 ms.
+ * audio_status and volume cut nothing. When the ROM ends the boot pace comes back
  * with nothing owed and the gate open.
  *
  * Clicks start from the tick at any moment, and the trace backend queues
@@ -417,7 +420,7 @@ void pipos_dsound_rom_ended(void)
     irq_restore(irq);
 }
 
-void pipos_dsound_yield(int sound)
+void pipos_dsound_cut_click(void)
 {
     uint32_t irq;
 
@@ -425,10 +428,27 @@ void pipos_dsound_yield(int sound)
         return;
     }
     irq = irq_save();
-    if (pipos_dsound_yields(&rules, click_on, audio_busy(), sound)) {
+    if (pipos_dsound_cut(&rules, click_on, audio_busy())) {
         audio_stop();
     }
     click_on = 0;
+    irq_restore(irq);
+}
+
+int pipos_dsound_click_plays(void)
+{
+    return on && click_on && audio_busy();
+}
+
+void pipos_dsound_call_done(int outcome)
+{
+    uint32_t irq;
+
+    if (!on) {
+        return;
+    }
+    irq = irq_save();
+    pipos_dsound_call_end(&rules, outcome);
     irq_restore(irq);
     pipos_dsound_poll();
 }
