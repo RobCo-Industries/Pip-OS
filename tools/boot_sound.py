@@ -18,7 +18,10 @@ Lines it reads, each an "@RC ... ev=audio op=..." marker of any stage:
   printed by the newer library only:
     op=pcm_mix len= crc= t_ms=           an overlay starts over the play
     the rest ramp, a plain op=pcm rate=22050 len=882 vol=100 whose CRC is
-    the library's ramp: after it, silence is duty 128, not duty 0
+    the library's ramp. The same bytes at another rate or volume are an
+    ordinary play. Once the ramp reaches its last sample, silence is
+    duty 128, not duty 0. A ramp cut early, by a stop or a new sound,
+    drops to duty 0 at once and leaves the rest level at duty 0.
   ev=audio_drop n=                       records lost: a warning
 
 Rules it applies, from the library's driver:
@@ -36,11 +39,11 @@ Rules it applies, from the library's driver:
   rounds toward 128, as the pinned library does. --scale nearest rounds to
   the nearest step, a half step away from 128, as the newer library does.
   --scale auto, the default, picks nearest when the log has an op=pcm_mix
-  line or the rest ramp, and cut otherwise.
+  line or the rest ramp, whole or cut, and cut otherwise.
 - A sample play holds duty s / 256 of the 37.5 kHz carrier. A tone is the
   pin's pulse: period round(9600000 / hz) counts, high for
   (period / 2 * vol + 50) / 100 of them. Silence is duty 0, or duty 128
-  after the rest ramp.
+  once the rest ramp has reached its last sample.
 - Output: 16-bit mono at 37500 Hz, one frame per carrier period. A frame
   holds the sample due at its start, or the pulse's mean over the frame
   for a tone. Then a one-pole 20 Hz high-pass stands for the coupling
@@ -126,6 +129,12 @@ def ramp_bytes():
 
 RAMP = ramp_bytes()
 RAMP_CRC = zlib.crc32(RAMP)
+
+
+def is_ramp(op, f):
+    """The library's rest ramp: its rate, volume, length and bytes."""
+    return (op == "pcm" and f["rate"] == RAMP_RATE and f["vol"] == 100
+            and f["len"] == RAMP_LEN and f["crc"] == RAMP_CRC)
 
 
 def scale_cut(s, vol):
@@ -376,7 +385,8 @@ class Renderer:
             if v is None:
                 v = cache[s] = scale(s, p.vol) / 256.0
             out.append(v)
-        if p.ramp:
+        if p.ramp and p.index(end - 1) >= n - 1:
+            # The ramp reached its last sample. Cut before, it leaves duty 0.
             self.rest = 0.5
 
     def run(self, events):
@@ -391,18 +401,22 @@ class Renderer:
             cur = self.cur
             if op == "pcm":
                 self.close(t)
-                ramp = f["len"] == RAMP_LEN and f["crc"] == RAMP_CRC
+                ramp = is_ramp(op, f)
                 data = self.lookup(f["crc"], f["len"])
                 self.cur = Play(t, f["rate"], f["vol"], data, ramp)
             elif op == "pcm_next":
                 if not isinstance(cur, Play) or cur.ended:
                     raise LogError("%s: op=pcm_next with no sample play" % where)
+                if cur.ramp:
+                    raise LogError("%s: op=pcm_next on the rest ramp" % where)
                 if len(cur.data) + f["len"] > MAX_PCM_LEN:
                     raise LogError("%s: the play's buffers pass %d bytes" % (where, MAX_PCM_LEN))
                 cur.data += self.lookup(f["crc"], f["len"])
             elif op == "pcm_mix":
                 if not isinstance(cur, Play) or cur.ended:
                     raise LogError("%s: op=pcm_mix with no sample play" % where)
+                if cur.ramp:
+                    raise LogError("%s: op=pcm_mix on the rest ramp" % where)
                 k = -((cur.t0 - t) * cur.rate // 1000)      # first grid point at or after t
                 if cur.mixes:
                     busy = cur.mixes[-1][0] + len(cur.mixes[-1][1])
@@ -483,9 +497,7 @@ def main(argv=None):
         pcm = load_pcm(a.pcm)
         scale = a.scale
         if scale == "auto":
-            new = any(op == "pcm_mix" or (op == "pcm" and f["len"] == RAMP_LEN
-                                          and f["crc"] == RAMP_CRC)
-                      for _, op, f in events)
+            new = any(op == "pcm_mix" or is_ramp(op, f) for _, op, f in events)
             scale = "nearest" if new else "cut"
         if dropped:
             warn("the trace lost %d records: the file misses sounds" % dropped)

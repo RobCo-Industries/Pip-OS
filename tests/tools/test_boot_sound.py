@@ -267,9 +267,44 @@ class Rest(Case):
         self.assertEqual(duty[frame(70)], 0.5)
         self.assertEqual(duty[-1], 0.5)
 
-    def test_ramp_ignores_the_volume(self):
-        duty, _ = self.render([pcm(0, bs.RAMP, vol=10), end(40)])
-        self.assertEqual(duty[frame(39)], bs.RAMP[(39 * RATE) // 1000 + 1] / 256)
+    def test_ramp_bytes_at_another_volume_are_a_play(self):
+        duty, _ = self.render([pcm(0, bs.RAMP, vol=10), end(40), stop(100)])
+        self.assertEqual(duty[frame(39)], bs.scale_cut(bs.RAMP[(39 * RATE) // 1000 + 1], 10) / 256)
+        self.assertEqual(duty[frame(60)], 0.0)
+        self.assertEqual(duty[-1], 0.0)
+
+    def test_ramp_bytes_at_another_rate_are_a_play(self):
+        duty, _ = self.render([pcm(0, bs.RAMP, rate=11025), end(80), stop(200)])
+        self.assertEqual(duty[frame(79)], bs.RAMP[(79 * 11025) // 1000 + 1] / 256)
+        self.assertEqual(duty[frame(100)], 0.0)
+        self.assertEqual(duty[-1], 0.0)
+
+    def test_ramp_cut_early_leaves_duty_0(self):
+        d = self.sound("a", bytes([128]) * 441)
+        for cut in (stop(20), tone(20, 1000, vol=0), pcm(20, d)):
+            duty, _ = self.render([pcm(0, bs.RAMP), cut, stop(60), pcm(100, d), end(120)])
+            self.assertEqual(duty[frame(19)], bs.RAMP[(19 * RATE) // 1000 + 1] / 256)
+            self.assertEqual(duty[frame(80)], 0.0, cut)
+            self.assertEqual(duty[-1], 0.0, cut)
+
+    def test_ramp_that_reaches_its_end_without_end_line(self):
+        duty, _ = self.render([pcm(0, bs.RAMP), stop(100)])
+        self.assertEqual(duty[-1], 0.5)
+
+    def test_mix_or_queue_on_the_ramp_is_a_bad_log(self):
+        o = self.sound("o", bytes([200]) * 10)
+        self.assertFails([pcm(0, bs.RAMP), mix(5, o)], "serial.log:2: op=pcm_mix on the rest ramp")
+        self.assertFails([pcm(0, bs.RAMP), nxt(5, o)], "serial.log:2: op=pcm_next on the rest ramp")
+
+    def test_auto_scale_and_the_ramp(self):
+        for lines, want in (([pcm(0, bs.RAMP), end(40)], "nearest"),
+                            ([pcm(0, bs.RAMP), stop(20)], "nearest"),
+                            ([pcm(0, bs.RAMP, vol=10), end(40)], "cut"),
+                            ([pcm(0, bs.RAMP, rate=11025), end(80)], "cut")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                bs.main([self.log(lines), os.path.join(self.dir, "o.wav"), "--pcm", self.pcm_dir])
+            self.assertIn("scale " + want, out.getvalue(), lines)
 
     def test_thump_reaches_the_file(self):
         d = self.sound("a", bytes([128]) * 4410)
