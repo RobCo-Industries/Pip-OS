@@ -133,6 +133,7 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 `EIO` means the audio driver refused the sound. The rules are in the spec's [Audio](https://github.com/RobCo-Industries/RobCo-Core/blob/2ef412b25aad06e20eae85bacc4ea43c6d930085/docs/spec/PIPOS_ABI.md#audio) section.
 
 - The level starts at the `volume` key of `PIPOS.CFG`, 100 without one. See [CONFIG.md](CONFIG.md). It is a percentage of the square wave's duty cycle for tones. For a sample it scales each byte around 128.
+- With `[audio] system_sound` on, the pin rests at the midpoint, so a ROM's tones are squares centred on it. Their height follows the volume: 127 steps each side at 100, set by `ROBCO_AUDIO_TONE_PEAK` in `kernel/robco_config.h`. A volume change takes effect at the next note. With the setting off, tones are the pulse as before.
 - A ROM that wants its own level sets it and restores the old one before it exits.
 - `sample` stops the current sound before it copies the data. An argument error returns before that, so the current sound plays on.
 - When several errors apply, a call returns the first in this order: a number out of its limits, a bad pointer, a bad note, a waiting sample for `sample_queue`, then the driver's `EIO`.
