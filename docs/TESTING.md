@@ -46,6 +46,7 @@ The plugin removes a passing test's `tmp_path` when the test ends. A failing tes
 | `tests/test_gfx.py` | The graphics calls: results, errors, limits, the screen goldens `gfx_*.png`, and who owns the screen before, during and after a ROM |
 | `tests/test_input_calls.py` | The input calls with events injected on the script channel and the console |
 | `tests/test_audio.py`, `tests/test_audio_sample.py` | The audio calls and `sample` through the trace backend |
+| `tests/test_typing.py` | Boot text that writes itself, and the system sound: the rest ramp, then the soft beep found by the CRC of the table tool's dump, the ramp alone with `beep = no`, the old name `key_click`, `system_sound` winning over it, bad values, and no sound with the setting off |
 | `tests/test_tft.py` | The SPI panel in a test build: the panel picture against HDMI, the dirty rectangle, full frames, fallback to HDMI, refused pins, streaming while redrawing. See [SPI panel](#spi-panel). |
 | `tests/test_time.py` | The time, sensor, battery and power calls, with and without QEMU's RTC model |
 | `tests/test_storage.py` | Saves and files on a card image, read back with mtools |
@@ -75,11 +76,11 @@ A test that runs a subprocess builds its environment with `minimal_env()` from R
 
 QEMU has no PWM model, so nobody hears a QEMU boot. `make boot-sound` rebuilds what the audio pin would play:
 
-1. `tests/test_boot_sound_log.py` boots a card with `char_delay_ms = 20`, `line_delay_ms = 200`, `volume = 80`, the beep and `key_click = yes` on one board, `raspi0` unless `BOARD` names one, and saves the serial log in `build/boot_sound/serial.log`.
+1. `tests/test_boot_sound_log.py` boots a card with `char_delay_ms = 20`, `line_delay_ms = 200`, `volume = 80`, the beep and `system_sound = yes` on one board, `raspi0` unless `BOARD` names one, and saves the serial log in `build/boot_sound/serial.log`.
 2. `tools/sound_table.py --dump` writes the sound table as `.u8` files in `build/boot_sound/pcm`.
 3. `tools/boot_sound.py` reads the log's `ev=audio` markers and writes `build/boot_sound.wav`.
 
-Today the kernel plays its tone per character and no sample of the table, so the file holds that sound.
+The file holds the rest ramp and the soft beep. Typing makes no sound, so the rest of the boot is silent.
 
 The target removes the old log and the old file first. If the boot is skipped, for example because QEMU or mtools is missing, it stops with an error and writes no file.
 

@@ -98,7 +98,7 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 
 ## System sound tables
 
-`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a line blip and a soft beep. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`, tables of unsigned 8-bit samples at 37500 Hz, the PWM carrier rate, where 128 is silence. The file also holds a `note` block that the tool ignores for now: a later change plays the rising note live from a small table of spans. Both files are committed, so a build runs no Python for them. The kernel does not play them yet, and `--gc-sections` leaves them out of the image.
+`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a line blip and a soft beep. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`, tables of unsigned 8-bit samples at 37500 Hz, the PWM carrier rate, where 128 is silence. The file also holds a `note` block that the tool ignores for now: a later change plays the rising note live from a small table of spans. Both files are committed, so a build runs no Python for them. The kernel plays the soft beep when `[audio] system_sound` is on. The clicks and the blip are not played yet. `--gc-sections` keeps only the beep in the image.
 
 | Table | Bytes |
 |---|---|

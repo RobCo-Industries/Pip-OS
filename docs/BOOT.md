@@ -80,19 +80,30 @@ The kernel prints these lines on the screen and on the UART. With `line_delay_ms
 
 With `[display] char_delay_ms` above 0, the kernel writes each boot line on the HDMI console one character at a time and waits that long after each one. A block cursor shows the writing place while the boot text writes, and goes away after the last boot line. The SPI panel gets each line whole, when it is done. The UART gets each line whole too, in every case, so the serial log keeps its bytes. With `char_delay_ms = 0`, the default, each line appears at once and no cursor shows.
 
-With `[audio] key_click = yes` as well, each character makes one short click. A space makes none. Before a character with a click, the kernel waits for the sound before it to end, the power-on beep or the last click. The block cursor stands at the writing place during that wait. Then the character and its click appear together. A space waits for no sound. Each line waits for its last click to end. So the text never runs ahead of its sound and nothing queues. With `char_delay_ms = 0` no click plays, whatever `key_click` says.
+Typing makes no sound. No character waits for a sound.
 
-The clicks are square waves from the audio driver, made live at boot from the numbers in `kernel/keyclick.h`. No recording is used.
+### The system sound
 
-| Number | Value | Why |
-|---|---|---|
-| Pitch | 3000 Hz plus 150 Hz times a step from 0 to 4 | Bright, in the 2 to 6 kHz band of a dry click, far from the 1000 Hz beep |
-| Step | The character code plus its place in the line, modulo 5 | Words wobble a little. A run of equal characters walks up the five pitches and starts again, so the 15 stars of the title line do not drone on one tone. Two boots sound the same. |
-| Length asked | 4 ms | The driver changes sound on the 100 Hz tick, so each click sounds for one tick, about 10 ms |
+With `[audio] system_sound = yes`, or its old name `key_click = yes`, the kernel plays the system sound at power-on instead of the square beep:
 
-A PWM pin driven as a square wave can only switch between two levels at one pitch. It has no attack or decay, so a click is a short burst of tone that ends sharply, not a noise burst. The odd harmonics of the square put some energy above the pitch, up to the filter of the jack. Nobody has listened to these clicks on a real speaker yet. How bright and how loud they sound, and whether the sharp edges pop, is still to check on hardware.
+1. `audio_rest_mid()` from RobCo-Core moves the pin's rest level from duty 0 to the midpoint with a 40 ms ramp.
+2. The kernel waits for the ramp to end.
+3. If `beep` is on, it plays the soft beep, `sound_beep` of `kernel/sound_table.c`: a 1000 Hz sine, 60 ms, 2250 bytes at 37500 Hz.
 
-In QEMU each click is an `ev=audio op=tone` marker and an `op=stop` marker. They come before the line they belong to on the UART. The trace prints the `op=stop` marker at the asked end, so its `t_ms` is 4 ms after the `op=tone` marker. The device stops the click only at the next tick, about 10 ms after it began. Read the gap in a trace as the asked length, not the heard one.
+If `audio_rest_mid()` fails, the kernel prints `ev=sound rc=<n>` with the library's error code and boots as with the system sound off: the square beep, if `beep` is on.
+
+In QEMU the boot then prints, before the first boot line:
+
+```
+@RC stage=pipos ev=audio op=pcm rate=22050 len=882 vol=100 crc=2d541516 t_ms=30
+@RC stage=pipos ev=audio op=pcm_end n=132 last=881 t_ms=216
+@RC stage=pipos ev=audio op=pcm rate=37500 len=2250 vol=80 crc=3a2acd1e t_ms=219
+@RC stage=pipos ev=audio op=pcm_end n=155 last=2194 t_ms=279
+```
+
+The ramp plays at full scale whatever the volume. Times and counts vary with the host. With `system_sound = no`, the default, the boot plays the square beep as before: the same pin levels, trace and UART bytes.
+
+Nobody has heard the soft beep on a board yet.
 
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************
@@ -208,7 +219,8 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `clock` | `rtc time` | `rtc=present` or `absent`. `time` in ISO form, or `unset`. |
 | `card` | `rc`, then `sd`, `part` or `fs why` | `ok`, `nocard`, `nopart` or `nomount`. See [The card](#the-card). |
 | `mount` | `part type lba blocks marker` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. `marker` is `1` when it holds a Pip-OS file. |
-| `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep char_delay_ms key_click` | A configuration problem, or the summary. See [CONFIG.md](CONFIG.md). |
+| `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep char_delay_ms key_click` | A configuration problem, or the summary. `key_click` holds the resolved `system_sound`. See [CONFIG.md](CONFIG.md). |
+| `sound` | `rc` | The rest ramp of the system sound failed with this library error. The boot goes on as with the system sound off. See [The system sound](#the-system-sound). |
 | `syscalls` | `served` | The calls the kernel serves: a 128-bit hex number, bit n set for call n |
 | `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/`, without dot names and hidden or system files |
 | `load` | `path size crc addr name` | The ROM passed every check |
