@@ -41,6 +41,12 @@ int pipos_rom_error_line(int card, int rc, char *buf, size_t size);
 /* Non-zero for a file name that ends in ".HTP", any case, with a base name. */
 int pipos_is_holotape_name(const char *name);
 
+/*
+ * 1 when the line shows nothing: no character from 0x21 to 0x7e. The scroll
+ * plays no blip for such a line.
+ */
+int pipos_line_blank(const char *text);
+
 /* One marker value: bytes outside 0x21 to 0x7e become '_'. Empty gives "-". */
 void pipos_marker_word(const char *in, char *out, size_t size);
 

@@ -22,6 +22,24 @@ TEST(text_adds)
     CHECK_EQ(pipos_dsound_text_adds("12345\t\r\x01"), 1u);
 }
 
+TEST(scroll_wait)
+{
+    /* Fast typing: the quiet second holds the scroll. */
+    CHECK_EQ(pipos_dsound_scroll_wait(1300, 1300, 200, 1, 1000), 700u);
+    CHECK_EQ(pipos_dsound_scroll_wait(1999, 1300, 200, 1, 1000), 1u);
+    CHECK_EQ(pipos_dsound_scroll_wait(2000, 1300, 200, 1, 1000), 0u);
+    /* Slow typing: the line delay after the line holds it. */
+    CHECK_EQ(pipos_dsound_scroll_wait(2500, 2500, 200, 1, 1000), 200u);
+    CHECK_EQ(pipos_dsound_scroll_wait(2700, 2500, 200, 1, 1000), 0u);
+    /* No gate, the sound off: only the line delay. */
+    CHECK_EQ(pipos_dsound_scroll_wait(1300, 1300, 200, 0, 1000), 200u);
+    CHECK_EQ(pipos_dsound_scroll_wait(1300, 1300, 0, 0, 0), 0u);
+    /* Late callers wait nothing, and the clock may wrap. */
+    CHECK_EQ(pipos_dsound_scroll_wait(9000, 1300, 200, 1, 1000), 0u);
+    CHECK_EQ(pipos_dsound_scroll_wait(0xfffffff0u, 0xfffffff0u, 0, 1, 0xfffffff0u), 1000u);
+    CHECK_EQ(pipos_dsound_scroll_wait(0x000003d0u, 0xfffffff0u, 0, 1, 0xfffffff0u), 8u);
+}
+
 TEST(cap)
 {
     struct pipos_dsound s;

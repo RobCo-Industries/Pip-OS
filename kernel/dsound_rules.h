@@ -15,6 +15,7 @@
 #define PIPOS_CLICK_CAP_ROM  8u
 #define PIPOS_CLICK_SEED     1u
 #define PIPOS_NOTE_TAIL_MS  30u /* no click joins the note this close to its end */
+#define PIPOS_QUIET_MS    1000u /* the gate stays closed this long before the scroll */
 
 /* What a due click does now. */
 #define PIPOS_CLICK_WAIT 0 /* it waits a tick */
@@ -76,6 +77,15 @@ void pipos_dsound_close(struct pipos_dsound *s);
 
 /* The jump to a ROM: the ROM pace, and the debt cut to its cap. */
 void pipos_dsound_rom(struct pipos_dsound *s);
+
+/*
+ * What is left to wait, in ms at now, before the scroll starts. It starts
+ * line_ms after the last line ended at line_end, and with quiet set never
+ * sooner than PIPOS_QUIET_MS after the gate closed at quiet_at. Times are
+ * one clock in ms and may wrap.
+ */
+uint32_t pipos_dsound_scroll_wait(uint32_t now, uint32_t line_end, uint32_t line_ms,
+                                  int quiet, uint32_t quiet_at);
 
 /*
  * One 10 ms tick. can_play is 1 when the voice is free. Returns -1 for

@@ -68,6 +68,23 @@ int pipos_dsound_note_fits(unsigned chars, unsigned delays, uint32_t char_ms,
     return char_ms > 0 && text >= note_ms;
 }
 
+/* ms from now to at, 0 when at has passed. */
+static uint32_t until(uint32_t now, uint32_t at)
+{
+    int32_t left = (int32_t)(at - now);
+
+    return left > 0 ? (uint32_t)left : 0u;
+}
+
+uint32_t pipos_dsound_scroll_wait(uint32_t now, uint32_t line_end, uint32_t line_ms,
+                                  int quiet, uint32_t quiet_at)
+{
+    uint32_t a = until(now, line_end + line_ms);
+    uint32_t b = quiet ? until(now, quiet_at + PIPOS_QUIET_MS) : 0u;
+
+    return a > b ? a : b;
+}
+
 int pipos_dsound_way(int busy, int note, uint32_t left_ms, int mix_busy)
 {
     if (!busy) {

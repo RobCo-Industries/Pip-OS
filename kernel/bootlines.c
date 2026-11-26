@@ -122,3 +122,13 @@ void pipos_marker_word(const char *in, char *out, size_t size)
     }
     out[n] = '\0';
 }
+
+int pipos_line_blank(const char *text)
+{
+    for (; *text != '\0'; text++) {
+        if (*text > 0x20 && *text < 0x7f) {
+            return 0;
+        }
+    }
+    return 1;
+}

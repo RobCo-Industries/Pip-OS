@@ -130,3 +130,16 @@ TEST(marker_word)
     pipos_marker_word("a\tb\x7f", out, sizeof(out));
     CHECK_STR(out, "a_b_");
 }
+
+TEST(blank_lines)
+{
+    CHECK_EQ(pipos_line_blank(""), 1);
+    CHECK_EQ(pipos_line_blank("   "), 1);
+    CHECK_EQ(pipos_line_blank("\t\x7f"), 1);
+    CHECK_EQ(pipos_line_blank(" A "), 0);
+    CHECK_EQ(pipos_line_blank("*"), 0);
+    /* The boot text has two blank lines among its fixed ones. */
+    CHECK_EQ(pipos_line_blank(pipos_boot_head[3]), 1);
+    CHECK_EQ(pipos_line_blank(pipos_boot_tail[0]), 1);
+    CHECK_EQ(pipos_line_blank(pipos_boot_head[0]), 0);
+}
