@@ -523,7 +523,7 @@ def test_manifest_breaks(package, field, value, text):
 VALUE_ROWS = [
     (("format",), 2, "format is not 1"),
     (("format",), 0, "format is not 1"),
-    (("name",), "templates", "name is not pipos"),
+    (("name",), "templates", "abi must be absent in a templates package"),
     (("name",), "Pipos", "name is not pipos"),
     (("version",), "1.4.65536", "version is not X.Y.Z"),
     (("version",), "1.4", "version is not X.Y.Z"),
