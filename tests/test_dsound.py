@@ -126,8 +126,10 @@ def test_a_big_rom_owes_at_most_the_cap(board, kernel_image, tmp_path, need_mtoo
     load = [m for m in pipos_markers(vm, "disk") if m["at"] == "rom"]
     assert len(load) == 1 and int(load[0]["blocks"]) >= 6144, load
     check_clicks(trace, crcs, beep_crc)
+    # The cap is 40. One more is allowed for: a click that started between
+    # the kernel's poll and its print of the marker shows up after it.
     after = serial[serial.index("ev=disk at=rom"):]
-    assert after.count(f" len={CLICK_LEN} ") <= 40, after
+    assert after.count(f" len={CLICK_LEN} ") <= 40 + 1, after
     # No click starts once the kernel has jumped to the ROM.
     assert f" len={CLICK_LEN} " not in serial[serial.index("ev=jump"):], serial
 
