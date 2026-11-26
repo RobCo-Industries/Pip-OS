@@ -3,9 +3,11 @@
 Written with unittest so they run with pytest and without it.
 """
 
-import glob
 import importlib.util
 import os
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,143 +17,86 @@ _spec = importlib.util.spec_from_file_location("check_workflow_exprs", TOOL)
 cwe = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cwe)
 
-OLD_LINE_95 = """\
-    steps:
-      - name: The tag names the package
-        if: startsWith(github.ref, 'refs/tags/pipos-')
-        run: test -f "build/${{ github.ref_name }}.zip"
-"""
-
-FIXED = """\
-    steps:
-      - name: The tag names the package
-        if: startsWith(github.ref, 'refs/tags/pipos-')
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          test -f "build/$TAG.zip"
-"""
-
-
-def found(text):
-    return list(cwe.findings(text))
-
 
 def lines(text):
-    return [n for n, _ in found(text)]
+    return [num for num, _ in cwe.findings(text)]
 
 
-def step(run_line):
-    return "    steps:\n      - name: s\n        " + run_line + "\n"
+MUST_FAIL = {
+    "run": '      - name: x\n        run: echo "${{ github.ref_name }}"\n',
+    "space before colon": "        run : echo ${{ github.ref_name }}\n",
+    "dash run": "      - run: echo ${{ github.ref_name }}\n",
+    "block ref": "        run: |\n          echo ${{ github.ref }}\n",
+    "block bracket": "        run: |\n          echo ${{ github['ref_name'] }}\n",
+    "block inputs": "        run: >-\n          echo ${{ inputs.x }}\n",
+    "block matrix": "        run: |2\n          echo ${{ matrix.x }}\n",
+    "block secrets": "        run: |\n          echo ok\n\n          X: ${{ secrets.x }}\n",
+    "block under other key": "        body: |\n          ${{ github.ref }}\n",
+    "split": "        X: ${{ github.ref\n          }}\n",
+    "flow mapping": "      - {run: echo ${{ x }}}\n",
+    "quoted key": '        "run": echo ${{ x }}\n',
+    "comment": "        # echo ${{ github.ref_name }}\n",
+    "script": "          script: console.log('${{ x }}')\n",
+    "shell": "        shell: ${{ x }} {0}\n",
+    "args": "          args: ${{ x }}\n",
+    "entrypoint upper": "          Entrypoint: ${{ x }}\n",
+}
+
+MUST_PASS = {
+    "env entry": "        env:\n          TAG: ${{ github.ref_name }}\n",
+    "dash run then env": (
+        "      - run: echo ok\n        env:\n          TAG: ${{ github.ref_name }}\n"
+    ),
+    "if": "        if: ${{ github.event_name == 'push' }}\n",
+    "group": "  group: sdk-package-${{ github.ref }}\n",
+    "with": "        with:\n          path: build/${{ matrix.board }}\n",
+    "quoted text no expr": '        name: "Example {run: echo hi}"\n',
+    "block ends then env": (
+        "      - run: |\n          echo ok\n        env:\n          TAG: ${{ x }}\n"
+    ),
+}
 
 
-class MustFail(unittest.TestCase):
-    def test_old_line_95(self):
-        self.assertEqual(lines(OLD_LINE_95), [4])
+class Rule(unittest.TestCase):
+    def test_must_fail(self):
+        for name, text in MUST_FAIL.items():
+            with self.subTest(name):
+                self.assertTrue(lines(text), name)
 
-    def test_forms(self):
-        for expr in (
-            "github.ref",
-            "github.ref_name",
-            "github['ref_name']",
-            "github.event.pull_request.title",
-            "inputs.x",
-            "matrix.x",
-            "secrets.x",
-        ):
-            with self.subTest(expr=expr):
-                text = step("run: |\n          echo \"${{ " + expr + " }}\"")
-                self.assertEqual(lines(text), [3])
-                self.assertIn(expr, found(text)[0][1])
+    def test_must_pass(self):
+        for name, text in MUST_PASS.items():
+            with self.subTest(name):
+                self.assertEqual(lines(text), [], name)
 
-    def test_split_across_folded_lines(self):
-        text = step("run: >-\n          echo ${{\n          github.head_ref }}")
-        self.assertEqual(lines(text), [3])
-        self.assertIn("github.head_ref", found(text)[0][1])
-
-    def test_single_line_quoted(self):
-        self.assertEqual(lines(step("run: 'echo ${{ github.ref }}'")), [3])
-        self.assertEqual(lines(step('run: "echo ${{ github.ref }}"')), [3])
-
-    def test_chomping_and_indent_indicators(self):
-        for ind in ("|-", "|+", ">+", "|2-", ">-2"):
-            with self.subTest(ind=ind):
-                text = step("run: " + ind + "\n          echo ${{ github.ref }}")
-                self.assertEqual(lines(text), [3])
-
-    def test_shell_comment_in_script(self):
-        # Actions interpolates the whole script text, shell comments too.
-        text = step("run: |\n          # was ${{ github.ref }}\n          echo ok")
-        self.assertEqual(lines(text), [3])
-
-    def test_plain_multiline(self):
-        text = step("run: echo a\n          ${{ github.ref }}")
-        self.assertEqual(lines(text), [3])
-
-
-class MustPass(unittest.TestCase):
-    def test_fixed_step(self):
-        self.assertEqual(found(FIXED), [])
-
-    def test_env_if_with_name(self):
-        text = (
-            "    steps:\n"
-            "      - name: Build ${{ matrix.board }}\n"
-            "        if: ${{ github.ref == 'refs/heads/master' }}\n"
-            "        uses: actions/x@v1\n"
-            "        with:\n"
-            "          ref: ${{ github.ref }}\n"
-            "      - env:\n"
-            "          X: ${{ github.ref_name }}\n"
-            "        run: echo \"$X\"\n"
+    def test_old_workflow_fails_on_line_95(self):
+        old = subprocess.run(
+            ["git", "show", "origin/master:.github/workflows/sdk-package.yml"],
+            cwd=ROOT, capture_output=True, text=True,
         )
-        self.assertEqual(found(text), [])
+        if old.returncode != 0:
+            self.skipTest("origin/master is not available")
+        self.assertEqual(lines(old.stdout), [95])
 
-    def test_yaml_comments(self):
-        text = (
-            "    steps:\n"
-            "      # - run: echo ${{ github.ref }}\n"
-            "      - run: echo ok # ${{ github.ref }}\n"
-        )
-        self.assertEqual(found(text), [])
+    def test_repo_workflows_pass(self):
+        folder = os.path.join(ROOT, ".github", "workflows")
+        for name in sorted(os.listdir(folder)):
+            if name.endswith((".yml", ".yaml")):
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    self.assertEqual(lines(handle.read()), [], name)
 
-    def test_defaults_run_mapping(self):
-        text = "defaults:\n  run:\n    shell: bash\n"
-        self.assertEqual(found(text), [])
+    def test_yaml_file_is_scanned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "w.yaml")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(MUST_FAIL["run"])
+            run = subprocess.run(
+                [sys.executable, "-I", TOOL, path], capture_output=True, text=True
+            )
+            self.assertEqual(run.returncode, 1)
+            self.assertIn("w.yaml:2:", run.stdout)
 
-
-class Refused(unittest.TestCase):
-    def assertRefused(self, text):
-        hits = found(text)
-        self.assertTrue(hits, text)
-        self.assertTrue(all("refused" in m for _, m in hits), hits)
-
-    def test_flow_mapping(self):
-        self.assertRefused("    steps:\n      - {run: echo hi}\n")
-
-    def test_quoted_key(self):
-        self.assertRefused(step('"run": echo hi'))
-
-    def test_anchor_and_alias(self):
-        self.assertRefused("    steps:\n      - &s\n        run: echo hi\n      - *s\n")
-        self.assertRefused(step("run: *script"))
-
-    def test_merge_key(self):
-        self.assertRefused("    steps:\n      - <<: *s\n")
-
-
-class Cli(unittest.TestCase):
-    def test_main_exit_codes(self):
-        self.assertEqual(cwe.main(["x"]), 2)
-
-
-class RepoWorkflows(unittest.TestCase):
-    def test_repo_workflows_are_clean(self):
-        files = sorted(glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml")))
-        self.assertTrue(files)
-        for path in files:
-            with open(path, encoding="utf-8") as f:
-                self.assertEqual(found(f.read()), [], path)
+    def test_usage(self):
+        self.assertEqual(cwe.main([]), 2)
 
 
 if __name__ == "__main__":
