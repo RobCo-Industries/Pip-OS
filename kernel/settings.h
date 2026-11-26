@@ -53,6 +53,8 @@ typedef struct {
     uint32_t line_delay_ms; /* pause between boot lines */
     unsigned volume;        /* audio volume, 0 to 100 */
     int beep;               /* 1: beep at power-on */
+    uint32_t char_delay_ms; /* pause after each boot text character, 0: none */
+    int key_click;          /* 1: a click per character written with a delay */
     unsigned backend;       /* PIPOS_BACKEND_* */
     pipos_tft_settings_t tft;
     unsigned tft_bad;       /* backend and tft_* values refused, each reported once */

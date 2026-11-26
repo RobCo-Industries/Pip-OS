@@ -24,12 +24,18 @@ beep = yes
 |---|---|---|---|---|
 | `display` | `scheme` | `green`, `amber`, `blue`, `white`, any case | `green` | Colour scheme of the screen console |
 | `display` | `line_delay_ms` | 0 to 2000 | `0` | Pause between two boot lines, in milliseconds |
+| `display` | `char_delay_ms` | 0 to 100 | `0` | Pause after each character of the boot text, in milliseconds. See [BOOT.md](BOOT.md#boot-text). |
 | `display` | `backend` | `hdmi`, `tft`, `both`, any case | `hdmi` | Where frames go, see [SPI panel](#spi-panel) |
 | `audio` | `volume` | 0 to 100 | `100` | Audio volume in percent |
 | `holotape` | `slot` | `on`, `off`, any case | `off` | The holotape slot of ABI 1.4. `off` touches no slot pin. See [API.md](API.md#the-holotape-slot) and [Slot and panel](#slot-and-panel). |
 | `audio` | `beep` | `yes`, `no`, `true`, `false`, `on`, `off`, `1`, `0`, any case | `yes` | Beep once at power-on |
+| `audio` | `key_click` | A boolean, as `beep` | `no` | A short click for each character of the boot text. It needs `char_delay_ms` above 0: with `char_delay_ms = 0` no click plays, whatever `key_click` says. |
 
 Numbers are unsigned decimal. A `+` sign is accepted.
+
+For a real device we suggest `char_delay_ms = 20`, `line_delay_ms = 200` and `key_click = yes`. The boot text then takes about 11 seconds. Every character costs `char_delay_ms`, spaces included, and each line but the first waits `line_delay_ms`. The standard boot text has 15 lines and about 363 characters, so 7.3 s of characters and 2.8 s between lines. The power-on beep and the wait for each line's last click add the rest. A measured boot took 10.65 s.
+
+Below about 20 ms per character the clicks set the pace, not `char_delay_ms`. The driver starts and ends a sound only on its 100 Hz tick, so a click can take up to two ticks from request to end, and the next character waits for it. Both new keys are off by default, so a card without them boots as before.
 
 ## SPI panel
 
@@ -97,7 +103,7 @@ No configuration problem stops the boot. The kernel prints one marker per proble
 The summary marker:
 
 ```
-@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=amber line_delay_ms=150 volume=80 beep=1
+@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=amber line_delay_ms=150 volume=80 beep=1 char_delay_ms=0 key_click=0
 ```
 
 On a syntax error, keys before the bad line may already have printed `unknown` or `badvalue` markers. None of them applies.

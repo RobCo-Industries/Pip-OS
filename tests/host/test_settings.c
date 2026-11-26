@@ -35,6 +35,8 @@ TEST(defaults)
     CHECK_EQ(s.line_delay_ms, 0);
     CHECK_EQ(s.volume, 100);
     CHECK_EQ(s.beep, 1);
+    CHECK_EQ(s.char_delay_ms, 0);
+    CHECK_EQ(s.key_click, 0);
 }
 
 TEST(empty_text_keeps_defaults)
@@ -507,4 +509,32 @@ TEST(slot_clash_rules)
     CHECK_EQ(is.count, 1);
     CHECK_STR(is.text[0], "pin_twice display.tft_reset 0");
     CHECK_EQ(s.holo_slot, 1);
+}
+
+TEST(typing_keys)
+{
+    pipos_settings_t s;
+    issues_t is;
+    unsigned line = 0;
+
+    CHECK_EQ(parse("[display]\nchar_delay_ms = 20\n[audio]\nkey_click = Yes\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 0);
+    CHECK_EQ(s.char_delay_ms, 20);
+    CHECK_EQ(s.key_click, 1);
+
+    CHECK_EQ(parse("[display]\nchar_delay_ms = 100\n[audio]\nkey_click = off\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 0);
+    CHECK_EQ(s.char_delay_ms, 100);
+    CHECK_EQ(s.key_click, 0);
+
+    CHECK_EQ(parse("[display]\nchar_delay_ms = 101\n[audio]\nkey_click = loud\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 2);
+    CHECK_STR(is.text[0], "badvalue display.char_delay_ms 2");
+    CHECK_STR(is.text[1], "badvalue audio.key_click 4");
+    CHECK_EQ(s.char_delay_ms, 0);
+    CHECK_EQ(s.key_click, 0);
+
+    CHECK_EQ(parse("[display]\nchar_delay_ms = -5\n", &s, &is, &line), 0);
+    CHECK_EQ(is.count, 1);
+    CHECK_EQ(s.char_delay_ms, 0);
 }
