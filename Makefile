@@ -25,6 +25,8 @@
 #   make conformance-bootdir DIR=<path>
 #                             bootdir with the conformance ROM as
 #                             PIPBOY/ROM1.ROM and its two holotapes
+#   make boot-sound           boot a card with the sound on in QEMU and write
+#                             build/boot_sound.wav, what the pin would play
 #   make sdk-package          build/pipos-<version>.zip, the SDK package,
 #                             then its check: see docs/SDK_PACKAGE.md
 #
@@ -142,6 +144,26 @@ sound-table-check:
 sound-table-test:
 	$(PYTHON) -I -m unittest discover -s tests/tools -p test_sound_table.py
 	tests/host/sound_table_make_test.sh
+
+# ---- Boot sound preview -----------------------------------------------
+#
+# QEMU has no sound. `make boot-sound` boots a card with the sound on in
+# QEMU on one board, raspi0 unless BOARD names one, saves the serial log
+# and rebuilds what the audio pin would play into build/boot_sound.wav.
+# See docs/TESTING.md.
+
+BOOT_SOUND_BOARD = $(if $(filter all,$(BOARD)),raspi0,$(BOARD))
+.PHONY: boot-sound boot-sound-test
+boot-sound: kernel venv
+	@mkdir -p $(BUILD)/boot_sound
+	$(VENV)/bin/pytest tests/test_boot_sound_log.py -q --tb=short --board $(BOOT_SOUND_BOARD) \
+		--build-dir $(BUILD) --boot-sound-log $(BUILD)/boot_sound/serial.log
+	$(PYTHON) -I tools/sound_table.py --dump $(BUILD)/boot_sound/pcm
+	$(PYTHON) -I tools/boot_sound.py $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav \
+		--pcm $(BUILD)/boot_sound/pcm
+
+boot-sound-test:
+	$(PYTHON) -I -m unittest discover -s tests/tools -p test_boot_sound.py
 
 # ---- ROMs ---------------------------------------------------------------
 
@@ -296,7 +318,7 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
-           workflow-exprs-test sound-table-test
+           workflow-exprs-test sound-table-test boot-sound-test
 
 # Every workflow line with a ${{ expression has the one safe KEY: value shape.
 .PHONY: workflow-exprs-test

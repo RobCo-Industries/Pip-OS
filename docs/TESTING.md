@@ -59,6 +59,8 @@ The plugin removes a passing test's `tmp_path` when the test ends. A failing tes
 | `tests/test_sdk_boot.py` | The kernel an SDK package ships, with only the package's files: the simulator card, QEMU from its `boot.json`, the runner's done line with `rc=0`. It runs only with `--sdk-zip`, through `make sdk-boot-test SDK_ZIP=<zip>`. See [SDK_PACKAGE.md](SDK_PACKAGE.md#the-boot-check). |
 | `tests/tools/test_sound_table.py` | `tools/sound_table.py` and the committed table, without a build or QEMU: the bytes against a recorded SHA-256, two runs equal, `--check` passes and fails after a changed parameter, the click ceiling refused, the sizes, each click's level and mean, its energy by band from a small DFT, the note's pitch at eight times within 1 percent, its level within 1 step of the rule and never rising as it climbs, its fades, and the blip's two pitches. `make test-host` runs it, and `tests/host/test_sound_table.c` checks the ceiling on the linked table. |
 | `tests/host/sound_table_make_test.sh` | A stale table, from a changed copy of the parameters given as `SOUND_PARAMS`, stops `make kernel` with its message before it writes the image, on a fresh build and over a built one. An up-to-date table builds. `make -n` of `all`, `kernel`, `sdimage`, `run`, `bootdir`, `test-host` and `test-target` runs the check before the table compiles. |
+| `tests/tools/test_boot_sound.py` | `tools/boot_sound.py` on hand-written logs, without a build or QEMU: a buffer at its time, samples held per carrier period, a queued buffer, the volume cut and rounded, the overlay sum, its clamp, its start on the play's grid and its end with the play, the rest level at duty 0 and at the midpoint after the ramp, the thump in the file, an unknown CRC, a tone's duty, a cut, a play that ends, lines out of order or malformed, and each limit. `make test-host` runs it. |
+| `tests/test_boot_sound_log.py` | Saves the serial log of one boot with the sound on. It runs only with `--boot-sound-log`, through `make boot-sound`. See [Hearing a boot](#hearing-a-boot). |
 | `tests/tools/test_hosttiming.py` | `tests/hosttiming.py` on its own, without a build or QEMU: the stream judgement on the numbers of the failing CI run and of normal runs, the chains, the panel retries, and the session rule. See [Host timing](#host-timing). |
 | `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers, in auto mode, and in auto mode with the clock chip. See [Conformance ROM](#conformance-rom). |
@@ -68,6 +70,30 @@ While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms
 The helpers live in the SDK, in `sdk/testing/pipos_testing/`, so a ROM project can use them too. `tests/pipos_helpers.py` re-exports them. Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
 A test that runs a subprocess builds its environment with `minimal_env()` from RobCo-Core's `harness.env`, and passes the variables it needs as arguments. Never copy `os.environ`: pytest prints locals when a test fails, so a copy puts every host secret in the log. `tests/test_env_hygiene.py` fails on such a copy.
+
+## Hearing a boot
+
+QEMU has no PWM model, so nobody hears a QEMU boot. `make boot-sound` rebuilds what the audio pin would play:
+
+1. `tests/test_boot_sound_log.py` boots a card with `char_delay_ms = 20`, `line_delay_ms = 200`, `volume = 80`, the beep and `key_click = yes` on one board, `raspi0` unless `BOARD` names one, and saves the serial log in `build/boot_sound/serial.log`.
+2. `tools/sound_table.py --dump` writes the sound table as `.u8` files in `build/boot_sound/pcm`.
+3. `tools/boot_sound.py` reads the log's `ev=audio` markers and writes `build/boot_sound.wav`.
+
+Today the kernel plays its tone per character and no sample of the table, so the file holds that sound.
+
+`tools/boot_sound.py LOG OUT.wav --pcm DIR...` uses the standard library only. It finds each sample play's bytes by the CRC the trace prints, among the `.u8` files of the `--pcm` folders. An unknown CRC plays as a buffer of 128, with one warning per CRC. It applies the driver's volume and overlay rules, places each buffer at its `t_ms`, renders a tone as the pulse the pin carries and keeps the rest level: duty 0, or duty 128 after the library's rest ramp. It writes 16-bit mono at 37500 Hz, one frame per carrier period, after a one-pole 20 Hz high-pass that stands for the coupling capacitor. So a jump of the pin is heard as a thump. It reads the lines the pinned RobCo-Core prints and also `op=pcm_mix` and the rest ramp of a newer one. `--help` lists both, the rounding rule of each and the limits on what it reads. A bad line stops it with one message that names the line.
+
+How the file differs from the device:
+
+| | The file | The device |
+|---|---|---|
+| Sample values and rate | The same 8-bit steps at their rate, held per carrier period | The same, if the PWM takes a new duty once per period. Not checked. |
+| Card reads | Take almost no time in QEMU | Take tens of milliseconds and hold the text while they run |
+| Late IRQ | Not modelled | Skips samples |
+| Above 15 kHz | What the player keeps | Copies of each sound, and a 17.9 kHz filter that removes little |
+| Speaker | Headphones or a laptop | A small speaker behind a class D amplifier and a trimmer. Loudness and colour unknown. |
+
+The file is a preview, not a measurement. Nobody has compared it with a board.
 
 ## SPI panel
 

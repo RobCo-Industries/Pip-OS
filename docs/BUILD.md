@@ -59,6 +59,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `make sdk-package` | `build/pipos-<version>.zip`, the SDK package, then its check. See [SDK_PACKAGE.md](SDK_PACKAGE.md). |
 | `make check-pins` | The CI pins and the RobCo-Core doc links match the submodule |
 | `make sound-table` | Writes `kernel/sound_table.c` and `.h` again, see [System sound tables](#system-sound-tables) |
+| `make boot-sound` | Boots a card with the sound on in QEMU and writes `build/boot_sound.wav`, see [Hearing a boot](TESTING.md#hearing-a-boot) |
 | `make clean` | Removes `build/` |
 
 | Variable | Default | Meaning |

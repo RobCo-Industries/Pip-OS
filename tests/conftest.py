@@ -22,12 +22,17 @@ def pytest_addoption(parser):
                      help="test_sdk_boot.py: the SDK package to boot, pipos-<version>.zip")
     parser.addoption("--sdk-tape", default=None,
                      help="test_sdk_boot.py: the holotape the package's runner launches")
+    parser.addoption("--boot-sound-log", default=None,
+                     help="test_boot_sound_log.py: where to save the serial log of the boot")
 
 
 def pytest_ignore_collect(collection_path, config):
-    """test_sdk_boot.py runs only when it is given a package, so the suite
-    neither skips it nor boots a package it was not asked for."""
+    """test_sdk_boot.py runs only when it is given a package, and
+    test_boot_sound_log.py only when it is given a log path, so the suite
+    neither skips them nor boots what it was not asked for."""
     if collection_path.name == "test_sdk_boot.py" and not config.getoption("--sdk-zip"):
+        return True
+    if collection_path.name == "test_boot_sound_log.py" and not config.getoption("--boot-sound-log"):
         return True
     return None
 
