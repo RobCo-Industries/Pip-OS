@@ -90,9 +90,17 @@ jobs:
           make sdk-package CROSS="$CROSS" PACKAGE_BUILD="$PACKAGE_BUILD" \
             SDK_GCC_RELEASE="$XPACK_RELEASE" PYTHON=python3
           sha256sum -c first.sha256
+      # The tag reaches the script only through the environment. The
+      # check has compared the file name with sdk.json, so the tag must
+      # be exactly pipos-<version> of the package.
       - name: The tag names the package
         if: startsWith(github.ref, 'refs/tags/pipos-')
-        run: test -f "build/${{ github.ref_name }}.zip"
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          zip=$(ls build/pipos-*.zip)
+          test "$(basename "$zip" .zip)" = "$TAG"
+          test -f "build/$TAG.zip"
       # The search must be able to fail: a copy with this host's name in
       # one file is refused.
       - name: The check refuses a planted host name
