@@ -119,7 +119,9 @@ def scroll_run(board, kernel_image, test_rom, tmp_path, blip):
     for m in blips:
         assert (m["rate"], m["crc"]) == (RATE, blip), m
     times = [int(m["t_ms"]) for m in blips]
-    assert times[0] - quiet_ms >= QUIET_MS, (quiet_ms, times[0])
+    # ev=quiet reads tick_ms(), the blip the audio trace clock. The trace
+    # clock starts from tick_ms() and can lag it by up to one tick.
+    assert times[0] - quiet_ms >= QUIET_MS - TICK_MS, (quiet_ms, times[0])
 
     scroll = one(vm, "scroll")
     assert (scroll["lines"], scroll["blips"]) == (str(LINES), str(BLIPS)), scroll
