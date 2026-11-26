@@ -56,6 +56,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `make conformance`, `make conformance-card`, `make conformance-bootdir DIR=<dir>` | The conformance ROM, its card and its real-card files |
 | `make sdk-example`, `make test-roms` | The SDK examples and the test ROMs only |
 | `make test`, `make test-host`, `make test-target` | The tests, see [TESTING.md](TESTING.md) |
+| `make sdk-package` | `build/pipos-<version>.zip`, the SDK package, then its check. See [SDK_PACKAGE.md](SDK_PACKAGE.md). |
 | `make check-pins` | The CI pins and the RobCo-Core doc links match the submodule |
 | `make clean` | Removes `build/` |
 

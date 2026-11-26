@@ -89,6 +89,8 @@ The file leaves out what is the project's or `make`'s own: `CFLAGS_EXTRA`, `-Wer
 
 `tests/host/flags_json_test.sh` builds the example tape and the example ROM twice, by `make` and by `tests/host/flags_json_build.py`, which follows the spec's build order and reads only `flags.json` and a package folder. Both give the same SHA-256. This is tested on one machine only.
 
+`make sdk-package` puts `flags.json` in the SDK package with the headers, `libpip.a`, `crt0.S`, the linker scripts and the kernel. See [SDK_PACKAGE.md](SDK_PACKAGE.md).
+
 ## Writing a holotape
 
 A holotape is a small program the ROM starts. Start from [`sdk/examples/tape`](../sdk/examples/tape), a tape named `BEACON`. It shows its title and argument string, draws a few shapes, plays a short tune and waits. UP and DOWN change the exit status it shows, SELECT ends it with that status.
