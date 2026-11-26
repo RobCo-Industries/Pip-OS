@@ -112,6 +112,26 @@ def is_str(v):
     return isinstance(v, str)
 
 
+def surrogate_in(v):
+    """The first string in the JSON value v, a key included, that holds an
+    unpaired surrogate such as "\\ud800", or None. JSON parsing accepts one,
+    and it has no UTF-8 form, so it is not text."""
+    if isinstance(v, str):
+        try:
+            v.encode("utf-8")
+        except UnicodeEncodeError:
+            return v
+        return None
+    if isinstance(v, dict):
+        v = [x for kv in v.items() for x in kv]
+    if isinstance(v, list):
+        for x in v:
+            found = surrogate_in(x)
+            if found is not None:
+                return found
+    return None
+
+
 def is_list(v):
     return isinstance(v, list)
 
@@ -515,8 +535,13 @@ def check(args):
             except (UnicodeDecodeError, ValueError) as e:
                 fail(f"sdk.json: not UTF-8 JSON: {e}")
             else:
-                listed = check_manifest(doc, fail)
-                check_file_name(args.zip, doc, fail)
+                bad = surrogate_in(doc)
+                if bad is not None:
+                    fail(f"sdk.json: the string {ascii(bad)} holds an unpaired surrogate, "
+                         "which is not UTF-8")
+                else:
+                    listed = check_manifest(doc, fail)
+                    check_file_name(args.zip, doc, fail)
         if listed is not None:
             for n in names:
                 if n == MANIFEST:

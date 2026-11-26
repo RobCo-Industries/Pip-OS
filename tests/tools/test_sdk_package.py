@@ -12,6 +12,8 @@ import io
 import json
 import os
 import stat
+import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -799,3 +801,42 @@ def test_build_writes_integers_as_integers(package):
     assert type(doc["format"]) is int
     assert all(type(v) is int for v in doc["formats"].values())
     assert all(type(f["size"]) is int for f in doc["files"])
+
+
+# ---- text from the archive that is not UTF-8 ---------------------------------------
+
+def check_in_child(path):
+    """The checker run as a program, so a crash in print shows too: (status, out)."""
+    r = subprocess.run([sys.executable, "-I", TOOL, "check", str(path)],
+                       capture_output=True, text=True, timeout=60,
+                       env={"PATH": os.environ.get("PATH", ""), "PYTHONIOENCODING": "utf-8"})
+    return r.returncode, r.stdout + r.stderr
+
+
+def put_surrogate(doc, where):
+    """doc with an unpaired surrogate written into the field `where`."""
+    bad = "\ud800"
+    if where == "path":
+        doc["files"][-1]["path"] = "include/pipos/" + bad + ".h"
+    elif where == "name":
+        doc["name"] = bad
+    elif where == "version":
+        doc["version"] = "1.4." + bad
+    elif where == "spdx":
+        doc["licences"][0]["spdx"] = "MIT" + bad
+    elif where == "licence path":
+        doc["licences"][0]["paths"].append(bad)
+    elif where == "key":
+        doc[bad] = 1
+    return doc
+
+
+@pytest.mark.parametrize("where", ["path", "name", "version", "spdx", "licence path", "key"])
+def test_unpaired_surrogate_in_manifest(package, where):
+    items = entries(package)
+    # json.dumps writes the surrogate as the escape "\ud800", as an attacker would.
+    rewrite(package, set_manifest(items, put_surrogate(manifest(items), where)))
+    status, out = check_in_child(package)
+    assert status == 1, out
+    assert "Traceback" not in out, out
+    assert "FAIL: sdk.json: the string" in out and "unpaired surrogate" in out, out
