@@ -168,7 +168,7 @@ beep = yes
 | `volume` in `[audio]` | 0 to 100 | `100` |
 | `beep` in `[audio]` | `yes` or `no` | `yes` |
 | `char_delay_ms` in `[display]` | 0 to 100, pause after each boot text character | `0` |
-| `system_sound` in `[audio]` | `yes` or `no`, the system sound: a soft beep at power-on. `key_click` is its old name. | `no` |
+| `system_sound` in `[audio]` | `yes` or `no`, the system sound: a soft beep at power-on, then disk clicks while the card works. `key_click` is its old name. | `no` |
 
 A bad value keeps the default. A line that is not INI makes Pip-OS ignore the whole file.
 

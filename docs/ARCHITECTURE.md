@@ -16,6 +16,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | `rimg` image format and stage loader | RobCo-Core `src/lib`, `tools/rimg.py` |
 | Build rules, host test rules | RobCo-Core `mk/robco.mk`, `mk/host.mk` |
 | Boot order, boot screen, card and ROM checks | `kernel/main.c`, `kernel/card.c`, `kernel/bootlines.c`, `kernel/screen.c` |
+| The disk click: the click debt and its limiter, the block device wrapper | `kernel/dsound_rules.c`, `kernel/dsound.c` |
 | Running an image | `kernel/rom.c`, `kernel/rom.h` |
 | System-call dispatch | `kernel/syscall.c`, `kernel/sysdispatch.c`, `kernel/sys.h` |
 | System-call groups | `kernel/sys_<group>.c` |
@@ -38,7 +39,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 7. `start_clock()`: `i2c_init()` and `rtc_init()`.
 8. `pipos_card_mount()` in `card.c`: `sd_init()`, then `fs_mount_boot()`.
 9. `pipos_config_load()` reads `/PIPBOY/PIPOS.CFG` through `pipos_settings_parse()`.
-10. `apply_settings()`: scheme, volume, line delay, power-on beep. Then `pipos_display_start()` in `display.c` starts the SPI panel when `[display] backend` asks for it.
+10. `apply_settings()`: scheme, volume, line delay, power-on beep. `pipos_dsound_start()` in `dsound.c` then starts the disk click when the system sound runs. Then `pipos_display_start()` in `display.c` starts the SPI panel when `[display] backend` asks for it.
 11. `pipos_sys_init()` in `syscall.c`: builds the call index, runs every group's `init`, installs the `svc` handler.
 12. `boot_screen()`: the head lines, `pipos_holo_count()`, `pipos_rom_load()`, the ROM line, the tail lines.
 13. `pipos_rom_run()` in `rom.c` when the ROM passed the check.

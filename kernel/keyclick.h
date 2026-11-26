@@ -2,8 +2,8 @@
  * The boot text that writes itself, one character at a time. Pure code: it
  * builds and runs on the host in the unit tests.
  *
- * Typing makes no sound. With [audio] system_sound on, the boot plays the
- * rest ramp and the soft beep in main.c instead.
+ * Typing makes no sound of its own. With [audio] system_sound on, main.c
+ * plays the rest ramp and the soft beep, and dsound.c the disk clicks.
  */
 #ifndef PIPOS_KEYCLICK_H
 #define PIPOS_KEYCLICK_H

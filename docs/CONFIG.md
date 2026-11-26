@@ -29,12 +29,12 @@ beep = yes
 | `audio` | `volume` | 0 to 100 | `100` | Audio volume in percent |
 | `holotape` | `slot` | `on`, `off`, any case | `off` | The holotape slot of ABI 1.4. `off` touches no slot pin. See [API.md](API.md#the-holotape-slot) and [Slot and panel](#slot-and-panel). |
 | `audio` | `beep` | `yes`, `no`, `true`, `false`, `on`, `off`, `1`, `0`, any case | `yes` | Beep once at power-on |
-| `audio` | `system_sound` | A boolean, as `beep` | `no` | The system sound. At power-on the kernel moves the audio rest level to the midpoint with the library's ramp, then plays the soft beep instead of the square beep if `beep` is on. See [BOOT.md](BOOT.md#the-system-sound). |
+| `audio` | `system_sound` | A boolean, as `beep` | `no` | The system sound. At power-on the kernel moves the audio rest level to the midpoint with the library's ramp, then plays the soft beep instead of the square beep if `beep` is on. Card work and typed boot lines then make disk clicks. See [BOOT.md](BOOT.md#the-system-sound) and [the disk click](BOOT.md#the-disk-click). |
 | `audio` | `key_click` | A boolean, as `beep` | `no` | The old name of `system_sound`, still read. When both are in the file, a valid `system_sound` line wins, in either order. |
 
 Numbers are unsigned decimal. A `+` sign is accepted.
 
-For a real device we suggest `char_delay_ms = 20`, `line_delay_ms = 200` and `system_sound = yes`. The boot text then takes about 10 seconds. Every character costs `char_delay_ms`, spaces included, and each line but the first waits `line_delay_ms`. The standard boot text has 15 lines and about 363 characters, so 7.3 s of characters and 2.8 s between lines. Typing makes no sound and waits for none.
+For a real device we suggest `char_delay_ms = 20`, `line_delay_ms = 200` and `system_sound = yes`. The boot text then takes about 10 seconds. Every character costs `char_delay_ms`, spaces included, and each line but the first waits `line_delay_ms`. The standard boot text has 15 lines and about 363 characters, so 7.3 s of characters and 2.8 s between lines. Typing makes no sound of its own and waits for none. With the system sound on, each typed line adds disk clicks.
 
 `char_delay_ms` and `system_sound` are off by default, so a card without them boots as before. The `ev=config` summary keeps the field name `key_click=` and prints the resolved value of `system_sound` there.
 

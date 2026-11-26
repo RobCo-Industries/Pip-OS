@@ -80,7 +80,7 @@ The kernel prints these lines on the screen and on the UART. With `line_delay_ms
 
 With `[display] char_delay_ms` above 0, the kernel writes each boot line on the HDMI console one character at a time and waits that long after each one. A block cursor shows the writing place while the boot text writes, and goes away after the last boot line. The SPI panel gets each line whole, when it is done. The UART gets each line whole too, in every case, so the serial log keeps its bytes. With `char_delay_ms = 0`, the default, each line appears at once and no cursor shows.
 
-Typing makes no sound. No character waits for a sound.
+Typing makes no sound of its own. No character waits for a sound. With the system sound on, each typed line adds disk clicks, see [The disk click](#the-disk-click).
 
 ### The system sound
 
@@ -104,6 +104,37 @@ In QEMU the boot then prints, before the first boot line:
 The ramp plays at full scale whatever the volume. Times and counts vary with the host. With `system_sound = no`, the default, the boot plays the square beep as before: the same pin levels, trace and UART bytes.
 
 Nobody has heard the soft beep on a board yet.
+
+### The disk click
+
+With the system sound on, the machine's work makes clicks. Two kinds of work add to a debt of clicks:
+
+| Work | Adds |
+|---|---|
+| A read or write call on the card or the holotape slot | `2 + blocks / 4` |
+| A boot line written with typing on | `1 + printable characters / 6` |
+
+The debt stops at 40 clicks. `kernel/dsound_rules.c` holds the rules. `kernel/dsound.c` wraps the card's and the slot's block devices, so drivers, the file system and the loader know nothing of sound. The wrapper counts each call with IRQs masked.
+
+A tick callback, the fourth and last tick slot, asks the limiter every 10 ms. The limiter pays the debt in bursts of 3 to 21 clicks. Inside a burst a click starts every 30 to 80 ms. Between bursts it waits 150 to 600 ms more. Each click is the next of the 12 clicks of `sound_click`, 789 bytes at 37500 Hz, 21 ms. A due click starts only when the voice is idle. While the ramp, the beep or a click plays, it waits a tick and is not lost.
+
+Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After each boot stage the kernel prints what the stage added:
+
+```
+@RC stage=pipos ev=disk at=mount calls=4 blocks=4 owed=8
+@RC stage=pipos ev=disk at=config calls=3 blocks=3 owed=6
+@RC stage=pipos ev=disk at=text calls=0 blocks=0 owed=9
+@RC stage=pipos ev=disk at=holo calls=2 blocks=2 owed=4
+@RC stage=pipos ev=disk at=rom calls=4 blocks=4 owed=8
+```
+
+`at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`.
+
+At the jump to a ROM the debt drops to 8 and the kernel plays no more clicks. A click that still plays at the jump ends first. So a click never meets a sound of the ROM.
+
+With the system sound off, the default, the wrapper only forwards each call. No tick callback runs, and the boot prints no `ev=disk` and plays no click: the same UART bytes as before. Without a card there is no `PIPOS.CFG`, so the sound is off.
+
+Nobody has heard the clicks on a board yet.
 
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************
@@ -220,6 +251,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `card` | `rc`, then `sd`, `part` or `fs why` | `ok`, `nocard`, `nopart` or `nomount`. See [The card](#the-card). |
 | `mount` | `part type lba blocks marker` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. `marker` is `1` when it holds a Pip-OS file. |
 | `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep char_delay_ms key_click` | A configuration problem, or the summary. `key_click` holds the resolved `system_sound`. See [CONFIG.md](CONFIG.md). |
+| `disk` | `at calls blocks owed`, or `rc=tickfull` | With the system sound on, what a boot stage added to the click debt. `tickfull`: no tick slot was free, so no click plays. See [The disk click](#the-disk-click). |
 | `sound` | `rc` | The rest ramp of the system sound failed with this library error. The boot goes on as with the system sound off. See [The system sound](#the-system-sound). |
 | `syscalls` | `served` | The calls the kernel serves: a 128-bit hex number, bit n set for call n |
 | `holo` | `count` | `.HTP` files in `/PIPBOY/HOLO/`, without dot names and hidden or system files |
