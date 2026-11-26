@@ -16,7 +16,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | `rimg` image format and stage loader | RobCo-Core `src/lib`, `tools/rimg.py` |
 | Build rules, host test rules | RobCo-Core `mk/robco.mk`, `mk/host.mk` |
 | Boot order, boot screen, card and ROM checks | `kernel/main.c`, `kernel/card.c`, `kernel/bootlines.c`, `kernel/screen.c` |
-| The disk click: the click debt and its limiter, the block device wrapper | `kernel/dsound_rules.c`, `kernel/dsound.c` |
+| The disk click: the click debt and its limiter, the block device wrapper, the boot note and the clicks mixed over it | `kernel/dsound_rules.c`, `kernel/dsound.c` |
 | Running an image | `kernel/rom.c`, `kernel/rom.h` |
 | System-call dispatch | `kernel/syscall.c`, `kernel/sysdispatch.c`, `kernel/sys.h` |
 | System-call groups | `kernel/sys_<group>.c` |

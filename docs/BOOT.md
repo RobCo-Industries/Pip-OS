@@ -116,7 +116,7 @@ With the system sound on, the machine's work makes clicks. Two kinds of work add
 
 The debt stops at 40 clicks. `kernel/dsound_rules.c` holds the rules. `kernel/dsound.c` wraps the card's and the slot's block devices, so drivers, the file system and the loader know nothing of sound. The wrapper counts each call with IRQs masked.
 
-A tick callback, the fourth and last tick slot, asks the limiter every 10 ms. The limiter pays the debt in bursts of 3 to 21 clicks. Inside a burst a click starts every 30 to 80 ms. Between bursts it waits 150 to 600 ms more. Each click is the next of the 12 clicks of `sound_click`, 789 bytes at 37500 Hz, 21 ms. A due click starts only when the voice is idle. While the ramp, the beep or a click plays, it waits a tick and is not lost.
+A tick callback, the fourth and last tick slot, asks the limiter every 10 ms. The limiter pays the debt in bursts of 3 to 21 clicks. Inside a burst a click starts every 30 to 80 ms. Between bursts it waits 150 to 600 ms more. Each click is the next of the 12 clicks of `sound_click`, 789 bytes at 37500 Hz, 21 ms. A due click starts as its own play when the voice is idle. While the boot note plays and more than 30 ms of it remain, it mixes over the note with `audio_pcm_mix()`, see [The boot note](#the-boot-note). While the ramp, the beep, a click or the note's last 30 ms play, it waits a tick. A click the driver refuses also waits a tick. None is lost, and the 12 clicks keep their turn across plain and mixed clicks.
 
 Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After each boot stage the kernel prints what the stage added:
 
@@ -139,6 +139,32 @@ Two waits do not poll. A frame sent to the SPI panel after each boot line takes 
 With the system sound off, the default, the wrapper only forwards each call. No tick callback runs, and the boot prints no `ev=disk` and plays no click: the same UART bytes as before. Without a card there is no `PIPOS.CFG`, so the sound is off.
 
 Nobody has heard the clicks on a board yet.
+
+### The boot note
+
+With the system sound on, a rising note starts with the second boot line. It glides from 1890 Hz to 15700 Hz and fades out, 6326 ms in all, `SOUND_NOTE_MS`. The library's voice makes it live in the sample interrupt from the spans of `sound_note_spans`, 162 rows at 37500 Hz. No sample buffer holds it.
+
+It plays only when the text from the second line on outlasts it:
+
+```
+chars * char_delay_ms + delays * line_delay_ms >= SOUND_NOTE_MS
+```
+
+The kernel counts both from its own boot text. `chars` is the printable characters of every fixed line from the second on: 271 for the stock text. The holotape and ROM lines change from card to card, so they do not count. `delays` is the line delays after the second line starts, one per later line: 13. Typing off plays no note. At the stock 20 ms and 200 ms the text lasts 8020 ms, so the note plays. At 2 ms and no line delay it lasts 542 ms, so it does not, and the clicks play as before.
+
+When the second line starts, after its line delay, the kernel closes the click gate, which drops what is owed. It waits for the voice to be idle, starts the note with `audio_play_voice()` and opens the gate. A due click then mixes over the note, as the disk click says. After the last boot line the kernel waits while the note still plays, polling the trace as the clicks do, and only then jumps to a ROM or prints `ev=ready`.
+
+On the trace backend the note is one line before the second line's text, then its overlays, then its end:
+
+```
+@RC stage=pipos ev=audio op=voice rate=37500 spans=162 len=237190 vol=80 crc=a1bf89e7 t_ms=1428
+@RC stage=pipos ev=audio op=pcm_mix len=789 crc=aeac93c5 t_ms=1525
+@RC stage=pipos ev=audio op=pcm_end n=41337 last=237187 t_ms=7754
+```
+
+`crc` is the CRC-32 of the spans, 4536 bytes. The note prints no marker of its own: `op=voice` is the evidence. If `audio_play_voice()` fails, the boot goes on without the note and prints nothing.
+
+Nobody has heard the note on a board yet.
 
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************
