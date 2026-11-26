@@ -92,6 +92,7 @@ How the file differs from the device:
 | Sample values and rate | The same 8-bit steps at their rate, held per carrier period | The same, if the PWM takes a new duty once per period. Not checked. |
 | Card reads | Take almost no time in QEMU | Take tens of milliseconds and hold the text while they run |
 | Late IRQ | Not modelled | Skips samples |
+| Volume changed during a play | The play keeps the volume of its start, since the trace prints no line for the change | The samples that follow take the new volume |
 | Above 15 kHz | What the player keeps | Copies of each sound, and a 17.9 kHz filter that removes little |
 | Speaker | Headphones or a laptop | A small speaker behind a class D amplifier and a trimmer. Loudness and colour unknown. |
 

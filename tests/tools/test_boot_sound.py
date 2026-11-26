@@ -559,6 +559,16 @@ class Limits(Case):
         self.assertIn("longer than 4096 bytes", str(e.exception))
         self.assertLessEqual(max(seen), bs.MAX_LINE + 2)
 
+    def test_files_together_past_limit(self):
+        old = bs.MAX_PCM_BYTES
+        bs.MAX_PCM_BYTES = 1000
+        try:
+            self.sound("a", bytes([1]) * 600)
+            self.sound("b", bytes([2]) * 600)
+            self.assertFails(["x"], "--pcm: the .u8 files pass 1000 bytes together")
+        finally:
+            bs.MAX_PCM_BYTES = old
+
     def test_time_past_limit(self):
         self.assertFails([stop(bs.MAX_SECONDS * 1000 + 1)], "past the 300 s limit")
 

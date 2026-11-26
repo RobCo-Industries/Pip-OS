@@ -41,6 +41,9 @@ Rules it applies, from the library's driver:
   the nearest step, a half step away from 128, as the newer library does.
   --scale auto, the default, picks nearest when the log has an op=pcm_mix
   line or the rest ramp, whole or cut, and cut otherwise.
+  A play keeps the volume its line prints. The driver applies a volume
+  change to the samples that follow, but prints no line for it, so the
+  file is wrong for a play whose volume changes on the way.
 - A sample play holds duty s / 256 of the 37.5 kHz carrier. A tone is the
   pin's pulse: period round(9600000 / hz) counts, high for
   (period / 2 * vol + 50) / 100 of them. Silence is duty 0, or duty 128
@@ -52,7 +55,8 @@ Rules it applies, from the library's driver:
   of 100 percent is full scale, so a tone never clips.
 
 Limits: a line of at most 4096 bytes, at most 1000000 lines, at most
-300 s of output plus a 0.3 s tail, at most 4096 .u8 files of at most 4 MiB each.
+300 s of output plus a 0.3 s tail, at most 4096 .u8 files of at most 4 MiB
+each and 64 MiB together.
 Each number is checked when its line is read, before anything is built
 from it. From the library: rate= 4000 to 22050, hz= 20 to 20000, vol= 0
 to 100, as the driver caps it before the trace prints it. len= is 1 to
@@ -82,6 +86,7 @@ MAX_LINES = 1000000
 MAX_SECONDS = 300
 MAX_FILES = 4096
 MAX_FILE_BYTES = 4 << 20
+MAX_PCM_BYTES = 64 << 20
 TAIL_MS = 300
 
 RAMP_LEN = 882
@@ -241,6 +246,7 @@ def load_pcm(dirs):
     """{(crc, length): bytes} from the .u8 files of `dirs`."""
     found = {}
     count = 0
+    total = 0
     for d in dirs:
         try:
             names = sorted(os.listdir(d))
@@ -253,10 +259,16 @@ def load_pcm(dirs):
             if count > MAX_FILES:
                 raise LogError("--pcm: more than %d .u8 files" % MAX_FILES)
             p = os.path.join(d, n)
-            if os.path.getsize(p) > MAX_FILE_BYTES:
+            size = os.path.getsize(p)
+            if size > MAX_FILE_BYTES:
                 raise LogError("%s: larger than %d bytes" % (p, MAX_FILE_BYTES))
+            total += size
+            if total > MAX_PCM_BYTES:
+                raise LogError("--pcm: the .u8 files pass %d bytes together" % MAX_PCM_BYTES)
             with open(p, "rb") as f:
-                data = f.read()
+                data = f.read(MAX_FILE_BYTES + 1)
+            if len(data) > MAX_FILE_BYTES:
+                raise LogError("%s: larger than %d bytes" % (p, MAX_FILE_BYTES))
             if data:
                 found.setdefault((zlib.crc32(data), len(data)), data)
     return found
