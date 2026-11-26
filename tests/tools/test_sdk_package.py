@@ -260,6 +260,19 @@ def test_device_entry(package):
     assert_fails(package, "not a regular file or a folder")
 
 
+def test_folder_whose_name_lacks_a_slash(package):
+    rewrite(package, add(entries(package), "include/pipos/sub", b"",
+                         mode=stat.S_IFDIR | 0o755, listed=False))
+    assert_fails(package, "include/pipos/sub: the entry is a folder whose name lacks /")
+
+
+def test_empty_name(package):
+    info = pkg.zip_info("x")
+    info.filename = "/"
+    rewrite(package, entries(package) + [(info, b"")])
+    assert_fails(package, "'/': the name is empty")
+
+
 def test_names_that_differ_only_in_case(package):
     rewrite(package, add(entries(package), "include/pipos/PIP.h", b"x"))
     assert_fails(package, "differs only in case from include/pipos/pip.h")
@@ -500,6 +513,70 @@ def test_manifest_breaks(package, field, value, text):
     doc = manifest(items)
     doc[field] = value
     rewrite(package, set_manifest(items, doc))
+    assert_fails(package, text)
+
+
+# Values of the right JSON type that break the form of their field. Each
+# row breaks one part of one rule of check_manifest.
+VALUE_ROWS = [
+    (("format",), 2, "format is not 1"),
+    (("format",), 0, "format is not 1"),
+    (("name",), "templates", "name is not pipos"),
+    (("name",), "Pipos", "name is not pipos"),
+    (("version",), "1.4.65536", "version is not X.Y.Z"),
+    (("version",), "1.4", "version is not X.Y.Z"),
+    (("built_from",), [], "built_from is not"),
+    (("built_from", 0, "repo"), "", "built_from is not"),
+    (("built_from", 0, "commit"), "A" * 40, "built_from is not"),
+    (("formats", "rimg"), 2, "formats is not"),
+    (("formats", "templates"), 1, "formats is not"),
+    (("tools", 0, "version"), "", "tools is not"),
+    (("tools", 0, "version"), "15.2.1 1.1", "tools is not"),
+    (("tools", 0, "version"), 'a"b', "tools is not"),
+    (("tools", 0, "version"), "a\\b", "tools is not"),
+    (("tools", 0, "version"), "1" * 65, "tools is not"),
+    (("tools",), [{"name": "gcc", "version": "1"}], "tools is not"),
+    (("firmware", "repo"), "raspberrypi/other", "firmware is not"),
+    (("firmware", "commit"), "A" * 40, "firmware is not"),
+    (("firmware", "commit"), "1" * 39, "firmware is not"),
+    (("firmware", "files", 0, "name"), "start.elf", "firmware is not"),
+    (("firmware", "files", 0, "name"), "kernel.img", "firmware is not"),
+    (("firmware", "files", 0, "sha256"), "A" * 64, "firmware is not"),
+    (("licences", 0, "spdx"), "", "licences is not"),
+    (("files", 0, "size"), -1, "files[0] is not"),
+]
+
+
+@pytest.mark.parametrize("where,value,text", VALUE_ROWS,
+                         ids=[f"{'.'.join(map(str, w))}={json.dumps(v)}"
+                              for w, v, _ in VALUE_ROWS])
+def test_manifest_value_breaks(package, where, value, text):
+    items = entries(package)
+    doc = manifest(items)
+    at = doc
+    for k in where[:-1]:
+        at = at[k]
+    at[where[-1]] = value
+    rewrite(package, set_manifest(items, doc))
+    assert_fails(package, f"sdk.json: {text}")
+
+
+def test_firmware_file_dropped(package):
+    items = entries(package)
+    doc = manifest(items)
+    doc["firmware"]["files"].pop()
+    rewrite(package, set_manifest(items, doc))
+    assert_fails(package, "sdk.json: firmware is not")
+
+
+@pytest.mark.parametrize("body,text", [
+    (b"[]", "sdk.json: the top value is not an object"),
+    (b"{not json", "sdk.json: not UTF-8 JSON"),
+    (b'{"name": "\xff"}', "sdk.json: not UTF-8 JSON"),
+])
+def test_manifest_that_does_not_parse(package, body, text):
+    rewrite(package, [(i, body if i.filename == "sdk.json" else d)
+                      for i, d in entries(package)])
     assert_fails(package, text)
 
 
