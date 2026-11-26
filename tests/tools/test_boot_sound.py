@@ -287,6 +287,12 @@ class Rest(Case):
             self.assertEqual(duty[frame(80)], 0.0, cut)
             self.assertEqual(duty[-1], 0.0, cut)
 
+    def test_second_ramp_cut_early_leaves_duty_0(self):
+        duty, _ = self.render([pcm(0, bs.RAMP), end(40), pcm(100, bs.RAMP), stop(120), stop(200)])
+        self.assertEqual(duty[frame(80)], 0.5)
+        self.assertEqual(duty[frame(160)], 0.0)
+        self.assertEqual(duty[-1], 0.0)
+
     def test_ramp_that_reaches_its_end_without_end_line(self):
         duty, _ = self.render([pcm(0, bs.RAMP), stop(100)])
         self.assertEqual(duty[-1], 0.5)
@@ -528,6 +534,30 @@ class Bounds(Case):
 class Limits(Case):
     def test_long_line(self):
         self.assertFails(["x" * (bs.MAX_LINE + 1)], "longer than 4096 bytes")
+
+    def test_long_line_is_not_read_whole(self):
+        path = os.path.join(self.dir, "serial.log")
+        with open(path, "wb") as f:
+            f.write(b"x" * (64 << 20))
+        seen = []
+        real = io.BufferedReader.readline
+        class Spy(io.BufferedReader):
+            def readline(self, size=-1):
+                line = real(self, size)
+                seen.append(len(line))
+                return line
+        old = bs.open if hasattr(bs, "open") else None
+        bs.open = lambda p, m: Spy(io.FileIO(p, "r"))
+        try:
+            with self.assertRaises(bs.LogError) as e:
+                bs.read_log(path)
+        finally:
+            if old is None:
+                del bs.open
+            else:
+                bs.open = old
+        self.assertIn("longer than 4096 bytes", str(e.exception))
+        self.assertLessEqual(max(seen), bs.MAX_LINE + 2)
 
     def test_time_past_limit(self):
         self.assertFails([stop(bs.MAX_SECONDS * 1000 + 1)], "past the 300 s limit")

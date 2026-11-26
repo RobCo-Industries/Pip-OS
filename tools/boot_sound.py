@@ -214,7 +214,13 @@ def read_log(path):
     dropped = 0
     name = os.path.basename(path)
     with open(path, "rb") as f:
-        for no, raw in enumerate(f, 1):
+        no = 0
+        while True:
+            # Never read more of a line than the limit allows.
+            raw = f.readline(MAX_LINE + 2)
+            if not raw:
+                break
+            no += 1
             where = "%s:%d" % (name, no)
             if no > MAX_LINES:
                 raise LogError("%s: more than %d lines" % (name, MAX_LINES))
@@ -403,6 +409,11 @@ class Renderer:
             if op == "pcm":
                 self.close(t)
                 ramp = is_ramp(op, f)
+                if ramp:
+                    # The library starts a ramp from duty 0 only. Cut before
+                    # its last sample, it leaves duty 0, also after an
+                    # earlier ramp that reached its end.
+                    self.rest = 0.0
                 data = self.lookup(f["crc"], f["len"])
                 self.cur = Play(t, f["rate"], f["vol"], data, ramp)
             elif op == "pcm_next":
