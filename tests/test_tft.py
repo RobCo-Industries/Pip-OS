@@ -25,8 +25,8 @@ from harness.boot import boot
 from harness.env import minimal_env
 
 from hosttiming import judge_stream, judged
-from panelsends import (FULL_BYTES, H, W, Sends, both_sends, judged_sends, panic_sends,
-                        restore_sends, window_sends)
+from panelsends import (FULL_BYTES, H, W, Sends, both_sends, end_sends, judged_sends,
+                        panic_sends, restore_sends, window_sends)
 
 from pipos_helpers import (TIMEOUT, assert_rom_checks, booted, config, config_issues, dump,
                            make_card, no_exception, one, pipos_markers, press, rom_markers,
@@ -340,5 +340,30 @@ def test_boot_text_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, n
             assert "PIP-OS READY" in rows and "PIP-OS KERNEL INITIALIZED" in rows, rows
         # SLPOUT, then DISPON: one command byte each, DC low.
         return restore_sends(vm.markers(), zlib.crc32(bytes([0, 0x11, 0, 0x29])))
+
+    judged_sends(strict)
+
+
+def test_boot_text_after_a_rom_is_one_frame(board, tft_build, test_rom, tmp_path, need_mtools):
+    """After a scroll, a ROM killed on a lit screen: one whole frame with the boot text."""
+    def strict():
+        image, model = tft_build
+        cfg = config(beep="no", extra="[display]\nbackend = both\nchar_delay_ms = 1\n"
+                                      "[audio]\nsystem_sound = no\n")
+        sd = card(tmp_path, cfg, {ROM: test_rom("tft_window")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+            vm.wait_for("ev=scroll", timeout=TIMEOUT)
+            wait_rom(vm, "shown", 1)
+            vm.script("kill", timeout=TIMEOUT)
+            press(vm, "select")  # the kill lands when the ROM's wait returns
+            vm.wait_for("ev=ready", timeout=TIMEOUT)
+            # The panel model shows the text, read back from the bytes sent.
+            view = panel_view(vm, model)
+            fg = rgb565(0x33, 0xE0, 0x66)
+            lines = {y // 16 for y in range(H) if fg in view[y]}
+            assert len(lines) >= 5, sorted(lines)
+            rows = [r.rstrip() for r in dump(vm)]
+            assert "PIP-OS READY" in rows and "PIP-OS KERNEL INITIALIZED" in rows, rows
+        return end_sends(vm.markers(), 1)
 
     judged_sends(strict)

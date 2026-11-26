@@ -159,20 +159,32 @@ void pipos_screen_end(int rom)
     }
 }
 
-void pipos_screen_restore(void)
+/*
+ * Runs after the ROM ends and before the image end hooks. The text is in
+ * the console and the panel's buffer, so the gfx hook's console redraw is
+ * the one frame that brings it back.
+ */
+void pipos_screen_ready(void)
 {
     unsigned i;
 
     if (!scrolled) {
         return;
     }
-    scrolled = 0;
     console_clear();
     for (i = 0; i < nkept; i++) {
         console_puts(kept[i]);
         console_putc('\n');
     }
-    /* One frame: the panel wakes first if the ROM left it blanked. */
     pipos_display_set_text(kept_at, nkept);
-    pipos_gfx_show_console();
+}
+
+/* The redraw skipped a blanked screen: wake it, which sends the one frame. */
+void pipos_screen_restore(void)
+{
+    if (!scrolled) {
+        return;
+    }
+    scrolled = 0;
+    pipos_gfx_wake();
 }

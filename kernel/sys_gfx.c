@@ -91,12 +91,10 @@ void pipos_gfx_blank(int on)
     }
 }
 
-void pipos_gfx_show_console(void)
+void pipos_gfx_wake(void)
 {
     if (screen.blanked) {
         pipos_gfx_blank(0); /* no ROM runs: this shows the console */
-    } else {
-        show_console();
     }
 }
 

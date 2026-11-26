@@ -199,3 +199,22 @@ def restore_sends(markers, crc):
     assert rect(seq[1]) == (0, 0, W, H), seq[1]
     s.bytes_are(seq[1], lambda n: n >= FULL_BYTES, "the boot text")
     return s
+
+
+def end_sends(markers, shown):
+    """test_boot_text_after_a_rom_is_one_frame: after the ROM's last frame, one whole frame.
+
+    shown is how many frames the ROM showed. No wake, no blank frame before the text.
+    The frame differs from the ROM's everywhere, so its diff is the whole panel.
+    """
+    s = Sends(markers)
+    seq, n = [], 0
+    for m in s.markers:
+        if m.get("stage") == "testrom" and m.get("ev") == "shown":
+            n += 1
+        elif n >= shown and is_pipos(m, "tft_send"):
+            seq.append(m)
+    assert len(seq) == 1 and seq[0]["why"] in ("diff", "full"), seq
+    assert rect(seq[0]) == (0, 0, W, H), seq[0]
+    s.bytes_are(seq[0], lambda n: n >= FULL_BYTES, "the boot text")
+    return s

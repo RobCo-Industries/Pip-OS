@@ -65,7 +65,13 @@ void pipos_screen_last_next(void);
  * for the note, then with typing on and a ROM, scrolls the text away.
  */
 void pipos_screen_end(int rom);
-/* After a ROM ends, however: writes the scrolled boot text again, at once. */
+/*
+ * After a ROM ends, however, and before the image end hooks: writes the
+ * scrolled boot text to the console and the panel's text, so the end's
+ * console redraw shows it. Holotapes never call it.
+ */
+void pipos_screen_ready(void);
+/* After the ROM's image end: wakes a screen the ROM left blanked. */
 void pipos_screen_restore(void);
 
 /*
@@ -113,8 +119,8 @@ void pipos_dsound_delay(uint32_t ms);
  * back buffer; off, the last presented frame (or the console) comes back.
  */
 void pipos_gfx_blank(int on);
-/* Redraws the console on the screen and the panel. A blanked screen wakes first. */
-void pipos_gfx_show_console(void);
+/* Wakes a blanked screen, which shows the console. Does nothing otherwise. */
+void pipos_gfx_wake(void);
 
 /* sys_input.c: queues PIP_EV_TAPE with `bits` for the ROM, never for a holotape. */
 void pipos_input_tape(uint32_t bits);
