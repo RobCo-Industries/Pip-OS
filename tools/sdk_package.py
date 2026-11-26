@@ -350,8 +350,9 @@ def pipos_licences(lic, paths):
     return None
 
 
-def pipos_layout(listed, data_of, fail):
-    """SDK_PACKAGE.md "Layout of pipos"."""
+def pipos_layout(listed, data_of, dirs, fail):
+    """SDK_PACKAGE.md "Layout of pipos". It states files only, so folder
+    entries are left to the archive rules."""
     want = set(LAYOUT) | {f"include/pipos/{h}" for h in HEADERS}
     for p in sorted(want - set(listed)):
         fail(f"{p}: the pipos layout needs it and sdk.json does not list it")
@@ -556,8 +557,8 @@ def check_template(i, t, fail):
         fail(f"{where}: title is not ASCII of 1 to 64 bytes")
     if not ascii_len_ok(t.get("description"), 200):
         fail(f"{where}: description is not ASCII of 1 to 200 bytes")
-    if not is_str(t.get("kind")):
-        fail(f"{where}: kind is not a string")
+    if t.get("kind") != "holotape":
+        fail(f"{where}: kind is not holotape")
     files = t.get("files")
     if not is_list(files):
         fail(f"{where}: files is not an array")
@@ -626,7 +627,7 @@ def check_templates_index(data, fail):
     return out
 
 
-def templates_layout(listed, data_of, fail):
+def templates_layout(listed, data_of, dirs, fail):
     """SDK_PACKAGE.md "Layout of templates", "templates.json", "Tokens" and
     "The holotape-c template"."""
     for p in (TEMPLATES_LICENCE, TEMPLATES_INDEX):
@@ -644,6 +645,15 @@ def templates_layout(listed, data_of, fail):
             fail(f"{p}: not a file of the templates layout")
         elif ids is not None and top in ids and rest not in ids[top]:
             fail(f"{p}: under {top}/ and not listed in its files in templates.json")
+    # "The archive holds nothing else": a folder entry is allowed only as a
+    # folder of an allowed file or as the <id>/ of a listed template.
+    allowed = set(ids or ())
+    for p in [TEMPLATES_LICENCE] + [f"{t}/{q}" for t, fs in (ids or {}).items() for q in fs]:
+        parts = p.split("/")
+        allowed.update("/".join(parts[:i]) for i in range(1, len(parts)))
+    for d in sorted(dirs, key=lambda q: q.encode("utf-8")):
+        if d not in allowed:
+            fail(f"{d}/: a folder outside the templates layout")
     if ids is None:
         return
     for tid, files in ids.items():
@@ -845,7 +855,8 @@ def check(args):
                 if p not in names:
                     fail(f"{p}: listed in sdk.json files and not in the archive")
             if kind is not None:
-                kind.layout(listed, data_of, fail)
+                dirs = [n.rstrip("/") for n in seen.values() if n.endswith("/")]
+                kind.layout(listed, data_of, dirs, fail)
         for n, data in data_of.items():
             for f in forbid:
                 at = data.find(f.encode("utf-8"))

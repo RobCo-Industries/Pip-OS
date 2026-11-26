@@ -268,7 +268,9 @@ INDEX_ROWS = [
     ("no description", lambda d: d["templates"][0].pop("description"),
      "templates.json: holotape-c: description is not ASCII of 1 to 200 bytes"),
     ("kind not string", lambda d: d["templates"][0].update(kind=1),
-     "templates.json: holotape-c: kind is not a string"),
+     "templates.json: holotape-c: kind is not holotape"),
+    ("kind rom", lambda d: d["templates"][0].update(kind="rom"),
+     "templates.json: holotape-c: kind is not holotape"),
     ("files not array", lambda d: d["templates"][0].update(files={}),
      "templates.json: holotape-c: files is not an array"),
     ("file without substitute", lambda d: d["templates"][0]["files"][0].pop("substitute"),
@@ -364,3 +366,27 @@ def test_holotape_c_file_not_byte_for_byte(tmp_path, path):
     files[f"holotape-c/{path}"] = files[f"holotape-c/{path}"].replace(b"\n", b"\r\n")
     assert_fails(write(tmp_path, files=files),
                  f"holotape-c/{path}: not the file SDK_PACKAGE.md gives byte for byte")
+
+
+# ---- folder entries --------------------------------------------------------------------
+
+def add_dirs(path, *dirs):
+    """Append empty folder entries to the archive at `path`."""
+    import zipfile
+    with zipfile.ZipFile(path, "a") as z:
+        for d in dirs:
+            z.writestr(zipfile.ZipInfo(d), b"")
+    return path
+
+
+def test_folders_of_the_layout_pass(tmp_path):
+    path = add_dirs(write(tmp_path), "LICENSES/", "holotape-c/", "holotape-c/src/",
+                    "holotape-c/tests/golden/")
+    status, out = check(path)
+    assert status == 0, out
+
+
+@pytest.mark.parametrize("folder", ["unlisted/", "holotape-c/docs/", "LICENSES/x/", "other/"])
+def test_folder_outside_the_layout(tmp_path, folder):
+    assert_fails(add_dirs(write(tmp_path), folder),
+                 f"{folder}: a folder outside the templates layout")
