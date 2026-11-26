@@ -80,3 +80,41 @@ TEST(boot_text_at_the_suggested_pace)
     CHECK_EQ(lines, 13);
     CHECK_EQ(ms, 321u * 20u);
 }
+
+static char steps[64];
+static unsigned nsteps;
+
+static void rec_wait(void) { steps[nsteps++] = 'W'; }
+static void rec_draw(char c) { (void)c; steps[nsteps++] = 'D'; }
+static int rec_tone(uint32_t hz, uint32_t ms) { (void)hz; (void)ms; steps[nsteps++] = 'T'; return 0; }
+static void rec_delay(uint32_t ms) { (void)ms; steps[nsteps++] = 'L'; }
+
+static const struct pipos_type_ops rec_ops = { rec_wait, rec_draw, rec_tone, rec_delay };
+
+static int steps_are(const char *want)
+{
+    unsigned i;
+
+    for (i = 0; want[i] != '\0'; i++) {
+        if (i >= nsteps || steps[i] != want[i]) {
+            return 0;
+        }
+    }
+    return i == nsteps;
+}
+
+TEST(character_and_click_come_together)
+{
+    /* Wait for the beep, then draw and click at once, then the delay. */
+    nsteps = 0;
+    pipos_type_char('*', 0, 20, 1, &rec_ops);
+    CHECK(steps_are("WDTL"));
+    /* A space makes no sound and waits for none. */
+    nsteps = 0;
+    pipos_type_char(' ', 1, 20, 1, &rec_ops);
+    CHECK(steps_are("DL"));
+    /* Without clicks nothing waits for sound. */
+    nsteps = 0;
+    pipos_type_char('*', 0, 20, 0, &rec_ops);
+    CHECK(steps_are("DL"));
+}

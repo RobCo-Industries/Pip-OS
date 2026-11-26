@@ -46,6 +46,26 @@ uint32_t pipos_click_hz(char c, unsigned pos);
  */
 uint32_t pipos_type_ms(const char *text, uint32_t delay);
 
+/*
+ * The steps that write one character, as calls, so a host test can check
+ * their order. wait ends the sound before; draw puts c on the screen; tone
+ * starts a click; delay keeps the character's pace.
+ */
+struct pipos_type_ops {
+    void (*wait)(void);
+    void (*draw)(char c);
+    int (*tone)(uint32_t hz, uint32_t ms);
+    void (*delay)(uint32_t ms);
+};
+
+/*
+ * Writes c, the character at index pos of its line. With a click, it first
+ * waits for the sound before to end, then draws c and starts its click
+ * together. A silent character waits for nothing. Then it keeps delay ms.
+ */
+void pipos_type_char(char c, unsigned pos, uint32_t delay, int key_click,
+                     const struct pipos_type_ops *ops);
+
 /* 1 when the boot text is written one character at a time with clicks. */
 int pipos_click_on(uint32_t delay, int key_click);
 

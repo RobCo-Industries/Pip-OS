@@ -30,27 +30,24 @@ void pipos_screen_typing(uint32_t delay, int click)
 }
 
 /*
- * Writes text on the screen console one character at a time. A click
- * starts only once the sound before it, the power-on beep or the last
- * click, has ended, and the next character waits for the click to end:
- * the text never runs ahead of its sound and nothing queues.
+ * Writes text on the screen console one character at a time. A click waits
+ * for the sound before it, the power-on beep or the last click, to end;
+ * then the character and its click come together. The block cursor already
+ * stands at the writing place during that wait. A space waits for nothing.
  */
+static const struct pipos_type_ops type_ops = {
+    audio_wait, console_putc, audio_tone, timer_delay_ms,
+};
+
 static void type_line(const char *text)
 {
-    uint32_t hz;
     unsigned i;
 
     for (i = 0; text[i] != '\0'; i++) {
-        console_putc(text[i]);
-        hz = key_click ? pipos_click_hz(text[i], i) : 0;
-        if (hz != 0) {
-            audio_wait();
-            audio_tone(hz, PIPOS_CLICK_MS);
-        }
-        timer_delay_ms(char_delay_ms);
-        if (hz != 0) {
-            audio_wait();
-        }
+        pipos_type_char(text[i], i, char_delay_ms, key_click, &type_ops);
+    }
+    if (key_click) {
+        audio_wait(); /* the line's last click ends before the line goes out */
     }
 }
 

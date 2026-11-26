@@ -27,3 +27,18 @@ int pipos_click_on(uint32_t delay, int key_click)
 {
     return delay > 0 && key_click;
 }
+
+void pipos_type_char(char c, unsigned pos, uint32_t delay, int key_click,
+                     const struct pipos_type_ops *ops)
+{
+    uint32_t hz = key_click ? pipos_click_hz(c, pos) : 0;
+
+    if (hz != 0) {
+        ops->wait();
+    }
+    ops->draw(c);
+    if (hz != 0) {
+        ops->tone(hz, PIPOS_CLICK_MS);
+    }
+    ops->delay(delay);
+}
