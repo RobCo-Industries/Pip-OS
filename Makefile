@@ -390,7 +390,16 @@ SDK_GCC_RELEASE  ?= 15.2.1-1.1
 SDK_QEMU_VERSION ?= 10.1.2
 PACKAGE_BUILD    ?= 0
 PKG_BUILD         = $(abspath $(BUILD))/sdk-package
-PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)=build
+# The compiler's own folder: its headers, such as stdint.h, are on every
+# compile line, so their path lands in the debug info. PKG_TOOLCHAIN is the
+# folder that holds the compiler's bin/, as gcc prints it, which may hold
+# bin/.. when the compiler was moved, and as a plain path. Both get a map,
+# since the debug info may hold either.
+PKG_GCC_INCLUDE   = $(shell $(CROSS)gcc -print-file-name=include)
+PKG_TOOLCHAIN     = $(patsubst %/lib/gcc/,%,$(dir $(patsubst %/,%,$(dir $(patsubst %/,%,$(dir $(PKG_GCC_INCLUDE)))))))
+PKG_TOOLCHAINS    = $(sort $(PKG_TOOLCHAIN) $(abspath $(PKG_TOOLCHAIN)))
+PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)=build \
+                    $(foreach t,$(PKG_TOOLCHAINS),-ffile-prefix-map=$(t)=toolchain)
 PKG_TOOL         := $(PYTHON) tools/sdk_package.py
 # The headers come from git, so a file git does not track never gets in.
 PKG_HEADERS       = $(sort $(shell git ls-files -- 'sdk/include/pipos/*.h'))
@@ -427,6 +436,9 @@ sdk-package:
 	@if [ -n "$$(git status --porcelain --untracked-files=no)" ]; then \
 	    echo "sdk-package: the work tree has changes, so built_from would not name its sources" >&2; \
 	    git status --short --untracked-files=no >&2; exit 1; fi
+	@test -d "$(PKG_GCC_INCLUDE)" && test -d "$(PKG_TOOLCHAIN)/bin" || { \
+	    echo "sdk-package: cannot find the folder of $(CROSS)gcc from its headers in '$(PKG_GCC_INCLUDE)'," \
+	        "so no path map can keep it out of the debug info" >&2; exit 1; }
 	rm -rf $(PKG_BUILD)
 	$(MAKE) --no-print-directory kernel BUILD=$(PKG_BUILD)/kernel EXTRA_CFLAGS="$(PKG_MAPS)"
 	$(PKG_RUNNER)
