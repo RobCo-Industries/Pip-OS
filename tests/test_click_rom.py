@@ -104,6 +104,43 @@ def test_a_reading_rom_gets_at_most_8_clicks(board, kernel_image, test_rom, tmp_
     assert not [m for m in vm.markers() if m.get("ev") == "audio_drop"], vm.serial
 
 
+def test_reads_in_the_first_700_ms_are_owed_with_typing_on(board, kernel_image, test_rom,
+                                                          tmp_path, need_mtools):
+    """Typing at 1 ms per character and no line delay: the smallest delays
+    that still close the gate. The note does not fit in that text, so it
+    does not play, but the quiet second and the scroll run. The ROM reads
+    its files at once after the jump, then sleeps. Those reads are owed:
+    the clicks come once the 700 ms have passed."""
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_read"), delay=1) as vm:
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)
+    assert one(vm, "quiet")
+    assert one(vm, "scroll")
+    t0 = int(rom_one(vm, "t0")["t_ms"])
+    tr = after_jump(vm)
+    clicks = [m for m in tr if is_click(m)]
+    print(f"clicks={len(clicks)}")
+    assert 1 <= len(clicks) <= 8, tr
+    assert int(clicks[0]["t_ms"]) - t0 >= 700 - AUDIO_CLOCK_LAG_MS, (t0, clicks[0])
+    assert check_cuts(tr) == 0, tr
+
+
+def test_sample_queue_is_never_busy_over_a_click(board, kernel_image, test_rom, tmp_path,
+                                                 need_mtools):
+    """Two queued samples end, a click plays, and sample_queue comes in: it
+    cuts the click and starts the data. It never answers busy."""
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_queue")) as vm:
+        assert_rom_checks(vm, ["queue_starts"] * 39)
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)
+    # The case ran: a click cut by one op=stop, then the ROM's sample.
+    tr = after_jump(vm)
+    cuts = sum(1 for a, b, c in zip(tr, tr[1:], tr[2:])
+               if is_click(a) and b["op"] == "stop" and c["op"] == "pcm" and c.get("len") == "80")
+    print(f"cut={cuts}")
+    assert cuts >= 1, tr
+
+
 def test_a_rom_that_reads_nothing_gets_no_click(board, kernel_image, test_rom, tmp_path,
                                                 need_mtools):
     """The sleep ROM makes no card call. Typing is on, so the quiet second
