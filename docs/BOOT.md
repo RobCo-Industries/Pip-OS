@@ -132,6 +132,10 @@ Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After e
 
 At the jump to a ROM the debt drops to 8 and the kernel plays no more clicks. A click that still plays at the jump ends first. So a click never meets a sound of the ROM.
 
+A click starts from the tick at any moment. On the trace backend its two records, `op=pcm` and `op=pcm_end`, wait in RobCo-Core's queue of 64 until the main context polls. So until the jump the kernel polls wherever it waits or works long: after each typed character, every 100 ms of the line delay, after each card or slot call, and before each `ev=disk`, `ev=jump` and `ev=ready` marker. At the jump it waits for a click that still plays, then prints the queue. The fastest pace is one click per 30 ms, so 100 ms adds at most 8 records and the queue never fills. Order rule: every record of a click prints before the next `ev=disk`, `ev=jump` or `ev=ready` marker.
+
+Two waits do not poll. A frame sent to the SPI panel after each boot line takes 128 ms at the default rate, but up to 1.23 s at the 1 MHz minimum: in theory about 37 clicks, 74 records, more than the queue holds. A panic halts with its queued records unprinted. On a board the PWM backend has no queue, and the poll returns at once.
+
 With the system sound off, the default, the wrapper only forwards each call. No tick callback runs, and the boot prints no `ev=disk` and plays no click: the same UART bytes as before. Without a card there is no `PIPOS.CFG`, so the sound is off.
 
 Nobody has heard the clicks on a board yet.
