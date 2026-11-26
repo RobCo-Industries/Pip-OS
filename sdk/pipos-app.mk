@@ -13,7 +13,8 @@
 # VERSION (such as 1.2.3), SUBTYPE (holotape: game or 0, the default,
 # utility or 1), ABI (the target ABI, MAJOR.MINOR such as 1.3), BUILD (output folder, default build), CFLAGS_EXTRA, ROBCO_CORE (default $(PIPOS_SDK)/../external/robco-core),
 # LIBPIP_DIR (where libpip.a is built, default $(BUILD)/libpip), CROSS,
-# PYTHON, CI=1 (warnings are errors).
+# PYTHON, CI=1 (warnings are errors), PATH_MAPS (-ffile-prefix-map flags
+# for every compile, the library's included: they change debug info only).
 #
 # Targets: all, clean, flags-json (writes FLAGS_JSON, default
 # $(BUILD)/flags.json, the flags of SDK_PACKAGE.md "flags.json"). The guide is docs/ROM_DEVELOPMENT.md.
@@ -123,7 +124,10 @@ PIP_CODEFLAGS := $(PIP_ARCHFLAGS) -std=gnu11 -ffreestanding -nostdlib \
                  -ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns \
                  -O2 -g -Wall -Wextra
 PIP_INCDIRS   := $(PIP_SDK)/include
-PIP_BASEFLAGS := $(PIP_CODEFLAGS) -MMD -MP $(addprefix -I,$(PIP_INCDIRS))
+# PATH_MAPS keeps the build folder out of the debug info of the objects
+# and of libpip.a, as `make sdk-package` needs. flags.json leaves it out:
+# a tool adds maps of its own.
+PIP_BASEFLAGS := $(PIP_CODEFLAGS) -MMD -MP $(addprefix -I,$(PIP_INCDIRS)) $(PATH_MAPS)
 ifeq ($(CI),1)
 PIP_BASEFLAGS += -Werror
 endif

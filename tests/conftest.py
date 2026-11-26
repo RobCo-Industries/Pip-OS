@@ -18,6 +18,18 @@ import pytest  # noqa: E402
 def pytest_addoption(parser):
     parser.addoption("--build-dir", default="build",
                      help="build directory, as BUILD in the Makefile")
+    parser.addoption("--sdk-zip", default=None,
+                     help="test_sdk_boot.py: the SDK package to boot, pipos-<version>.zip")
+    parser.addoption("--sdk-tape", default=None,
+                     help="test_sdk_boot.py: the holotape the package's runner launches")
+
+
+def pytest_ignore_collect(collection_path, config):
+    """test_sdk_boot.py runs only when it is given a package, so the suite
+    neither skips it nor boots a package it was not asked for."""
+    if collection_path.name == "test_sdk_boot.py" and not config.getoption("--sdk-zip"):
+        return True
+    return None
 
 
 def build_args(build_dir):

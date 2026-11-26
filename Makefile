@@ -25,6 +25,8 @@
 #   make conformance-bootdir DIR=<path>
 #                             bootdir with the conformance ROM as
 #                             PIPBOY/ROM1.ROM and its two holotapes
+#   make sdk-package          build/pipos-<version>.zip, the SDK package,
+#                             then its check: see docs/SDK_PACKAGE.md
 #
 # Another repository calls these as make -C <pip-os> <target> with an
 # absolute BUILD and absolute paths: see docs/ROM_DEVELOPMENT.md.
@@ -267,7 +269,7 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
-           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
+           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test
 
 .PHONY: flags-json-test sdk-example-test sdk-abi-target-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
@@ -374,3 +376,122 @@ bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 conformance-bootdir: conformance
 	$(MAKE) --no-print-directory bootdir CLEAN=$(CLEAN) ROM=$(CONF_ROM) TAPE="$(CONF_TAPE) $(CONF_DATA)" \
 	    CARD_DIR=
+
+# ---- SDK package --------------------------------------------------------
+
+# pipos-<ABI>.<PACKAGE_BUILD>.zip in $(BUILD), laid out as RobCo-Core's
+# docs/spec/SDK_PACKAGE.md says. Everything is built again in $(PKG_BUILD)
+# with the compiler CROSS names. The path maps keep this folder out of the
+# debug info of pipos.elf and libpip.a; no image changes with them.
+# SDK_GCC_RELEASE is the xPack release sdk.json names. The build stops
+# unless the compiler prints its version part, so a package names the
+# compiler that built libpip.a. See docs/SDK_PACKAGE.md.
+SDK_GCC_RELEASE  ?= 15.2.1-1.1
+SDK_QEMU_VERSION ?= 10.1.2
+PACKAGE_BUILD    ?= 0
+PKG_BUILD         = $(abspath $(BUILD))/sdk-package
+# The compiler's own folder: its headers, such as stdint.h, are on every
+# compile line, so their path lands in the debug info. PKG_TOOLCHAIN is the
+# folder that holds the compiler's bin/, as gcc prints it, which may hold
+# bin/.. when the compiler was moved, and as a plain path. Both get a map,
+# since the debug info may hold either.
+PKG_GCC_INCLUDE   = $(shell $(CROSS)gcc -print-file-name=include)
+PKG_TOOLCHAIN     = $(patsubst %/lib/gcc/,%,$(dir $(patsubst %/,%,$(dir $(patsubst %/,%,$(dir $(PKG_GCC_INCLUDE)))))))
+PKG_TOOLCHAINS    = $(sort $(PKG_TOOLCHAIN) $(abspath $(PKG_TOOLCHAIN)))
+PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)=build \
+                    $(foreach t,$(PKG_TOOLCHAINS),-ffile-prefix-map=$(t)=toolchain)
+PKG_TOOL         := $(PYTHON) tools/sdk_package.py
+# The user and host names the check searches for. A test can set them.
+# One under 4 characters, such as pi, is not searched, and the check says so.
+PKG_USER         ?= $(shell id -un)
+PKG_HOST         ?= $(shell hostname)
+# The headers come from git, so a file git does not track never gets in.
+# A git that fails, such as in a container that does not own the checkout,
+# would give an empty list and a package with no header: the build stops
+# with git's own message instead.
+ifneq ($(filter sdk-package,$(MAKECMDGOALS)),)
+PKG_HEADERS      := $(sort $(shell git ls-files -- 'sdk/include/pipos/*.h' 2>/dev/null || echo PKG_GIT_FAILED))
+ifneq ($(filter PKG_GIT_FAILED,$(PKG_HEADERS)),)
+$(error sdk-package: git ls-files failed, so the package would have no header. git says: $(shell git ls-files -- 'sdk/include/pipos/*.h' 2>&1 >/dev/null))
+endif
+ifeq ($(PKG_HEADERS),)
+$(error sdk-package: git ls-files lists no header in sdk/include/pipos, so the package would have none)
+endif
+endif
+# Every folder the build of the package reads, wildcards included. An
+# untracked file there stops the build: built_from would not hold it.
+PKG_INPUTS       := Makefile LICENSE boot docs/API.md kernel sdk tools
+PKG_CORE_INPUTS  := Makefile ld mk include src third_party tests/fwstub tests/harness tools
+PKG_FILES         = LICENSES/MIT.txt=LICENSE \
+                    boot.json=$(PKG_BUILD)/boot.json \
+                    boot/PIPOS.CFG=boot/PIPOS.CFG \
+                    boot/PIPOS.IMG=$(PKG_BUILD)/kernel/$(IMAGE).img \
+                    boot/RUNNER.ROM=$(PKG_BUILD)/runner/RUNNER.ROM \
+                    boot/config.txt=boot/config.txt \
+                    boot/fwstub.bin=$(PKG_BUILD)/fwstub/fwstub.bin \
+                    boot/pipos.elf=$(PKG_BUILD)/kernel/$(IMAGE).elf \
+                    docs/API.md=docs/API.md \
+                    flags.json=$(PKG_BUILD)/flags.json \
+                    $(foreach h,$(PKG_HEADERS),include/pipos/$(notdir $(h))=$(h)) \
+                    lib/crt0.S=sdk/crt0.S \
+                    lib/holotape.ld=sdk/holotape.ld \
+                    lib/libpip.a=$(PKG_BUILD)/runner/libpip/libpip.a \
+                    lib/rom.ld=sdk/rom.ld
+PKG_RUNNER        = $(MAKE) --no-print-directory -C sdk/examples/runner \
+                    BUILD=$(PKG_BUILD)/runner PATH_MAPS="$(PKG_MAPS)"
+
+.PHONY: sdk-package sdk-package-test sdk-package-inputs-test
+sdk-package:
+	@s=$$(git status --porcelain --untracked-files=all -- $(PKG_INPUTS)) || { \
+	    echo "sdk-package: git status failed in $(CURDIR), see git's message above" >&2; exit 1; }; \
+	c=$$(git -C $(ROBCO_CORE) status --porcelain --untracked-files=all -- $(PKG_CORE_INPUTS)) || { \
+	    echo "sdk-package: git status failed in $(ROBCO_CORE), see git's message above" >&2; exit 1; }; \
+	u=$$(printf '%s\n' "$$s" | sed -n '/^?? /p'; printf '%s\n' "$$c" | sed -n 's|^?? |?? $(ROBCO_CORE)/|p'); \
+	if [ -n "$$u" ]; then \
+	    echo "sdk-package: untracked files in the inputs of the build, so built_from would not hold them:" >&2; \
+	    echo "$$u" >&2; exit 1; fi
+	@t=$$(git status --porcelain --untracked-files=no) || { \
+	    echo "sdk-package: git status failed, so the work tree may have changes; see git's message above" >&2; exit 1; }; \
+	if [ -n "$$t" ]; then \
+	    echo "sdk-package: the work tree has changes, so built_from would not name its sources" >&2; \
+	    echo "$$t" >&2; exit 1; fi
+	@test -d "$(PKG_GCC_INCLUDE)" && test -d "$(PKG_TOOLCHAIN)/bin" || { \
+	    echo "sdk-package: cannot find the folder of $(CROSS)gcc from its headers in '$(PKG_GCC_INCLUDE)'," \
+	        "so no path map can keep it out of the debug info" >&2; exit 1; }
+	rm -rf $(PKG_BUILD)
+	@mkdir -p $(PKG_BUILD); \
+	p=$$(git rev-parse --verify HEAD) && [ -n "$$p" ] || { \
+	    echo "sdk-package: git cannot name the commit of $(CURDIR), see git's message above" >&2; exit 1; }; \
+	r=$$(git -C $(ROBCO_CORE) rev-parse --verify HEAD) && [ -n "$$r" ] || { \
+	    echo "sdk-package: git cannot name the commit of $(ROBCO_CORE), see git's message above" >&2; exit 1; }; \
+	echo "--built-from Pip-OS=$$p --built-from RobCo-Core=$$r" > $(PKG_BUILD)/built_from.txt
+	$(MAKE) --no-print-directory kernel BUILD=$(PKG_BUILD)/kernel EXTRA_CFLAGS="$(PKG_MAPS)"
+	$(PKG_RUNNER)
+	$(PKG_RUNNER) flags-json FLAGS_JSON=$(PKG_BUILD)/flags.json
+	$(MAKE) --no-print-directory -C $(ROBCO_CORE)/tests/fwstub BUILD=$(PKG_BUILD)/fwstub
+	$(MAKE) --no-print-directory -C $(ROBCO_CORE) boot-json BOOT_JSON=$(PKG_BUILD)/boot.json PYTHON=$(PYTHON)
+	$(PKG_TOOL) build --out $(abspath $(BUILD)) --abi-header sdk/include/pipos/abi.h \
+	    --build $(PACKAGE_BUILD) --gcc $(SDK_GCC_RELEASE) --qemu $(SDK_QEMU_VERSION) \
+	    --gcc-printed "$$($(CROSS)gcc -dumpfullversion)" \
+	    --firmware-script $(ROBCO_CORE)/tools/fetch_firmware.sh \
+	    $$(cat $(PKG_BUILD)/built_from.txt) \
+	    $(addprefix --file ,$(PKG_FILES)) > $(PKG_BUILD)/zip.txt
+	$(PKG_TOOL) check "$$(cat $(PKG_BUILD)/zip.txt)" --forbid "$(CURDIR)" --forbid "$(PKG_BUILD)" \
+	    --forbid "$$HOME" --user "$(PKG_USER)" --forbid "$(PKG_HOST)" --skip-short
+
+# Boots the kernel a package ships, with only what is in it, on BOARD:
+# make sdk-boot-test SDK_ZIP=build/pipos-1.4.0.zip [BOARD=raspi0]
+# tests/test_sdk_boot.py builds the simulator card with the run_exit0 tape.
+.PHONY: sdk-boot-test
+sdk-boot-test: holo-run_exit0 venv
+	@test -n "$(SDK_ZIP)" || { echo "sdk-boot-test: give SDK_ZIP=<package zip>" >&2; exit 1; }
+	$(VENV)/bin/pytest tests/test_sdk_boot.py -v -rs -p no:cacheprovider --board $(BOARD) \
+	    --sdk-zip "$(abspath $(SDK_ZIP))" --sdk-tape $(abspath $(HOLO_BUILD))/run_exit0/run_exit0.htp
+
+# An untracked file never gets into a package. Builds nothing.
+sdk-package-inputs-test:
+	tests/host/sdk_package_inputs_test.sh
+
+# The checker's own tests. They need no build.
+sdk-package-test: venv
+	$(VENV)/bin/pytest -q -p no:cacheprovider tests/tools/test_sdk_package.py
