@@ -304,9 +304,25 @@ class Rest(Case):
         self.assertEqual(duty[frame(160)], 0.0)
         self.assertEqual(duty[-1], 0.0)
 
-    def test_ramp_that_reaches_its_end_without_end_line(self):
+    def test_ramp_cut_after_its_last_sample_leaves_duty_0(self):
+        # The last sample sounded at 40 ms, but the stop came before the
+        # ramp's own end line: the library never set the midpoint rest.
         duty, _ = self.render([pcm(0, bs.RAMP), stop(100)])
+        self.assertEqual(duty[frame(60)], 0.5)      # the pin holds the last sample
+        self.assertEqual(duty[-1], 0.0)
+
+    def test_ramp_that_ends_by_itself_rests_at_the_midpoint(self):
+        duty, _ = self.render([pcm(0, bs.RAMP), end(40), stop(100)])
         self.assertEqual(duty[-1], 0.5)
+        # QEMU's sample interrupt is slow: the end line can come much later.
+        duty, _ = self.render([pcm(0, bs.RAMP), end(216), stop(300)])
+        self.assertEqual(duty[frame(100)], 0.5)
+        self.assertEqual(duty[-1], 0.5)
+
+    def test_tone_after_a_ramp_cut_after_its_last_sample_is_a_pulse(self):
+        cut, _ = self.render([pcm(0, bs.RAMP), stop(100), tone(200, 1000), stop(260)])
+        plain, _ = self.render([tone(200, 1000), stop(260)])
+        self.assertEqual(list(cut[frame(200):frame(260)]), list(plain[frame(200):frame(260)]))
 
     def test_mix_or_queue_on_the_ramp_is_a_bad_log(self):
         o = self.sound("o", bytes([200]) * 10)
@@ -605,6 +621,159 @@ class Limits(Case):
                   "pins today", "newer library only", "op=voice", "149796", ".voice"):
             self.assertIn(s, text)
 
+
+
+# ---- Centred tones -----------------------------------------------------------
+
+SQ = bs.square
+RAMPED = [pcm(0, bs.RAMP), end(40)]
+
+
+def as_bytes(duty):
+    out = [round(d * 256) for d in duty]
+    for o, d in zip(out, duty):
+        assert o == d * 256, d
+    return out
+
+
+def pulse(hz, vol, n):
+    """The pin's pulse of a tone from frame 0, by the pulse path."""
+    r = bs.Renderer({}, bs.scale_cut, lambda m: None)
+    r.render_tone(bs.Tone(0, hz, vol), 0, n)
+    return list(r.duty)
+
+
+class CentredTone(Case):
+    def test_mean_is_128_and_ends_step_by_its_height(self):
+        duty, _ = self.render(RAMPED + [tone(50, 1000), stop(52)])
+        a, b = frame(50), frame(52)
+        x = as_bytes(duty[a:b])
+        # half 4800 units, a period of 37.5 samples: two periods are 75.
+        self.assertEqual(sum(x[:75]), 128 * 75)
+        self.assertEqual(duty[a - 1], 0.5)
+        self.assertEqual(duty[b], 0.5)
+        self.assertLessEqual(abs(x[0] - 128), 127)
+        self.assertLessEqual(abs(x[-1] - 128), 127)
+        self.assertEqual(x[0], 255)
+
+    def test_without_the_ramp_the_tone_is_the_pulse(self):
+        duty, _ = self.render([tone(0, 1000, vol=60), stop(100)])
+        self.assertEqual(list(duty[:frame(100)]), pulse(1000, 60, frame(100)))
+
+    def test_a_ramp_cut_early_keeps_the_pulse(self):
+        duty, _ = self.render([pcm(0, bs.RAMP), stop(20), tone(40, 1000), stop(140)])
+        a = frame(40)
+        n = frame(140) - a
+        want = pulse(1000, 100, n)
+        self.assertEqual(len(duty[a:a + n]), n)
+        for i in range(n):
+            # The pulse path works in float time from the tone's start.
+            self.assertAlmostEqual(duty[a + i], want[i], places=9)
+        self.assertEqual(duty[a + n], 0.0)
+
+    def test_height_follows_the_volume(self):
+        for vol, amp in ((100, 127), (80, 102), (20, 25)):
+            duty, _ = self.render(RAMPED + [tone(50, 1000, vol=vol), stop(60)])
+            x = as_bytes(duty[frame(50):frame(60)])
+            self.assertEqual((max(x), min(x)), (128 + amp, 128 - amp), vol)
+
+    def test_tone_peak_sets_the_height(self):
+        events, _ = bs.read_log(self.log(RAMPED + [tone(50, 1000), stop(60)]))
+        r = bs.Renderer({}, bs.scale_cut, lambda m: None, peak=64)
+        r.run(events)
+        x = as_bytes(r.duty[frame(50):frame(60)])
+        self.assertEqual((max(x), min(x)), (192, 64))
+
+    def test_a_pitch_above_half_the_grid_plays_half_the_grid(self):
+        duty, _ = self.render(RAMPED + [tone(50, 20000), stop(52)])
+        x = as_bytes(duty[frame(50):frame(52)])
+        self.assertEqual(x, [255 if i % 2 == 0 else 1 for i in range(len(x))])
+
+    def test_sequence_with_a_rest(self):
+        duty, _ = self.render(RAMPED + [tone(50, 1000), stop(60), tone(70, 500, vol=50),
+                                        stop(90)])
+        self.assertEqual(set(duty[frame(60):frame(70)]), {0.5})
+        x = as_bytes(duty[frame(70):frame(90)])
+        # A new note: an edge going up, at the volume of its own line.
+        self.assertEqual(x[0], 128 + 64)
+        self.assertEqual(min(x), 128 - 64)
+        self.assertEqual(x, list(SQ.render(500, 64, len(x))))
+
+    def test_help_states_the_tone_rule(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            bs.main(["--help"])
+        text = " ".join(out.getvalue().split())
+        for s in ("centred square", "rest ramp reached its end", "cut early",
+                  "max(256, (37500 * 128 + hz / 2) / hz)", "18750 Hz",
+                  "(peak * vol + 50) / 100", "edge going up", "next note",
+                  "no late IRQ", "assumes the kernel's peak", "--tone-peak"):
+            self.assertIn(s, text)
+
+    def test_tone_peak_out_of_range_fails(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as e:
+            bs.main([self.log([stop(0)]), os.path.join(self.dir, "o.wav"),
+                     "--pcm", self.pcm_dir, "--tone-peak", "128"])
+        self.assertEqual(e.exception.code, 2)
+        self.assertIn("--tone-peak must be 0 to 127", err.getvalue())
+
+
+SQUARE_C = os.path.join(ROOT, "external", "robco-core", "src", "lib", "audio_square.c")
+SQUARE_MAIN = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <robco/audio.h>
+
+int main(int argc, char **argv)
+{
+    uint32_t hz = (uint32_t)strtoul(argv[1], 0, 10);
+    unsigned vol = (unsigned)strtoul(argv[2], 0, 10);
+    uint32_t n = (uint32_t)strtoul(argv[3], 0, 10);
+    audio_square_t q;
+
+    audio_square_start(&q, hz, 37500, audio_square_amp(127, vol));
+    for (uint32_t i = 0; i < n; i++) {
+        putchar(audio_square_at(&q, i));
+    }
+    return 0;
+}
+"""
+
+
+def c_compiler():
+    for cc in ("cc", "gcc", "clang"):
+        for d in os.environ.get("PATH", "").split(os.pathsep):
+            if d and os.access(os.path.join(d, cc), os.X_OK):
+                return os.path.join(d, cc)
+    return None
+
+
+class SquareAgainstLibrary(unittest.TestCase):
+    """The library's own square, built with the host compiler, gives the
+    same samples as tools/tone_square.py."""
+
+    def test_same_bytes_as_the_c_square(self):
+        if not os.path.exists(SQUARE_C):
+            self.skipTest("the pinned RobCo-Core has no src/lib/audio_square.c")
+        cc = c_compiler()
+        if cc is None:
+            self.skipTest("no host C compiler")
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            main = os.path.join(d, "main.c")
+            with open(main, "w", encoding="utf-8") as f:
+                f.write(SQUARE_MAIN)
+            exe = os.path.join(d, "square")
+            subprocess.run([cc, "-std=gnu11", "-O1", "-Wall", "-Werror",
+                            "-I", os.path.join(ROOT, "external", "robco-core", "include"),
+                            "-o", exe, main, SQUARE_C], check=True)
+            for hz in (0, 20, 440, 1000, 2637, 7902, 18750, 20000):
+                for vol in (0, 1, 20, 50, 80, 100):
+                    got = subprocess.run([exe, str(hz), str(vol), "4000"], check=True,
+                                         stdout=subprocess.PIPE).stdout
+                    want = SQ.render(hz, SQ.amp(SQ.TONE_PEAK, vol), 4000)
+                    self.assertEqual(got, want, (hz, vol))
 
 
 # ---- Voices ----------------------------------------------------------------
