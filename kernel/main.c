@@ -402,6 +402,7 @@ void robco_main(void)
     pipos_sys_init();
 
     rom = boot_screen(card, &res);
+    pipos_dsound_note_wait();
     pipos_screen_typing(0); /* later lines, a fault for one, appear at once */
     rom_loaded = rom;
     if (rom) {

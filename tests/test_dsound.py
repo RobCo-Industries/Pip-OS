@@ -23,6 +23,10 @@ VOLUME = 80
 CLICK_LEN = "789"
 # A click lasts 21 ms; a gap is 3 ticks or more.
 MIN_START_GAP_MS = 30
+# An overlay's t_ms is the time of its first sample, read from the sample
+# clock in the tick, not the tick's own time. Two starts three ticks apart
+# can then read one ms short.
+MIN_MIX_GAP_MS = MIN_START_GAP_MS - 1
 
 
 def cfg(sound="yes", delay=2):
@@ -63,7 +67,9 @@ def clicks_of(trace):
 
 
 def check_clicks(trace, crcs, beep_crc):
-    """Every click is a whole table entry in turn, with its end, after the beep."""
+    """Every click is a whole table entry in turn, after the beep. A plain click
+    has its own end. A click over the boot note is an overlay, op=pcm_mix, and
+    takes its turn in the same count."""
     beep_end = None
     for i, m in enumerate(trace):
         if m["op"] == "pcm" and m.get("crc") == beep_crc:
@@ -71,17 +77,22 @@ def check_clicks(trace, crcs, beep_crc):
             beep_end = int(trace[i + 1]["t_ms"])
     assert beep_end is not None, trace
     starts = []
+    mixed = False
     k = 0
     for i, m in enumerate(trace):
-        if not (m["op"] == "pcm" and m.get("len") == CLICK_LEN):
+        if not (m["op"] in ("pcm", "pcm_mix") and m.get("len") == CLICK_LEN):
             continue
-        assert (m["rate"], m["vol"], m["crc"]) == ("37500", str(VOLUME), crcs[k % 12]), m
-        assert trace[i + 1]["op"] == "pcm_end", trace[i:i + 2]
+        assert m["crc"] == crcs[k % 12], m
+        if m["op"] == "pcm":
+            assert (m["rate"], m["vol"]) == ("37500", str(VOLUME)), m
+            assert trace[i + 1]["op"] == "pcm_end", trace[i:i + 2]
         t = int(m["t_ms"])
         assert t >= beep_end, (m, beep_end)
         if starts:
-            assert t - starts[-1] >= MIN_START_GAP_MS, (starts[-1], m)
+            gap = MIN_MIX_GAP_MS if mixed or m["op"] == "pcm_mix" else MIN_START_GAP_MS
+            assert t - starts[-1] >= gap, (starts[-1], m)
         starts.append(t)
+        mixed = m["op"] == "pcm_mix"
         k += 1
     return starts
 
@@ -155,7 +166,8 @@ def test_slow_typing_with_a_big_rom_drops_no_record(board, kernel_image, tmp_pat
                                                      need_mtools):
     """Typing at 100 ms per character after a big load keeps the debt at its cap
     for seconds. The kernel polls between characters, so the 64-record trace
-    queue never fills and every click keeps its end."""
+    queue never fills and every click keeps its end. The boot note plays here
+    too, so some clicks are overlays."""
     crcs, beep_crc = table_crcs(tmp_path)
     rom = make_rom(name="SLOWTYPINGROM123", payload_size=3 * 1024 * 1024)
     sd = make_card(tmp_path / "sd.img", {CFG: cfg(delay=100), ROM: rom})
@@ -167,7 +179,7 @@ def test_slow_typing_with_a_big_rom_drops_no_record(board, kernel_image, tmp_pat
     starts = check_clicks(trace, crcs, beep_crc)
     assert len(starts) >= 40, len(starts)
     ends = [m for m in trace if m["op"] == "pcm_end"]
-    assert len(ends) == len([m for m in trace if m["op"] == "pcm"]), trace
+    assert len(ends) == len([m for m in trace if m["op"] in ("pcm", "voice")]), trace
 
 
 def test_no_click_record_after_the_jump(board, kernel_image, tmp_path, need_mtools):

@@ -69,6 +69,13 @@ void pipos_dsound_start(int on);
 /* A boot line written with typing on: before it, and after it with the result. */
 unsigned pipos_dsound_line(const char *text);
 void pipos_dsound_line_done(unsigned owed);
+/*
+ * The boot note, at the second boot line: plays when the text from that
+ * line on outlasts it at these delays. Main context.
+ */
+void pipos_dsound_note(uint32_t char_delay_ms, uint32_t line_delay_ms);
+/* Waits while the note plays, polling the trace. */
+void pipos_dsound_note_wait(void);
 /* Before the jump to a ROM: no click plays from here on. */
 void pipos_dsound_jump(void);
 /* Prints queued audio records with the sound on, before the jump. */

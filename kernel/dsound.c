@@ -7,10 +7,15 @@
  * Until PIPOS.CFG is parsed the counts wait. With [audio] system_sound off
  * the wrapper only forwards, and no tick callback, marker or click exists.
  *
- * A tick callback asks the limiter every 10 ms. A due click starts only
- * when the voice is idle: a playing click, the ramp or the beep makes it
- * wait a tick, and nothing is lost. A mixed path over the boot note would
- * go in can_play() and start_click().
+ * A tick callback asks the limiter every 10 ms. A due click starts as its
+ * own play when the voice is idle. While the boot note plays and more than
+ * 30 ms of it remain, the click mixes over it as an overlay. A playing
+ * click, the ramp, the beep or the note's last 30 ms make it wait a tick.
+ * A click the driver refuses waits a tick too: nothing is lost.
+ *
+ * The note starts with the second boot line, when the typed text will
+ * outlast it. The main context closes the gate, waits for the voice,
+ * starts the note and opens the gate again.
  *
  * After the jump to a ROM the kernel plays no click, so a click never meets
  * a ROM's own sound. A click that still plays at the jump ends first.
@@ -29,11 +34,17 @@
 #include <robco/tick.h>
 #include <robco/timer.h>
 
+#include "bootlines.h"
 #include "dsound_rules.h"
 #include "pipos.h"
 #include "sound_table.h"
 
 #define HELD_MAX 4u
+
+/* The table's rows are the library's spans, so it goes to the voice as is. */
+_Static_assert(sizeof(audio_voice_span_t) == 28u, "a voice span is 28 bytes");
+_Static_assert(sizeof(audio_voice_span_t) == sizeof(sound_note_spans[0]),
+               "a note row is one voice span");
 
 struct stage {
     const char *at;
@@ -54,6 +65,8 @@ static int counting = 1;          /* 0 once the setting is off */
 static int on;                    /* the setting is on and the tick runs */
 static volatile int jumped;
 static struct wrap card_wrap, slot_wrap;
+static volatile int note_on;      /* the note plays or waits for its tick */
+static volatile uint32_t note_end_ms;
 
 /*
  * Prints the queued audio records, so they come before the next marker and
@@ -184,28 +197,40 @@ void pipos_dsound_stage(const char *at)
     print_stage(&st);
 }
 
-/* The voice is idle. A note to mix over would be checked here. */
-static int can_play(void)
+/* What is left of the note, by the clock. 0 once its end has passed. */
+static uint32_t note_left_ms(void)
 {
-    return !audio_busy();
-}
+    int32_t left = (int32_t)(note_end_ms - timer_now_ms());
 
-static void start_click(int k)
-{
-    (void)audio_play_pcm(sound_click[k], SOUND_CLICK_LEN, SOUND_RATE_HZ, 0);
+    return left > 0 ? (uint32_t)left : 0u;
 }
 
 /* IRQ context, every tick. */
 static void dsound_tick(void)
 {
-    int k;
+    struct pipos_dsound before;
+    int busy, way, k, rc;
 
     if (jumped) {
         return;
     }
-    k = pipos_dsound_tick(&rules, can_play());
-    if (k >= 0) {
-        start_click(k);
+    busy = audio_busy();
+    if (!busy) {
+        note_on = 0;
+    }
+    way = pipos_dsound_way(busy, note_on, note_on ? note_left_ms() : 0u, audio_pcm_mix_busy());
+    before = rules;
+    k = pipos_dsound_tick(&rules, way != PIPOS_CLICK_WAIT);
+    if (k < 0) {
+        return;
+    }
+    if (way == PIPOS_CLICK_MIX) {
+        rc = audio_pcm_mix(sound_click[k], SOUND_CLICK_LEN);
+    } else {
+        rc = audio_play_pcm(sound_click[k], SOUND_CLICK_LEN, SOUND_RATE_HZ, 0);
+    }
+    if (rc != 0) {
+        rules = before; /* refused, the note's end for one: try again next tick */
     }
 }
 
@@ -260,6 +285,42 @@ void pipos_dsound_line_done(unsigned owed)
     }
     pipos_dsound_poll();
     k_printf("@RC stage=" PIPOS_STAGE " ev=disk at=text calls=0 blocks=0 owed=%u\n", owed);
+}
+
+void pipos_dsound_note(uint32_t char_ms, uint32_t line_ms)
+{
+    unsigned chars, delays;
+    uint32_t irq;
+    int rc;
+
+    if (!on || jumped) {
+        return;
+    }
+    pipos_dsound_note_text(pipos_boot_head, pipos_boot_tail, &chars, &delays);
+    if (!pipos_dsound_note_fits(chars, delays, char_ms, line_ms, SOUND_NOTE_MS)) {
+        return;
+    }
+    irq = irq_save();
+    pipos_dsound_close(&rules);
+    irq_restore(irq);
+    audio_wait();
+    rc = audio_play_voice((const audio_voice_span_t *)sound_note_spans, SOUND_NOTE_SPANS,
+                          SOUND_RATE_HZ, 0);
+    irq = irq_save();
+    if (rc == 0) {
+        /* The play starts at the next tick, so the real end is a little later. */
+        note_end_ms = timer_now_ms() + SOUND_NOTE_MS;
+        note_on = 1;
+    }
+    pipos_dsound_open(&rules);
+    irq_restore(irq);
+}
+
+void pipos_dsound_note_wait(void)
+{
+    while (note_on) {
+        pipos_dsound_delay(10);
+    }
 }
 
 void pipos_dsound_jump(void)

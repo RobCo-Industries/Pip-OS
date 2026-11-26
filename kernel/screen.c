@@ -47,6 +47,9 @@ void pipos_screen_line(const char *text)
     if (lines_shown++ > 0 && line_delay_ms > 0) {
         pipos_dsound_delay(line_delay_ms);
     }
+    if (lines_shown == 2) {
+        pipos_dsound_note(char_delay_ms, line_delay_ms); /* the note rises with line 2 */
+    }
     audio_poll(); /* prints audio trace records queued so far */
     if (char_delay_ms > 0) {
         owed = pipos_dsound_line(text);
