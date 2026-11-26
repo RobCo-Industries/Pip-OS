@@ -19,9 +19,9 @@ flowchart LR
     B --> C["tools/sdk_package.py check"]
 ```
 
-1. It stops when a folder it reads holds an untracked file, in Pip-OS or in `external/robco-core`, and names the file. Then it stops when a tracked file has changes. `built_from` names the commits of Pip-OS and of `external/robco-core`, so both must hold every input. The headers in the package come from `git ls-files`, so an untracked header cannot get in.
+1. It stops when a folder it reads holds an untracked file, in Pip-OS or in `external/robco-core`, and names the file. Then it stops when a tracked file has changes. `built_from` names the commits of Pip-OS and of `external/robco-core`, so both must hold every input. The headers in the package come from `git ls-files`, so an untracked header cannot get in. Each git call that feeds the package, the file list, the two `git status` checks and the commits of `built_from`, stops the build with git's own message when it fails or prints nothing. In a CI container git refuses a checkout another user owns, with "detected dubious ownership", unless the checkout and `external/robco-core` are both a `safe.directory` in the global git config. `tests/host/sdk_package_inputs_test.sh` checks each call with a fake `git`.
 2. It builds again, in `build/sdk-package/`, the kernel, the runner ROM with its `libpip.a`, `flags.json`, RobCo-Core's firmware stub and `boot.json`, with RobCo-Core's own `make boot-json`.
-3. Every compile gets `-ffile-prefix-map` for the repository and the build folder, through `EXTRA_CFLAGS` for the kernel and `PATH_MAPS` of `pipos-app.mk` for the ROM and the library. The maps change the debug info only. The kernel image and the runner ROM are the same bytes as those of `make`.
+3. Every compile gets `-ffile-prefix-map` for the repository, the build folder and the compiler's folder, the one that holds its `bin/`, which maps to `toolchain`. Without the last map the path of the compiler's own headers, `lib/gcc/arm-none-eabi/<version>/include`, lands in the debug info of `pipos.elf` and `libpip.a` when the compiler sits under the home folder, as on a GitHub runner. The make finds the folder from `$(CROSS)gcc -print-file-name=include` and maps it both as gcc prints it and as a plain path. A package built with the compiler at two paths is the same bytes. The maps go through `EXTRA_CFLAGS` for the kernel and `PATH_MAPS` of `pipos-app.mk` for the ROM and the library. The maps change the debug info only. The kernel image and the runner ROM are the same bytes as those of `make`.
 4. `tools/sdk_package.py build` writes `sdk.json` and the archive. The firmware pins come from RobCo-Core's `tools/fetch_firmware.sh`. No firmware file goes in.
 5. `tools/sdk_package.py check` checks the archive, then searches every file for the repository path, the build folder, `$HOME`, the user name and the host name.
 
@@ -59,6 +59,8 @@ So a local build with another compiler fails until it names that compiler, such 
 - Every file entry can be read. An entry with an unknown method, a wrong CRC or encryption is a `FAIL` line with its name, and its bytes are neither hashed nor searched.
 - No `--forbid` text in any file, `sdk.json` included.
 - No `--user` name in the forms a tool writes it: `/home/NAME`, `/Users/NAME`, `\Users\NAME` and `NAME@`. The bare name is not searched. On a GitHub runner the user is `runner`, and `sdk.json` holds the format key `runner` and the path `boot/RUNNER.ROM`.
+
+A hit names the file, the offset and the run of printable bytes around it, at most 80 on each side, so a log shows the whole path that got in. A text given twice, such as `$HOME` and the home folder of `--user`, is reported once.
 
 A forbidden text under 4 characters is an error, not a pass: it would match by chance. The search compares bytes. It finds a Windows path only as written with single `\`, not with `/` or with the `\\` of a JSON string. The package is built on Linux only, so this is enough today.
 
