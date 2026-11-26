@@ -27,7 +27,7 @@ import pytest
 
 from harness.boot import Vm, _connect_unix
 from harness.plugin import have_mtools, selected_boards
-from harness.qemu import COMMON_ARGS, Qemu
+from harness.qemu import COMMON_ARGS, KEEPALIVE_INTERVAL, Qemu, keepalive_default
 
 from pipos_helpers import READY, TIMEOUT, no_exception, one
 from test_runner import RUN_LINE, TAPE, read_run, runner_cfg, runner_lines, sim_card
@@ -87,7 +87,13 @@ def fill(args, values):
 def boot_from_json(doc, board, stub, image, sd):
     """Starts QEMU as boot.json says for `board`, in its default mode, with
     the serial ports of the harness's boot(), and yields a Vm. QEMU starts
-    stopped and runs once the ports are connected, so no line is lost."""
+    stopped and runs once the ports are connected, so no line is lost.
+
+    harness.boot.boot() takes no ready argument list: it builds the
+    arguments from the harness's own board table. So this uses the same
+    Qemu and Vm classes, which bring the watcher, the pidfile and the
+    sweep, and starts the same QMP keep-alive after cont, which a boot of
+    raspi0 or raspi1ap needs on the GitHub Linux runner."""
     b = doc["boards"][board]
     # harness.qemu.Qemu adds -M and COMMON_ARGS itself.
     assert doc["common"] == COMMON_ARGS, doc["common"]
@@ -107,6 +113,8 @@ def boot_from_json(doc, board, stub, image, sd):
         socks = [_connect_unix(p, q, TIMEOUT) for p in paths]
         vm = Vm(q, socks)
         q.execute("cont")
+        if keepalive_default():
+            q.start_keepalive(KEEPALIVE_INTERVAL)
         yield vm
     finally:
         if vm is not None:
@@ -134,6 +142,12 @@ def test_package_kernel_runs_a_tape(package, tape, sdk_board, tmp_path):
                   config_txt=config_txt, runner=runner)
     with boot_from_json(doc, sdk_board, files["boot/fwstub.bin"], files["boot/PIPOS.IMG"],
                         os.fspath(sd)) as vm:
+        assert vm.qemu.keepalive_on == keepalive_default(), vm.qemu.keepalive_status()
+        assert vm.qemu.machine == doc["boards"][sdk_board]["machine"]
+        # The kernel and the stub are the package's, not the harness's.
+        cmd = " ".join(vm.qemu.command_line())
+        assert qemu_path(files["boot/PIPOS.IMG"]) in cmd, cmd
+        assert qemu_path(files["boot/fwstub.bin"]) in cmd, cmd
         vm.wait_for(READY, timeout=TIMEOUT)
         lines = vm.lines()
         no_exception(vm)
