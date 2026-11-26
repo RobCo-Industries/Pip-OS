@@ -23,9 +23,11 @@
  * the gate again after the last line. The scroll's blips play from the
  * main context while the gate is closed.
  *
- * After the jump the clicks go on in the ROM pace: groups of 1 to 4, at most
- * 8 owed, none in the first 700 ms. The ROM's card and slot calls owe them,
- * a holotape's too: it runs inside the ROM's call. A click plays only when
+ * At the jump no click starts and the kernel waits for one that plays to
+ * end. Right before ev=jump the 700 ms start. From the jump on the clicks
+ * go on in the ROM pace: groups of 1 to 4, at most 8 owed, none in the
+ * first 700 ms. The ROM's card and slot calls always owe them, whatever
+ * the boot's gate was, a holotape's too: it runs inside the ROM's call. A click plays only when
  * nothing plays and the ROM's last sound is 300 ms old. A debt that waits
  * 3 s in a row for a ROM sound is dropped. An audio call of an image that
  * starts or stops a sound first calls pipos_dsound_cut_click(), which stops
@@ -238,7 +240,7 @@ static void dsound_tick(void)
         pipos_audio_idle(); /* audio_status never reports a click */
     }
     before = rules;
-    if (rules.rom) {
+    if (pipos_dsound_in_rom(&rules)) {
         way = PIPOS_CLICK_PLAY;
         k = pipos_dsound_rom_tick(&rules, busy && !click_on, busy && click_on);
     } else {
@@ -397,15 +399,27 @@ void pipos_dsound_jump(void)
         return;
     }
     irq = irq_save();
-    pipos_dsound_rom(&rules);
+    pipos_dsound_hold(&rules); /* from here no click starts */
     jumped = 1;
     irq_restore(irq);
     /*
      * Let a click that plays end, then print every queued record, so the
      * boot's records come before ev=jump. A click lasts 21 ms, so the wait
-     * is short. The next click comes 700 ms or more after the jump.
+     * is short. pipos_dsound_anchor() starts the 700 ms after it.
      */
     audio_wait();
+}
+
+void pipos_dsound_anchor(void)
+{
+    uint32_t irq;
+
+    if (!on || !jumped) {
+        return;
+    }
+    irq = irq_save();
+    pipos_dsound_rom(&rules);
+    irq_restore(irq);
 }
 
 void pipos_dsound_rom_ended(void)

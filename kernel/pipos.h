@@ -109,8 +109,10 @@ void pipos_dsound_reopen(void);
 int pipos_dsound_blip(void);
 /* Waits while the note plays, polling the trace. */
 void pipos_dsound_note_wait(void);
-/* Before the jump to a ROM: no click plays from here on. */
+/* Before the jump to a ROM: no click starts, and one that plays ends. */
 void pipos_dsound_jump(void);
+/* Right before ev=jump: the ROM's 700 ms start. */
+void pipos_dsound_anchor(void);
 /* The ROM ended: the boot pace, nothing owed, the gate open. */
 void pipos_dsound_rom_ended(void);
 /*

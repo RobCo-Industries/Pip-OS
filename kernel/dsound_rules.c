@@ -15,8 +15,7 @@ void pipos_dsound_init(struct pipos_dsound *s)
     s->wait = 0;
     s->left = 0;
     s->n = 0;
-    s->rom = 0;
-    s->open = 0;
+    s->phase = PIPOS_DS_BOOT_QUIET;
     s->since_jump = 0;
     s->quiet = 0;
     s->held = 0;
@@ -100,58 +99,78 @@ int pipos_dsound_way(int busy, int note, uint32_t left_ms, int mix_busy)
     return PIPOS_CLICK_WAIT;
 }
 
+int pipos_dsound_in_rom(const struct pipos_dsound *s)
+{
+    return s->phase >= PIPOS_DS_ROM_HOLD;
+}
+
 /* Callers mask IRQs: the tick callback reads the same state. */
 void pipos_dsound_add(struct pipos_dsound *s, unsigned clicks)
 {
-    unsigned cap = s->rom ? PIPOS_CLICK_CAP_ROM : PIPOS_CLICK_CAP;
+    unsigned cap = pipos_dsound_in_rom(s) ? PIPOS_CLICK_CAP_ROM : PIPOS_CLICK_CAP;
 
-    if (!s->open) {
-        return; /* gate closed: the work is not owed */
+    if (s->phase == PIPOS_DS_BOOT_QUIET) {
+        return; /* the gate is closed: the work is not owed */
     }
     s->owed = s->owed + clicks > cap ? cap : s->owed + clicks;
 }
 
 void pipos_dsound_open(struct pipos_dsound *s)
 {
-    s->open = 1;
+    if (s->phase == PIPOS_DS_BOOT_QUIET) {
+        s->phase = PIPOS_DS_BOOT_OPEN;
+    }
 }
 
 void pipos_dsound_close(struct pipos_dsound *s)
 {
-    s->open = 0;
-    s->owed = 0;
-    s->left = 0;
+    if (s->phase == PIPOS_DS_BOOT_OPEN) {
+        s->phase = PIPOS_DS_BOOT_QUIET;
+        s->owed = 0;
+        s->left = 0;
+    }
 }
 
-void pipos_dsound_rom(struct pipos_dsound *s)
+static void to_rom(struct pipos_dsound *s, int phase)
 {
-    s->rom = 1;
+    if (!pipos_dsound_in_rom(s)) {
+        s->quiet = PIPOS_ROM_QUIET_TICKS + 1u; /* no ROM sound yet */
+        s->held = 0;
+    }
+    s->phase = phase;
     if (s->owed > PIPOS_CLICK_CAP_ROM) {
         s->owed = PIPOS_CLICK_CAP_ROM;
     }
     s->since_jump = 0;
-    s->quiet = PIPOS_ROM_QUIET_TICKS + 1u; /* no ROM sound yet */
-    s->held = 0;
+}
+
+void pipos_dsound_hold(struct pipos_dsound *s)
+{
+    to_rom(s, PIPOS_DS_ROM_HOLD);
+}
+
+void pipos_dsound_rom(struct pipos_dsound *s)
+{
+    to_rom(s, PIPOS_DS_ROM_WAIT);
 }
 
 void pipos_dsound_rom_end(struct pipos_dsound *s)
 {
-    s->rom = 0;
+    s->phase = PIPOS_DS_BOOT_OPEN;
     s->owed = 0;
     s->left = 0;
     s->held = 0;
-    s->open = 1;
 }
 
 int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
 {
     int waits_for_rom;
 
-    if (s->since_jump <= PIPOS_ROM_START_TICKS) {
-        s->since_jump++;
-        if (s->since_jump > PIPOS_ROM_START_TICKS) {
-            s->open = 1; /* the gate reopens 700 ms after the jump */
-        }
+    if (s->phase == PIPOS_DS_ROM_HOLD) {
+        return -1; /* the jump: no click starts and the 700 ms wait for the anchor */
+    }
+    if (s->phase == PIPOS_DS_ROM_WAIT && ++s->since_jump > PIPOS_ROM_START_TICKS) {
+        s->phase = PIPOS_DS_ROM_RUN;
     }
     if (rom_busy) {
         s->quiet = 0;
@@ -159,7 +178,7 @@ int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
         s->quiet++;
     }
     waits_for_rom = rom_busy || s->quiet <= PIPOS_ROM_QUIET_TICKS;
-    if (s->open && s->owed > 0 && waits_for_rom) {
+    if (s->owed > 0 && waits_for_rom) {
         if (++s->held > PIPOS_ROM_DROP_TICKS) {
             s->owed = 0; /* a long tune is not followed by a stale burst */
             s->left = 0;
@@ -168,8 +187,7 @@ int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
     } else {
         s->held = 0;
     }
-    return pipos_dsound_tick(s, s->since_jump > PIPOS_ROM_START_TICKS && !waits_for_rom &&
-                                    !click_busy);
+    return pipos_dsound_tick(s, !waits_for_rom && !click_busy);
 }
 
 int pipos_dsound_cut(struct pipos_dsound *s, int click_on, int busy)
@@ -186,7 +204,7 @@ int pipos_dsound_restarts(int outcome)
 void pipos_dsound_call_end(struct pipos_dsound *s, int outcome)
 {
     s->in_call = 0;
-    if (s->rom && pipos_dsound_restarts(outcome)) {
+    if (pipos_dsound_in_rom(s) && pipos_dsound_restarts(outcome)) {
         s->quiet = 0;
     }
 }
@@ -198,18 +216,19 @@ int pipos_dsound_tick(struct pipos_dsound *s, int can_play)
     if (s->wait > 0) {
         s->wait--;
     }
-    if (!s->open || s->owed == 0 || s->wait > 0 || !can_play || s->in_call) {
+    if ((s->phase != PIPOS_DS_BOOT_OPEN && s->phase != PIPOS_DS_ROM_RUN) || s->owed == 0 ||
+        s->wait > 0 || !can_play || s->in_call) {
         return -1;
     }
     if (s->left == 0) {
-        s->left = s->rom ? 1 + rnd(s) % 4 : 3 + rnd(s) % 19;
+        s->left = pipos_dsound_in_rom(s) ? 1 + rnd(s) % 4 : 3 + rnd(s) % 19;
     }
     s->owed--;
     s->left--;
     s->wait = gap[rnd(s) % 8];
     if (s->left == 0 || s->owed == 0) { /* the burst ends: a pause */
         s->left = 0;
-        s->wait += s->rom ? 30 + 10 * (rnd(s) % 7) : 15 + 5 * (rnd(s) % 10);
+        s->wait += pipos_dsound_in_rom(s) ? 30 + 10 * (rnd(s) % 7) : 15 + 5 * (rnd(s) % 10);
     }
     return (int)(s->n++ % 12);
 }

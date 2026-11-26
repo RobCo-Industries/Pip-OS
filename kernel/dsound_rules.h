@@ -27,11 +27,32 @@
 #define PIPOS_CLICK_PLAY 1 /* it is its own play */
 #define PIPOS_CLICK_MIX  2 /* it mixes over the note */
 
+/*
+ * Where the clicks stand. Each phase says alone whether work is owed and
+ * whether a click may play:
+ *   BOOT_OPEN   the boot pace: work is owed, up to PIPOS_CLICK_CAP, clicks play;
+ *   BOOT_QUIET  the gate is closed: the note starts or the quiet second runs,
+ *               work is not owed, nothing plays;
+ *   ROM_HOLD    the jump: a click that plays ends, none starts, the 700 ms
+ *               have not started;
+ *   ROM_WAIT    the 700 ms after the jump: work is owed, nothing plays;
+ *   ROM_RUN     the ROM pace: work is owed, clicks play when the ROM is quiet.
+ * In every ROM phase work is owed up to PIPOS_CLICK_CAP_ROM, whatever the
+ * boot's phase was at the jump. A ROM sound only holds what is owed.
+ */
+enum {
+    PIPOS_DS_BOOT_OPEN,
+    PIPOS_DS_BOOT_QUIET,
+    PIPOS_DS_ROM_HOLD,
+    PIPOS_DS_ROM_WAIT,
+    PIPOS_DS_ROM_RUN,
+};
+
 struct pipos_dsound {
     uint32_t rnd;
     unsigned owed, wait, left, n;
-    int rom, open;
-    unsigned since_jump; /* ticks since the jump, up to PIPOS_ROM_START_TICKS + 1 */
+    int phase;           /* a PIPOS_DS_ value */
+    unsigned since_jump; /* ticks of ROM_WAIT, up to PIPOS_ROM_START_TICKS + 1 */
     unsigned quiet;      /* ticks since a ROM sound, up to PIPOS_ROM_QUIET_TICKS + 1 */
     unsigned held;       /* ticks in a row the debt waited for a ROM sound */
     int in_call;         /* an image's audio call runs between its cut and its end */
@@ -46,7 +67,7 @@ struct pipos_dsound {
 #define PIPOS_ACALL_IDLE    5 /* audio_stop with no ROM sound playing */
 #define PIPOS_ACALL_ASKED   6 /* audio_status and volume: a question, no cut */
 
-/* Seed 1, nothing owed, the gate closed, the boot pace. */
+/* Seed 1, nothing owed, BOOT_QUIET. */
 void pipos_dsound_init(struct pipos_dsound *s);
 
 /* What one read or write call of count blocks adds: 2 + count / 4. */
@@ -84,31 +105,40 @@ int pipos_dsound_note_fits(unsigned chars, unsigned delays, uint32_t char_ms,
  */
 int pipos_dsound_way(int busy, int note, uint32_t left_ms, int mix_busy);
 
-/* Adds clicks to the debt, up to the cap. A closed gate adds nothing. */
+/* 1 in the ROM phases. */
+int pipos_dsound_in_rom(const struct pipos_dsound *s);
+
+/* Adds clicks to the debt, up to the phase's cap. BOOT_QUIET adds nothing. */
 void pipos_dsound_add(struct pipos_dsound *s, unsigned clicks);
 
-/* Opens the gate. */
+/* BOOT_QUIET to BOOT_OPEN. Does nothing in a ROM phase. */
 void pipos_dsound_open(struct pipos_dsound *s);
 
-/* Closes the gate and drops what is owed. */
+/* BOOT_OPEN to BOOT_QUIET: what is owed is dropped. Does nothing in a ROM phase. */
 void pipos_dsound_close(struct pipos_dsound *s);
 
 /*
- * The jump to a ROM: the ROM pace, and the debt cut to its cap. Nothing
- * plays for PIPOS_ROM_START_TICKS. A closed gate opens after them.
+ * The jump starts: ROM_HOLD. The debt is cut to the ROM cap and no click
+ * starts. The caller then lets a click that plays end.
+ */
+void pipos_dsound_hold(struct pipos_dsound *s);
+
+/*
+ * The 700 ms start: ROM_WAIT, from ROM_HOLD or a boot phase. The debt is
+ * cut to the ROM cap. Nothing plays for PIPOS_ROM_START_TICKS, then ROM_RUN.
  */
 void pipos_dsound_rom(struct pipos_dsound *s);
 
 /*
- * The ROM ended: the boot pace again, nothing owed, the gate open, as on a
- * boot with no ROM after its last line.
+ * The ROM ended: BOOT_OPEN with nothing owed, as on a boot with no ROM
+ * after its last line.
  */
 void pipos_dsound_rom_end(struct pipos_dsound *s);
 
 /*
  * One 10 ms tick under a ROM. rom_busy is 1 while a sound the ROM started
- * plays, click_busy while a kernel click plays. A click is due only more
- * than PIPOS_ROM_START_TICKS after the jump and more than
+ * plays, click_busy while a kernel click plays. A click is due only in
+ * ROM_RUN, more than PIPOS_ROM_START_TICKS after the anchor, and more than
  * PIPOS_ROM_QUIET_TICKS after the ROM's last sound, with nothing playing.
  * A debt that waits for a ROM sound more than PIPOS_ROM_DROP_TICKS in a
  * row is dropped. Returns as pipos_dsound_tick().

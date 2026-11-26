@@ -59,6 +59,9 @@ int pipos_image_run(const pipos_image_t *im, umode_exit_t *ex)
     task.region_count = im->region_count;
 
     pipos_sys_image_start(im->kind);
+    if (im->kind == PIP_KIND_ROM) {
+        pipos_dsound_anchor(); /* the 700 ms start at ev=jump */
+    }
     k_printf("@RC stage=" PIPOS_STAGE " %s\n", im->start_line);
     rc = umode_run(&task, ex);
     if (im->kind == PIP_KIND_ROM) {
