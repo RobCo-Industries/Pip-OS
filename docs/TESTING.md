@@ -108,7 +108,7 @@ QEMU models the SPI0 controller but no panel. Writes go out and every byte read 
 
 `tests/test_tft.py` builds a second kernel into `<build-dir>/tft` with `EXTRA_CFLAGS=-DPIPOS_TFT_TEST`. That build:
 
-- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full`, `diff`, `retry` for the whole frame sent again after a failed send, or `wake` for the sleep out and display on commands a panic sends to a blanked panel. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
+- taps every byte sent to the panel with its DC level, and prints `ev=tft_send why x y w h bytes crc` per send. `why` is `full`, `diff`, `retry` for the whole frame sent again after a failed send, or `wake` for the sleep out and display on commands that wake a blanked panel. `crc` is the CRC-32 of the stream, each byte fed with its DC level first, as RobCo-Core's `examples/tft` does.
 - keeps every byte since `tft_init()` from `0x00D80000`, up to 2.5 MiB.
 - answers the `tftdump` script command with that transcript. `C` lines hold command bytes. `D` lines hold data as 16-bit words in hex, with `*<count>` for repeats. An `end bytes=<n> full=<0|1>` line closes it.
 - waits after each send until the bytes would have left the wire at the rate set, so timing is not shorter than on a panel.

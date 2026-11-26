@@ -186,7 +186,7 @@ The SPI panel gets no frame per step, only the clear. With the system sound off 
 
 A boot with no ROM never scrolls. Its gate opens again after the last line, so card work after `ev=ready` still clicks.
 
-The kernel keeps the boot lines. When the ROM ends, whether it calls `exit`, returns, faults or is ended by the `kill` command, the kernel writes them again on the console and the panel, at once, with no typing delay, no sound and no marker. A fault's line comes after them. Like a fault's line, the text is drawn even when the ROM left the screen blanked.
+The kernel keeps the boot lines. When the ROM ends, whether it calls `exit`, returns, faults or is ended by the `kill` command, the kernel writes them again on the console and the panel, at once, with no typing delay, no sound and no marker. A fault's line comes after them. If the ROM left the screen blanked with `power`, the kernel lights it first: the blank ends, the SPI panel gets one wake and then one whole frame with the boot text. With typing off nothing scrolls and nothing is written back, so a screen the ROM blanked stays dark.
 
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************
