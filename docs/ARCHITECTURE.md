@@ -24,7 +24,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | ABI header shared with ROM code | `sdk/include/pipos/abi.h` |
 | ROM and holotape SDK | `sdk/` |
 
-The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/2ef412b25aad06e20eae85bacc4ea43c6d930085/docs/guide/API.md).
+The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/0a5b37ee2b05077d1e2fd0bc3882d18e3ae5e835/docs/guide/API.md).
 
 ## Boot flow
 
@@ -55,7 +55,7 @@ A failure in `mmu_init()`, `fb_init()`, `console_init()`, the heap or the tick c
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/2ef412b25aad06e20eae85bacc4ea43c6d930085/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
+The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/0a5b37ee2b05077d1e2fd0bc3882d18e3ae5e835/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
 
 | Range | Use | Defined in |
 |---|---|---|
@@ -83,7 +83,7 @@ The startup block of each image sits at the bottom of its stack, `stack_top - 0x
 
 ## How an image runs
 
-`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/2ef412b25aad06e20eae85bacc4ea43c6d930085/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
+`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/0a5b37ee2b05077d1e2fd0bc3882d18e3ae5e835/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
 
 `pipos_image_run()` in `kernel/rom.c` runs both kinds of image:
 
@@ -305,7 +305,7 @@ The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c
 | `kill` | Ends the innermost running image with `umode_request_kill()` |
 | `panic <reason>` | Takes the panic path |
 
-Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/2ef412b25aad06e20eae85bacc4ea43c6d930085/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
+Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/0a5b37ee2b05077d1e2fd0bc3882d18e3ae5e835/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
 
 ## Build
 
