@@ -99,4 +99,5 @@ refused "SUBTYPE=2 is a data holotape" SUBTYPE=2
 refused "SUBTYPE=data is a data holotape" SUBTYPE=data
 refused "SUBTYPE=x1 is not valid for KIND=holotape" SUBTYPE=x1
 refused "SUBTYPE=1 is not valid for KIND=rom" KIND=rom IMAGE=BEACON.ROM SUBTYPE=1
+refused "SUBTYPE=0 game must be one word" "SUBTYPE=0 game"
 echo "sdk_example_test: passed"
