@@ -488,3 +488,69 @@ def test_plant_makes_a_copy_only_the_search_refuses(package, tmp_path):
     assert run("plant", package, out, "docs/API.md", "pkghost-42")[0] == 0
     assert check(str(out))[0] == 0
     assert_fails(str(out), "docs/API.md: holds 'pkghost-42'", "pkghost-42")
+
+
+# The wrong types the sdk.json reader of RobCo Studio refuses. In Python a JSON
+# true is an int to isinstance and 1.0 == 1, so each needs its own refusal.
+NOT_INT = [True, 1.0, "1", None, [], {}]
+NOT_STR = [7, 1.5, True, None, [], {}]
+NOT_LIST = [7, "x", True, None, {}]
+NOT_DICT = [7, "x", True, None, []]
+TYPE_ROWS = (
+    [(("format",), v, "format is not 1") for v in NOT_INT]
+    + [(("formats", k), v, "formats is not") for k in ("rimg", "flags", "boot", "runner")
+       for v in NOT_INT]
+    + [(("formats",), v, "formats is not") for v in NOT_DICT]
+    + [(("files", 0, "size"), v, "files[0] is not") for v in NOT_INT]
+    + [(("files", 0, "sha256"), v, "files[0] is not") for v in NOT_STR]
+    + [(("files", 0, "path"), v, "files[0] is not") for v in NOT_STR]
+    + [(("files",), v, "files is not an array") for v in NOT_LIST]
+    + [(("files", 0), v, "files[0] is not") for v in NOT_DICT]
+    + [(("name",), v, "name is not") for v in NOT_STR]
+    + [(("version",), v, "version is not") for v in NOT_STR]
+    + [(("abi",), v, "abi is not") for v in NOT_STR]
+    + [(("built_from",), v, "built_from is not") for v in NOT_LIST]
+    + [(("built_from", 0), v, "built_from is not") for v in NOT_DICT]
+    + [(("built_from", 0, f), v, "built_from is not") for f in ("repo", "commit")
+       for v in NOT_STR]
+    + [(("requires",), v, "requires is not") for v in NOT_LIST]
+    + [(("tools",), v, "tools is not") for v in NOT_LIST]
+    + [(("tools", 0), v, "tools is not") for v in NOT_DICT]
+    + [(("tools", 0, f), v, "tools is not") for f in ("name", "version") for v in NOT_STR]
+    + [(("firmware",), v, "firmware is not") for v in NOT_DICT]
+    + [(("firmware", f), v, "firmware is not") for f in ("repo", "tag", "commit", "base_url")
+       for v in NOT_STR]
+    + [(("firmware", "files"), v, "firmware is not") for v in NOT_LIST]
+    + [(("firmware", "files", 0), v, "firmware is not") for v in NOT_DICT]
+    + [(("firmware", "files", 0, f), v, "firmware is not") for f in ("name", "sha256")
+       for v in NOT_STR]
+    + [(("licences",), v, "licences is not") for v in NOT_LIST]
+    + [(("licences", 0), v, "licences is not") for v in NOT_DICT]
+    + [(("licences", 0, "spdx"), v, "licences is not") for v in NOT_STR]
+    + [(("licences", 0, "paths"), v, "licences is not") for v in NOT_LIST]
+    + [(("licences", 0, "paths", 0), v, "licences is not") for v in NOT_STR]
+)
+
+
+@pytest.mark.parametrize("where,value,text", TYPE_ROWS,
+                         ids=[f"{'.'.join(map(str, w))}={json.dumps(v)}"
+                              for w, v, _ in TYPE_ROWS])
+def test_wrong_json_type(package, where, value, text):
+    items = entries(package)
+    doc = manifest(items)
+    at = doc
+    for k in where[:-1]:
+        at = at[k]
+    at[where[-1]] = value
+    rewrite(package, set_manifest(items, doc))
+    status, out = check(package)
+    assert status == 1, out
+    assert "Traceback" not in out
+    assert f"sdk.json: {text}" in out, out
+
+
+def test_build_writes_integers_as_integers(package):
+    doc = manifest(entries(package))
+    assert type(doc["format"]) is int
+    assert all(type(v) is int for v in doc["formats"].values())
+    assert all(type(f["size"]) is int for f in doc["files"])
