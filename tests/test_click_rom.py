@@ -2,10 +2,11 @@
 
 With [audio] system_sound on, the kernel keeps clicking while a ROM runs,
 in the ROM pace: at most 8 clicks owed, none in the first 700 ms after the
-jump, none while a ROM sound plays or in the 300 ms after it. The debt
-comes from the card and slot calls the ROM makes. A ROM's audio call stops
-a click that plays, so the ROM's sound always wins, and audio_status and
-sample_queue act as if the click were silence.
+jump, none while a ROM sound plays or in the 300 ms after it ends. The
+debt comes from the card and slot calls the ROM makes. A ROM call that
+starts or stops a sound stops a click that plays, so the ROM's sound always
+wins. audio_status and volume cut nothing, audio_status and sample_queue
+act as if the click were silence, and a refused call holds nothing back.
 
 The jump marker has no t_ms. The test ROMs print their own "t0" mark with
 the kernel's time first thing, after the jump, so a click 700 ms after t0
@@ -138,6 +139,44 @@ def test_a_rom_sound_always_wins(board, kernel_image, test_rom, tmp_path, need_m
     # Without the clicks the ROM's own trace is whole: 41 tones, each with its end.
     rest = without_clicks(tr)
     assert [m["op"] for m in rest] == ["tone", "stop"] * 41, rest
+
+
+def whole_clicks(tr):
+    """Every click ends by itself: op=pcm, then its own op=pcm_end, no op=stop."""
+    clicks = [i for i, m in enumerate(tr) if is_click(m)]
+    for i in clicks:
+        assert i + 1 < len(tr) and tr[i + 1]["op"] == "pcm_end", tr[i:i + 2]
+    assert not [m for m in tr if m["op"] == "stop"], tr
+    return len(clicks)
+
+
+def test_status_every_10_ms_cuts_no_click(board, kernel_image, test_rom, tmp_path,
+                                           need_mtools):
+    """A UI loop asks audio_status every 10 ms while it reads. The clicks
+    under it play whole, and every answer is 0."""
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_status")) as vm:
+        assert_rom_checks(vm, ["status_idle"] * 30)
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)
+    tr = after_jump(vm)
+    n = whole_clicks(tr)
+    print(f"clicks={n}")
+    assert n >= 1, tr
+    assert all(is_click(m) or m["op"] == "pcm_end" for m in tr), tr
+
+
+def test_refused_calls_hold_no_click(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """A tone refused every 100 ms starts no sound, so it never restarts the
+    300 ms of quiet: the clicks still play, whole."""
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_refused")) as vm:
+        assert_rom_checks(vm, ["all_refused"])
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)
+    tr = after_jump(vm)
+    n = whole_clicks(tr)
+    print(f"clicks={n}")
+    assert n >= 1, tr
+    assert all(is_click(m) or m["op"] == "pcm_end" for m in tr), tr
 
 
 def test_sample_queue_with_clicks(board, kernel_image, test_rom, tmp_path, need_mtools):
