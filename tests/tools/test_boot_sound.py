@@ -320,7 +320,34 @@ class Rest(Case):
         self.assertEqual(s[0], 0)
 
 
+def same_crc(prefix, target):
+    """`prefix` plus four bytes whose CRC-32 is `target`."""
+    table = []
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            c = (c >> 1) ^ 0xEDB88320 if c & 1 else c >> 1
+        table.append(c)
+    top = {v >> 24: i for i, v in enumerate(table)}
+    state = target ^ 0xFFFFFFFF
+    for _ in range(4):
+        i = top[state >> 24]
+        state = ((state ^ table[i]) << 8 | i) & 0xFFFFFFFF
+    start = zlib.crc32(prefix) ^ 0xFFFFFFFF
+    return prefix + (state ^ start).to_bytes(4, "little")
+
+
 class Unknown(Case):
+    def test_two_files_with_one_crc_are_told_apart_by_length(self):
+        a = self.sound("a", bytes([200]) * 441)
+        b = self.sound("b", same_crc(bytes([60]) * 216, zlib.crc32(a)))
+        self.assertEqual(zlib.crc32(a), zlib.crc32(b))
+        self.assertNotEqual(len(a), len(b))
+        duty, w = self.render([pcm(0, a), end(20), pcm(50, b), end(60)])
+        self.assertEqual(w, [])
+        self.assertEqual(duty[frame(10)], 200 / 256)
+        self.assertEqual(duty[frame(55)], 60 / 256)
+
     def test_unknown_crc_plays_silence_with_one_warning(self):
         d = bytes([200]) * 441
         duty, w = self.render([pcm(0, d), end(20), pcm(50, d), end(70)])

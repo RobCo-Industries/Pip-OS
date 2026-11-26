@@ -27,8 +27,9 @@ Lines it reads, each an "@RC ... ev=audio op=..." marker of any stage:
 Rules it applies, from the library's driver:
 
 - Sample bytes come from the .u8 files of the --pcm folders, found by the
-  CRC-32 of their bytes. An unknown CRC plays as silence, a buffer of 128,
-  with one warning per CRC. The pin still moves to the midpoint for it.
+  CRC-32 of their bytes and their length. An unknown pair plays as
+  silence, a buffer of 128, with one warning per pair. The pin still moves
+  to the midpoint for it.
 - Mix: play + overlay - 128, clamped to 0 to 255, then the volume. A play
   can have many overlays, one at a time, each from its own start. One
   overlay runs at once: the library refuses a second while the first
@@ -231,7 +232,7 @@ def read_log(path):
 
 
 def load_pcm(dirs):
-    """{crc: bytes} from the .u8 files of `dirs`."""
+    """{(crc, length): bytes} from the .u8 files of `dirs`."""
     found = {}
     count = 0
     for d in dirs:
@@ -251,7 +252,7 @@ def load_pcm(dirs):
             with open(p, "rb") as f:
                 data = f.read()
             if data:
-                found.setdefault(zlib.crc32(data), data)
+                found.setdefault((zlib.crc32(data), len(data)), data)
     return found
 
 
@@ -300,13 +301,13 @@ class Renderer:
         self.cur = None
 
     def lookup(self, crc, length):
-        data = self.pcm.get(crc)
-        if data is not None and len(data) == length:
+        data = self.pcm.get((crc, length))
+        if data is not None:
             return data
         if length == RAMP_LEN and crc == RAMP_CRC:
             return RAMP
-        if crc not in self.unknown:
-            self.unknown.add(crc)
+        if (crc, length) not in self.unknown:
+            self.unknown.add((crc, length))
             self.warn("no .u8 file has crc=%08x len=%d: it plays as silence" % (crc, length))
         # One shared buffer of silence, viewed, not copied per line.
         if len(self.silence) < length:
