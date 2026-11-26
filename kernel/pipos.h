@@ -52,6 +52,12 @@ void pipos_screen_delay(uint32_t ms);
 /* [display] char_delay_ms for the boot text. */
 void pipos_screen_typing(uint32_t char_delay_ms);
 void pipos_screen_line(const char *text);
+/*
+ * The next line shown is the boot text's second line: the note rises with
+ * it. The boot screen says so, since a line can come before the boot text,
+ * such as the panel's failure line.
+ */
+void pipos_screen_note_next(void);
 
 /*
  * dsound.c: the disk click. Card and slot work and the typed boot text add

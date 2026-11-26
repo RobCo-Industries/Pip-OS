@@ -13,6 +13,7 @@
 static uint32_t line_delay_ms;
 static uint32_t char_delay_ms;
 static int lines_shown;
+static int note_next;       /* the next line starts the boot note */
 
 void pipos_screen_delay(uint32_t ms)
 {
@@ -40,6 +41,11 @@ static void type_line(const char *text)
     }
 }
 
+void pipos_screen_note_next(void)
+{
+    note_next = 1;
+}
+
 void pipos_screen_line(const char *text)
 {
     unsigned owed = 0;
@@ -47,7 +53,8 @@ void pipos_screen_line(const char *text)
     if (lines_shown++ > 0 && line_delay_ms > 0) {
         pipos_dsound_delay(line_delay_ms);
     }
-    if (lines_shown == 2) {
+    if (note_next) {
+        note_next = 0;
         pipos_dsound_note(char_delay_ms, line_delay_ms); /* the note rises with line 2 */
     }
     audio_poll(); /* prints audio trace records queued so far */

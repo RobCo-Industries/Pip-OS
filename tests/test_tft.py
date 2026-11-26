@@ -153,6 +153,23 @@ def test_bad_pin_is_refused(board, tft_build, tmp_path, need_mtools):
         no_exception(vm)
 
 
+def test_boot_note_starts_with_the_boot_text_after_the_failure_line(board, tft_build, tmp_path,
+                                                                    need_mtools):
+    """The panel's failure line comes before the boot text. The boot note still
+    rises between the boot text's first and second lines."""
+    line1 = "*************** PIP-OS(R) V7.1.0.8 ***************\n"
+    line2 = "COPYRIGHT 2075 ROBCO IND.\n"
+    cfg = ("[display]\nbackend = tft\ntft_test = fail\nchar_delay_ms = 30\nline_delay_ms = 0\n"
+           "[audio]\nvolume = 80\nbeep = yes\nsystem_sound = yes\n").encode()
+    with booted(tft_build[0], board, sd=card(tmp_path, cfg)) as vm:
+        no_exception(vm)
+    serial = vm.serial
+    failed = serial.index("\nSPI DISPLAY FAILED, USING HDMI\n")
+    assert serial.count(" op=voice ") == 1, serial
+    at = serial.index(" op=voice ")
+    assert failed < serial.index(line1) < at < serial.index(line2), serial
+
+
 def test_init_failure_falls_back_to_hdmi(board, tft_build, test_rom, test_holo, tmp_path,
                                          need_mtools):
     sd = card(tmp_path, display_cfg("backend = tft\ntft_test = fail"),

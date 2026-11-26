@@ -291,6 +291,9 @@ static int boot_screen(int card, loader_result_t *res)
     int rc;
 
     for (i = 0; pipos_boot_head[i] != NULL; i++) {
+        if (i == 1) {
+            pipos_screen_note_next();
+        }
         pipos_screen_line(pipos_boot_head[i]);
     }
     pipos_holo_line(pipos_holo_count(card), line, sizeof(line));
