@@ -19,7 +19,7 @@ flowchart LR
     B --> C["tools/sdk_package.py check"]
 ```
 
-1. It stops when a tracked file has changes, since `built_from` names the commits of Pip-OS and of `external/robco-core`.
+1. It stops when a folder it reads holds an untracked file, in Pip-OS or in `external/robco-core`, and names the file. Then it stops when a tracked file has changes. `built_from` names the commits of Pip-OS and of `external/robco-core`, so both must hold every input. The headers in the package come from `git ls-files`, so an untracked header cannot get in.
 2. It builds again, in `build/sdk-package/`, the kernel, the runner ROM with its `libpip.a`, `flags.json`, RobCo-Core's firmware stub and `boot.json`, with RobCo-Core's own `make boot-json`.
 3. Every compile gets `-ffile-prefix-map` for the repository and the build folder, through `EXTRA_CFLAGS` for the kernel and `PATH_MAPS` of `pipos-app.mk` for the ROM and the library. The maps change the debug info only. The kernel image and the runner ROM are the same bytes as those of `make`.
 4. `tools/sdk_package.py build` writes `sdk.json` and the archive. The firmware pins come from RobCo-Core's `tools/fetch_firmware.sh`. No firmware file goes in.
@@ -52,7 +52,11 @@ So a local build with another compiler fails until it names that compiler, such 
 - `files`: sorted by path in byte order with no repeat, each with its size and a lower case SHA-256 that match the entry. No entry unlisted and no listed path missing.
 - The layout: every file of the spec's table and the ten headers, and nothing else but more headers in `include/pipos/`.
 - No Pi firmware file.
+- Every file entry can be read. An entry with an unknown method, a wrong CRC or encryption is a `FAIL` line with its name, and its bytes are neither hashed nor searched.
 - No `--forbid` text in any file, `sdk.json` included.
+- No `--user` name in the forms a tool writes it: `/home/NAME`, `/Users/NAME`, `\Users\NAME` and `NAME@`. The bare name is not searched. On a GitHub runner the user is `runner`, and `sdk.json` holds the format key `runner` and the path `boot/RUNNER.ROM`.
+
+A forbidden text under 4 characters is an error, not a pass: it would match by chance. The search compares bytes. It finds a Windows path only as written with single `\`, not with `/` or with the `\\` of a JSON string. The package is built on Linux only, so this is enough today.
 
 `tests/tools/test_sdk_package.py` builds small packages in a temp folder and breaks each rule once. It needs no build. `make sdk-package-test` runs it.
 
@@ -60,10 +64,21 @@ So a local build with another compiler fails until it names that compiler, such 
 
 `.github/workflows/sdk-package.yml` runs on every pull request, on `master` and on a tag `pipos-*`:
 
-- `package` runs the checker's tests, downloads the xPack compiler, builds the package twice and compares the SHA-256, shows that the check refuses a copy with the host name planted in it, and uploads the package as the `pipos-package` artifact.
+- `package` runs the checker's tests, downloads the xPack compiler, builds the package twice and compares the SHA-256, shows that the check refuses a copy with the host name planted in it, boots the package on the four boards in the CI image, and uploads the package as the `pipos-package` artifact. It holds `packages: read` to pull the CI image.
 - `publish` runs only for a pushed tag `pipos-<version>`. It alone holds `contents: write`. It attaches the package of the `package` job to a release of that tag. The tag must name the package that was built: `pipos-1.4.0` builds with `PACKAGE_BUILD=0` and must give `pipos-1.4.0.zip`.
+
+## The boot check
+
+The QEMU suite boots the kernel of the CI image's compiler. The package's kernel and firmware stub come from xPack 15.2.1. `make sdk-boot-test SDK_ZIP=<zip>` boots the package itself:
+
+1. It unpacks `boot/PIPOS.IMG`, `boot/config.txt`, `boot/fwstub.bin`, `boot/RUNNER.ROM` and `boot.json`.
+2. It builds the simulator card of RobCo-Core's `docs/spec/STUDIO_CLI.md` from them, with the test tape `run_exit0` as `PIPES.HTP`.
+3. It starts QEMU with the arguments `boot.json` gives each board, in its default mode.
+4. It needs the runner's done line with `result=exit rc=0` and the key of its run line.
+
+`BOARD` picks the boards, `all` by default. A board QEMU lacks, missing mtools or a `boot.json` without the four boards fails it. Nothing skips. The tape is built by the local compiler; only the package is under test. A local package needs `make sdk-package SDK_GCC_RELEASE=<your gcc version>` first.
 
 ## Not done yet
 
-- The kernel and the firmware stub of the release package are built with xPack 15.2.1, and the QEMU suite runs the CI image's compiler. No test boots the package's kernel.
+- The card is made with mtools, as in `tests/test_runner.py`, not with RobCo-Core's FatFs as the spec says. The kernel reads both.
 - `licences` says MIT for every file, as the spec does. The kernel also holds FatFs, under its own BSD-style licence, and RobCo-Core's console font.
