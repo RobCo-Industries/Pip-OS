@@ -97,13 +97,14 @@ def runner_rom(kernel_image):
 
 
 def sim_card(path, kernel_image, cfg, tape=None, tape_name=TAPE, size_mib=16, pad_before=None,
-             config_txt=None, runner=None):
+             config_txt=None, runner=None, pipos_cfg=PIPOS_CFG):
     """The simulator card: its files in the order of the spec. cfg=None
     leaves RUNNER.CFG out, tape=None the tape. `pad_before` names a file
     that gets a 17 MiB file copied right before it, so its bytes lie past
     16 MiB on a 32 MiB card. config_txt and runner are the bytes of
     config.txt and of the runner ROM: None takes boot/config.txt and the
-    runner built beside kernel_image. A package's own files go here."""
+    runner built beside kernel_image. A package's own files go here.
+    pipos_cfg is the bytes of /PIPBOY/PIPOS.CFG, which the tool writes."""
     make_sd_image(path, size_mib)
     target = f"{os.fspath(path)}@@{PART_OFFSET}"
     if config_txt is None:
@@ -114,7 +115,7 @@ def sim_card(path, kernel_image, cfg, tape=None, tape_name=TAPE, size_mib=16, pa
     with open(kernel_image, "rb") as f:
         kernel = f.read()
     files = [("PIPOS.IMG", kernel), ("config.txt", config_txt), ("PIPBOY/", None),
-              ("PIPBOY/PIPOS.CFG", PIPOS_CFG), ("PIPBOY/ROM1.ROM", runner)]
+              ("PIPBOY/PIPOS.CFG", pipos_cfg), ("PIPBOY/ROM1.ROM", runner)]
     if cfg is not None:
         files.append(("PIPBOY/RUNNER.CFG", cfg))
     files.append(("PIPBOY/HOLO/", None))

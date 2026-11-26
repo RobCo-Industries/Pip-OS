@@ -4,7 +4,8 @@ The QEMU suite boots the kernel of this checkout's compiler. The package's
 kernel comes from the compiler `make sdk-package` was given, the pinned
 xPack one in CI. This file unpacks a package, builds the simulator card of
 RobCo-Core's docs/spec/STUDIO_CLI.md from the package's kernel, config.txt
-and runner ROM, with one tape, starts QEMU with the arguments the package's
+and runner ROM, the PIPOS.CFG and RUNNER.CFG the spec has the tool write,
+and one tape that stands in for the project's build, starts QEMU with the arguments the package's
 boot.json gives each board, and waits for the runner's signed done line
 with result=exit rc=0.
 
@@ -29,14 +30,35 @@ from harness.boot import Vm, _connect_unix
 from harness.plugin import have_mtools, selected_boards
 from harness.qemu import COMMON_ARGS, KEEPALIVE_INTERVAL, Qemu, keepalive_default
 
-from pipos_helpers import READY, TIMEOUT, no_exception, one
-from test_runner import RUN_LINE, TAPE, read_run, runner_cfg, runner_lines, sim_card
+from pipos_helpers import READY, _mtools, TIMEOUT, no_exception, one
+from test_runner import PART_OFFSET, RUN_LINE, read_run, runner_lines, sim_card
 
 # The boards boot.json must list, by RobCo-Core's docs/spec/TESTING.md.
 BOARDS = ["raspi0", "raspi1ap", "raspi2b", "raspi3b"]
-# What the card takes from the package.
+# What the run takes from the package. boot/PIPOS.CFG is not among them:
+# the spec has the tool write the card's PIPOS.CFG, below.
 NEEDED = ("boot.json", "boot/PIPOS.IMG", "boot/config.txt", "boot/fwstub.bin",
           "boot/RUNNER.ROM")
+
+# The project name of the stand-in tape.
+NAME = "PIPES"
+TAPE = NAME + ".HTP"
+# /PIPBOY/PIPOS.CFG as STUDIO_CLI.md "The simulator card" has the tool write
+# it: 11 lines, 113 bytes. Written here, not taken from the package.
+CARD_PIPOS_CFG = (b"[display]\n"
+                  b"scheme = green\n"
+                  b"line_delay_ms = 0\n"
+                  b"backend = hdmi\n"
+                  b"\n"
+                  b"[audio]\n"
+                  b"volume = 100\n"
+                  b"beep = no\n"
+                  b"\n"
+                  b"[holotape]\n"
+                  b"slot = off\n")
+assert len(CARD_PIPOS_CFG) == 113 and CARD_PIPOS_CFG.count(b"\n") == 11
+# /PIPBOY/RUNNER.CFG as SDK_PACKAGE.md "What the tool writes" has it.
+CARD_RUNNER_CFG = b"[run]\ntape = " + NAME.encode() + b".HTP\n"
 
 
 @pytest.fixture(scope="module")
@@ -123,6 +145,17 @@ def boot_from_json(doc, board, stub, image, sd):
             q.close()
 
 
+def card_read(sd, name):
+    return _mtools("mtype", "-i", f"{os.fspath(sd)}@@{PART_OFFSET}", "::" + name)
+
+
+def card_files(sd):
+    """Every file on the card, as paths without the leading slash."""
+    out = _mtools("mdir", "-/", "-b", "-i", f"{os.fspath(sd)}@@{PART_OFFSET}", "::")
+    names = [line.split("::/", 1)[1] for line in out.decode().splitlines() if "::/" in line]
+    return sorted(n for n in names if not n.endswith("/"))
+
+
 def test_boot_json_lists_the_four_boards(package, request):
     _, doc = package
     assert sorted(doc["boards"]) == BOARDS
@@ -138,8 +171,23 @@ def test_package_kernel_runs_a_tape(package, tape, sdk_board, tmp_path):
         config_txt = f.read()
     with open(files["boot/RUNNER.ROM"], "rb") as f:
         runner = f.read()
-    sd = sim_card(tmp_path / "sd.img", files["boot/PIPOS.IMG"], runner_cfg(TAPE), tape,
-                  config_txt=config_txt, runner=runner)
+    with open(files["boot/PIPOS.IMG"], "rb") as f:
+        kernel = f.read()
+    sd = sim_card(tmp_path / "sd.img", files["boot/PIPOS.IMG"], CARD_RUNNER_CFG, tape,
+                  tape_name=TAPE, config_txt=config_txt, runner=runner,
+                  pipos_cfg=CARD_PIPOS_CFG)
+    # Each file on the card, read back, has the source the spec names.
+    want = {
+        "PIPOS.IMG": kernel,                   # the package
+        "config.txt": config_txt,              # the package
+        "PIPBOY/PIPOS.CFG": CARD_PIPOS_CFG,    # the tool, by the spec
+        "PIPBOY/ROM1.ROM": runner,             # the package's RUNNER.ROM
+        "PIPBOY/RUNNER.CFG": CARD_RUNNER_CFG,  # the tool, by the spec
+        "PIPBOY/HOLO/" + TAPE: tape,           # the project, here a stand-in
+    }
+    assert card_files(sd) == sorted(want), card_files(sd)
+    for name, data in want.items():
+        assert card_read(sd, name) == data, f"{name} on the card is not from its source"
     with boot_from_json(doc, sdk_board, files["boot/fwstub.bin"], files["boot/PIPOS.IMG"],
                         os.fspath(sd)) as vm:
         assert vm.qemu.keepalive_on == keepalive_default(), vm.qemu.keepalive_status()
