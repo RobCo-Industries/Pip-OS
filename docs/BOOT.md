@@ -130,7 +130,7 @@ Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After e
 
 `at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`.
 
-At the jump to a ROM the debt drops to 8 and the kernel plays no more clicks. A click that still plays at the jump ends first. So a click never meets a sound of the ROM.
+With typing on, the gate closes for good when the last boot line starts, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll). At the jump to a ROM the debt drops to 8 and the kernel plays no more clicks. A click that still plays at the jump ends first. So a click never meets a sound of the ROM.
 
 A click starts from the tick at any moment. On the trace backend its two records, `op=pcm` and `op=pcm_end`, wait in RobCo-Core's queue of 64 until the main context polls. So until the jump the kernel polls wherever it waits or works long: after each typed character, every 100 ms of the line delay, after each card or slot call, and before each `ev=disk`, `ev=jump` and `ev=ready` marker. At the jump it waits for a click that still plays, then prints the queue. The fastest pace is one click per 30 ms, so 100 ms adds at most 8 records and the queue never fills. Order rules. Every audio record carries `t_ms`, the time it happened, so read times there and not from a record's place in the log. Audio records print in the order they happened. No audio record of the kernel comes after `ev=jump`: the jump stops new clicks first, with interrupts masked, then waits and prints. Against `ev=disk` and `ev=ready` there is no such promise: the kernel polls just before it prints them, but a click that starts or ends between that poll and the print shows up after the marker.
 
@@ -152,7 +152,7 @@ chars * char_delay_ms + delays * line_delay_ms >= SOUND_NOTE_MS
 
 The kernel counts both from its own boot text. `chars` is the printable characters of every fixed line from the second on: 271 for the stock text. The holotape and ROM lines change from card to card, so they do not count. `delays` is the line delays after the second line starts, one per later line: 13. Typing off plays no note. At the stock 20 ms and 200 ms the text lasts 8020 ms, so the note plays. At 2 ms and no line delay it lasts 542 ms, so it does not, and the clicks play as before.
 
-When the second line starts, after its line delay, the kernel closes the click gate, which drops what is owed. It waits for the voice to be idle, starts the note with `audio_play_voice()` and opens the gate. A due click then mixes over the note, as the disk click says. After the last boot line the kernel waits while the note still plays, polling the trace as the clicks do, and only then jumps to a ROM or prints `ev=ready`.
+When the second line starts, after its line delay, the kernel closes the click gate, which drops what is owed. It waits for the voice to be idle, starts the note with `audio_play_voice()` and opens the gate. A due click then mixes over the note, as the disk click says. After the last boot line the kernel waits while the note still plays, polling the trace as the clicks do, and only then scrolls, jumps to a ROM or prints `ev=ready`.
 
 On the trace backend the note is one line before the second line's text, then its overlays, then its end:
 
@@ -165,6 +165,28 @@ On the trace backend the note is one line before the second line's text, then it
 `crc` is the CRC-32 of the spans, 4536 bytes. The note prints no marker of its own: `op=voice` is the evidence. If `audio_play_voice()` fails, the boot goes on without the note and prints nothing.
 
 Nobody has heard the note on a board yet.
+
+### The quiet second and the scroll
+
+With typing on, the last boot line starts the quiet second. With the system sound on, the kernel closes the click gate as the line starts, after its line delay, and drops what is owed. It prints:
+
+```
+@RC stage=pipos ev=quiet dropped=0 t_ms=9280
+```
+
+`dropped` is the clicks owed at that moment. `t_ms` is `tick_ms()`. The audio clock starts from `tick_ms()`, so it and the trace's `t_ms` agree within one 10 ms tick. A click that plays then ends by itself. No click starts after `ev=quiet`. With typing off the gate never closes and nothing here happens.
+
+After the last line the kernel first waits for the note, if it still plays. Then, if a ROM loaded, the text scrolls away. The scroll starts `line_delay_ms` after the last line ends, and with the system sound on never sooner than 1000 ms after the gate closed. So fast typing waits up to 1 s there. Every 40 ms the kernel moves the text up one line, with `console_set_cursor(0, console_rows() - 1)` and `console_putc('\n')`, until every boot line has left. With the system sound on, each line that leaves and is not blank plays the blip, `sound_blip` of `kernel/sound_table.c`, 600 bytes at 37500 Hz. A blank line has no character from `0x21` to `0x7e`. The stock text has 15 lines and 2 blank ones, so 13 blips. Then the kernel clears the console, sends one clear frame to the SPI panel and prints:
+
+```
+@RC stage=pipos ev=scroll lines=15 blips=13
+```
+
+The SPI panel gets no frame per step, only the clear. With the system sound off and typing on, the scroll runs the same, in silence, with `blips=0` and no `ev=quiet`. The gate stays closed through the scroll and the jump, and no click plays under the ROM.
+
+A boot with no ROM never scrolls. Its gate opens again after the last line, so card work after `ev=ready` still clicks.
+
+The kernel keeps the boot lines. When the ROM ends, whether it calls `exit`, returns, faults or is ended by the `kill` command, the kernel writes them again on the console and the panel, at once, with no typing delay, no sound and no marker. A fault's line comes after them. Like a fault's line, the text is drawn even when the ROM left the screen blanked.
 
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************
@@ -231,9 +253,11 @@ The ROM can touch two regions, both read-write: its slot, `0x00400000` to `0x007
 
 | End | Marker | Screen |
 |---|---|---|
-| `exit(n)` or return `n` | `ev=rom_exit status=<s>`, where `<s>` is the low 8 bits of `n` | nothing |
+| `exit(n)` or return `n` | `ev=rom_exit status=<s>`, where `<s>` is the low 8 bits of `n` | nothing new |
 | Fault | `ev=rom_kill reason=<undef\|prefetch_abort\|data_abort> pc=0x<pc>`, plus `dfar dfsr` or `ifar ifsr` for aborts | `ROM(1) <fault> AT 0x<pc>` |
-| `umode_run()` refused the task | `ev=error code=umode rc=<n>` | nothing |
+| `umode_run()` refused the task | `ev=error code=umode rc=<n>` | nothing new |
+
+In every case the console holds the boot text again. After a scroll the kernel writes it back, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll).
 
 `pc` is the address of the faulting instruction. A privileged instruction in USR mode is an undefined instruction.
 
@@ -294,6 +318,8 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `tft_send` | `why x y w h bytes crc` | Test builds only, one per send to the panel. See [TESTING.md](TESTING.md#spi-panel). |
 | `audio` | `op hz vol t_ms`, or `op rate len vol crc t_ms` and `op n last t_ms` for a sample | One sound change, trace backend only. Printed by RobCo-Core. See [API.md](API.md#audio). |
 | `audio_drop` | `n` | Trace records the audio driver dropped. Printed by RobCo-Core. |
+| `quiet` | `dropped t_ms` | With the system sound and typing on, the last boot line starts and the click gate closes. See [The quiet second and the scroll](#the-quiet-second-and-the-scroll). |
+| `scroll` | `lines blips` | With typing on and a ROM, the boot text scrolled away |
 | `jump` | `entry` | The kernel enters the ROM |
 | `rom_exit` | `status` | The ROM called `exit` or returned. `status` is 0 to 255. |
 | `rom_kill` | `reason pc` and `dfar dfsr` or `ifar ifsr`, or `reason=killed code pc` | The ROM faulted, or the `kill` command ended it |

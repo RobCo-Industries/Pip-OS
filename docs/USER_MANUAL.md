@@ -71,6 +71,8 @@ PIP-OS READY
 **************************************************
 ```
 
+With `char_delay_ms` above 0 and a ROM to run, the text scrolls up and off the screen before the ROM starts. With the system sound on, each line that leaves makes a short blip.
+
 The first eight lines never change. [LORE.md](LORE.md) explains them. The speaker beeps once unless the configuration turns the beep off.
 
 The holotape line counts the `.HTP` files in `PIPBOY/HOLO/`:
