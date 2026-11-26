@@ -189,7 +189,8 @@ class Sizes(unittest.TestCase):
         self.assertIn("#define SOUND_CLICK_LEN     789u", h)
         self.assertIn("#define SOUND_BLIP_LEN      600u", h)
         self.assertIn("#define SOUND_BEEP_LEN      2250u", h)
-        self.assertNotIn("sound_note", h)
+        self.assertIn("#define SOUND_NOTE_SPANS    %du" % len(S["note"]), h)
+        self.assertIn("extern const uint32_t sound_note_spans[SOUND_NOTE_SPANS][7];", h)
 
     def test_rate_bound(self):
         for rate, ok in ((37500, True), (37501, False), (3999, False)):
@@ -200,10 +201,10 @@ class Sizes(unittest.TestCase):
             else:
                 self.assertRaises(st.ParamError, st.check_params, p)
 
-    def test_note_block_ignored(self):
+    def test_note_block_needed(self):
         p = copy.deepcopy(P)
         del p["note"]
-        self.assertEqual(all_bytes(st.build(p)), all_bytes(S))
+        self.assertRaises(KeyError, st.build, p)
 
     def test_mix_room(self):
         # A click over the note's start with its second partial: 22 steps.
@@ -310,6 +311,292 @@ class Beep(unittest.TestCase):
         self.assertLessEqual(max(abs(v - 128) for v in b[-94:]), 6)
         mid = max(abs(v - 128) for v in b[150:225])
         self.assertTrue(10 <= mid <= 15, mid)
+
+
+
+# ---- The rising note -------------------------------------------------------
+
+V = st.voice
+NT = P["note"]
+NOTE = S["note"]
+# SHA-256 of note.voice, the spans as the tool makes them.
+RECORDED_NOTE_SHA256 = "f9f28775bbba5358a446e98ab834b8d4969cec0378125312c521097bd464785e"
+
+
+def curve_hz(k):
+    """The pitch the parameters give at sample k, with math.exp."""
+    t = k * 1000.0 / RATE
+    t0, f0 = 0, NT["start_hz"]
+    for seg in NT["segments"]:
+        t1, f1 = t0 + seg["duration_ms"], seg["end_hz"]
+        if t < t1:
+            return f0 * math.exp(math.log(f1 / f0) * (t - t0) / (t1 - t0))
+        t0, f0 = t1, f1
+    return f0
+
+
+def curve_steps(k):
+    """The level the parameters give at sample k, in steps."""
+    t = k * 1000.0 / RATE
+    v = NT["level_steps"] * NT["start_hz"] / curve_hz(k)
+    v *= min(1.0, t / NT["fade_in_ms"])
+    total = sum(seg["duration_ms"] for seg in NT["segments"])
+    w0 = total - NT["segments"][-1]["duration_ms"]
+    if t >= w0:
+        v *= 10 ** (NT["whine_db"] / 20.0 * (t - w0) / NT["segments"][-1]["duration_ms"])
+        v *= max(0.0, min(1.0, (total - t) / NT["whine_taper_ms"]))
+    return v
+
+
+def span_starts():
+    out, k = [], 0
+    for sp in NOTE:
+        out.append(k)
+        k += sp[0]
+    return out, k
+
+
+def committed_note():
+    with open(TABLE_C, "r", encoding="utf-8") as f:
+        text = f.read()
+    m = re.search(r"const uint32_t sound_note_spans\[SOUND_NOTE_SPANS\]\[7\] = \{(.*?)\n\};",
+                  text, re.S)
+    rows = re.findall(r"\{([^}]*)\}", m.group(1))
+    return [tuple(V.s32(int(w, 16)) if j in (3, 5) else int(w, 16)
+                  for j, w in enumerate(r.split(","))) for r in rows]
+
+
+def c_compiler():
+    for cc in ("cc", "gcc", "clang"):
+        for d in os.environ.get("PATH", "").split(os.pathsep):
+            if d and os.access(os.path.join(d, cc), os.X_OK):
+                return os.path.join(d, cc)
+    return None
+
+
+class NoteEngine(unittest.TestCase):
+    def test_sine_crc(self):
+        self.assertEqual(V.sine_crc(), 0x05067686)
+        self.assertEqual(len(V.SINE), 1024)
+
+    def test_vector(self):
+        sp = (1000, 0, 0x10000000, 0, 20 << 16, 0, 0)
+        self.assertEqual((V.span_at(sp, 4), V.span_at(sp, 5)), (5119, 4730))
+
+    def test_one_rounding(self):
+        # 100 on 1/256 of a step plus an overlay of +1 step at volume 50:
+        # (100 + 256) * 50 / 25600 = 0.695, one rounding gives 1. Two
+        # roundings would give 0 + 1 * 50 / 100 = 0.5, then 1 or 0.
+        self.assertEqual(V.out_byte(100, 129, 50), 129)
+        self.assertEqual(V.out_byte(-128, 128, 100), 127)
+        self.assertEqual(V.out_byte(-127, 128, 100), 128)
+        self.assertEqual(V.out_byte(128, 128, 100), 129)
+        self.assertEqual(V.out_byte(30000, 255, 100), 255)
+        self.assertEqual(V.out_byte(-30000, 0, 100), 0)
+
+    def test_pack_is_28_bytes_a_span(self):
+        data = V.pack(NOTE)
+        self.assertEqual(len(data), 28 * len(NOTE))
+        self.assertEqual(V.unpack(data), [tuple(sp) for sp in NOTE])
+
+
+class Note(unittest.TestCase):
+    def test_size_and_length(self):
+        starts, total = span_starts()
+        self.assertEqual(len(NOTE), 162)
+        self.assertEqual(len(V.pack(NOTE)), 4536)
+        with open(TABLE_H, "r", encoding="utf-8") as f:
+            h = f.read()
+        ms = (total * 1000 + RATE - 1) // RATE
+        self.assertIn("#define SOUND_NOTE_MS       %du" % ms, h)
+        self.assertEqual(ms, 6326)
+
+    def test_committed_spans(self):
+        self.assertEqual(committed_note(), [tuple(sp) for sp in NOTE])
+
+    def test_recorded_hash(self):
+        self.assertEqual(hashlib.sha256(V.pack(NOTE)).hexdigest(), RECORDED_NOTE_SHA256)
+
+    def test_two_runs_equal(self):
+        self.assertEqual(V.pack(st.build(load_params())["note"]), V.pack(NOTE))
+
+    def test_limits(self):
+        self.assertIsNone(V.check(NOTE))
+        self.assertLessEqual(V.length(NOTE), 11250000)
+        for n, phase, inc, dinc, amp, damp, p2 in NOTE:
+            self.assertTrue(1 <= n <= 65535)
+            self.assertLessEqual(inc, 0x7FFFFFFF)
+            self.assertLessEqual(p2, 32768)
+            for a in (amp, amp + (n - 1) * damp):
+                self.assertTrue(0 <= a <= 127 << 16)
+            # The inc of the last sample stays under half the rate too.
+            self.assertLess(inc + (n - 1) * dinc, 1 << 31)
+
+    def test_spans_of_40_ms(self):
+        for sp in NOTE:
+            self.assertLessEqual(sp[0], 1500)
+        starts, _ = span_starts()
+        for ms in (150, 300, 1425, 2775, 4125):
+            self.assertIn((ms * RATE * 2 + 1000) // 2000, starts, ms)
+
+    def test_pitch_at_each_start(self):
+        starts, _ = span_starts()
+        self.assertEqual(NOTE[0][2], int(1890 * 2 ** 32 / RATE))
+        for k, sp in zip(starts, NOTE):
+            hz = sp[2] * RATE / 2 ** 32
+            self.assertLess(abs(hz / curve_hz(k) - 1.0), 0.001, k)
+
+    def test_pitch_inside_spans(self):
+        # Inside a span the pitch is linear, the curve a constant ratio.
+        # The worst error the tool makes is under 0.008 percent.
+        starts, _ = span_starts()
+        worst = 0.0
+        for k, (n, _, inc, dinc, _, _, _) in zip(starts, NOTE):
+            for i in range(n):
+                hz = (inc + i * dinc) * RATE / 2 ** 32
+                worst = max(worst, abs(hz / curve_hz(k + i) - 1.0))
+        self.assertLess(worst, 0.0001)
+
+    def test_phase_and_inc_carry(self):
+        self.assertEqual(NOTE[0][1], 0)
+        for a, b in zip(NOTE, NOTE[1:]):
+            n, phase, inc, dinc = a[:4]
+            self.assertEqual(b[1], (phase + n * inc + dinc * (n * (n - 1) // 2)) % 2 ** 32)
+            # dinc is the nearest step to the next start's inc.
+            self.assertLessEqual(abs(inc + n * dinc - b[2]), n // 2)
+
+    def test_level(self):
+        starts, total = span_starts()
+        fade = NT["fade_in_ms"] * RATE // 1000
+        prev = None
+        top = 0
+        for k, (n, _, _, _, amp, damp, _) in zip(starts, NOTE):
+            self.assertLessEqual(abs(amp / 65536.0 - curve_steps(k)), 0.001, k)
+            for i in range(n):
+                a = amp + i * damp
+                if prev is not None:
+                    if k + i <= fade:
+                        self.assertGreaterEqual(a, prev, k + i)
+                    else:
+                        self.assertLessEqual(a, prev, k + i)
+                prev = a
+                top = max(top, a)
+        self.assertEqual(NOTE[0][4], 0)
+        self.assertEqual(round(top / 65536.0), 19)
+
+    def test_second_partial(self):
+        starts, _ = span_starts()
+        gain = NOTE[0][6]
+        self.assertEqual(gain, round(32768 * 10 ** (-22 / 20.0)))
+        for k, sp in zip(starts, NOTE):
+            if sp[6]:
+                self.assertEqual(sp[6], gain)
+                self.assertLess(curve_hz(k + sp[0] - 1), 8437)
+            else:
+                self.assertGreaterEqual(curve_hz(k), 8437)
+
+    def test_end_rule(self):
+        # The note ends at the first span from which the peak stays under
+        # half a step: the last span starts at half a step or more, and
+        # the level the curve gives at the end is under it.
+        starts, total = span_starts()
+        last = NOTE[-1]
+        self.assertGreaterEqual(last[4], 32768)
+        self.assertLess(last[4] + (last[0] - 1) * last[5], 32768 + 1500)
+        self.assertLess(curve_steps(total), 0.5)
+        self.assertGreaterEqual(curve_steps(starts[-1]), 0.5)
+        self.assertEqual(last[6], 0)
+        self.assertTrue(6300 <= total * 1000 // RATE <= 6330)
+
+    def test_render_has_no_step(self):
+        # A sine of peak A steps at f Hz moves at most 2 A sin(pi f / rate)
+        # between samples, its second partial 2 g A sin(2 pi f / rate). The
+        # table's 1024 steps add A (1 + 2 g) 2 pi / 1024, the rounding 1.
+        out = V.render(NOTE, 100)
+        k = 0
+        for n, _, inc, dinc, amp, damp, p2 in NOTE:
+            a = max(amp, amp + (n - 1) * damp) / 65536.0
+            f = max(inc, inc + (n - 1) * dinc) * RATE / 2 ** 32
+            g = p2 / 32768.0
+            bound = (2 * a * math.sin(math.pi * f / RATE)
+                     + 2 * g * a * abs(math.sin(2 * math.pi * f / RATE))
+                     + a * (1 + 2 * g) * 2 * math.pi / 1024 + 1.0)
+            # The sample before the span's first, so the edge counts too.
+            for i in range(max(1, k), k + n):
+                self.assertLessEqual(abs(out[i] - out[i - 1]), bound, i)
+            k += n
+        self.assertEqual(out[0], 128)
+        self.assertLessEqual(abs(out[-1] - 128), 1)
+
+    def test_dump_and_wav(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(run("--wav", d, "--dump", d)[0], 0)
+            with open(os.path.join(d, "note.voice"), "rb") as f:
+                self.assertEqual(f.read(), V.pack(NOTE))
+            import wave
+            with wave.open(os.path.join(d, "note.wav"), "rb") as w:
+                self.assertEqual((w.getsampwidth(), w.getframerate()), (1, RATE))
+                self.assertEqual(w.readframes(w.getnframes()), V.render(NOTE, 100))
+
+    def test_bad_note_refused(self):
+        p = copy.deepcopy(P)
+        p["note"]["second_partial_below_hz"] = 9400
+        self.assertRaises(st.ParamError, st.check_params, p)
+        p = copy.deepcopy(P)
+        p["note"]["segments"][-1]["end_hz"] = 18750
+        self.assertRaises(st.ParamError, st.check_params, p)
+
+
+ENGINE_C = os.path.join(ROOT, "external", "robco-core", "src", "lib", "audio_voice.c")
+CROSS_MAIN = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <robco/audio.h>
+
+int main(int argc, char **argv)
+{
+    static audio_voice_span_t spans[4096];
+    FILE *f = fopen(argv[1], "rb");
+    unsigned long count = f ? fread(spans, 28, 4096, f) : 0;
+    unsigned long want = strtoul(argv[2], 0, 10);
+    audio_voice_t v;
+    uint32_t len;
+    if (count == 0 || audio_voice_check(spans, count, 37500, 0, &len) != 0)
+        return 1;
+    audio_voice_start(&v, spans, count);
+    for (uint32_t i = 0; i < want; i++)
+        putchar(audio_voice_out(audio_voice_at(&v, i), 128, 100));
+    return 0;
+}
+"""
+
+
+class NoteAgainstLibrary(unittest.TestCase):
+    """The library's own engine, built with the host compiler, gives the
+    same 20000 samples of the note. It needs a RobCo-Core pin that has
+    src/lib/audio_voice.c."""
+
+    def test_same_bytes_as_the_c_engine(self):
+        if not os.path.exists(ENGINE_C):
+            self.skipTest("the pinned RobCo-Core has no src/lib/audio_voice.c yet")
+        cc = c_compiler()
+        if cc is None:
+            self.skipTest("no host C compiler")
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            main = os.path.join(d, "main.c")
+            with open(main, "w", encoding="utf-8") as f:
+                f.write(CROSS_MAIN)
+            exe = os.path.join(d, "voice")
+            subprocess.run([cc, "-std=gnu11", "-O1", "-Wall", "-Werror",
+                            "-I", os.path.join(ENGINE_C.rsplit(os.sep, 3)[0], "include"),
+                            "-o", exe, main, ENGINE_C], check=True)
+            spans = os.path.join(d, "note.voice")
+            with open(spans, "wb") as f:
+                f.write(V.pack(NOTE))
+            got = subprocess.run([exe, spans, "20000"], check=True,
+                                 stdout=subprocess.PIPE).stdout
+        self.assertEqual(got, V.render(NOTE, 100)[:20000])
 
 
 if __name__ == "__main__":
