@@ -8,6 +8,8 @@
  *             passes, else 100 plus the number of failures.
  *   exit N    exit(N), N decimal. The ROM sees the low 8 bits.
  *   fault     writes to the ROM slot, which a holotape may only read.
+ *   rate      sets its sample rate to 37500 Hz and returns the rate it
+ *             started with, divided by 100: 80 for 8000 Hz.
  *
  * Each check prints "@RC stage=conform ev=tape_check name=<name> ok=<0|1>".
  */
@@ -90,6 +92,11 @@ int pip_main(const pipos_startup_t *su)
     }
     if (strncmp(a, "exit ", 5) == 0) {
         pip_exit(dec(a + 5));
+    }
+    if (strcmp(a, "rate") == 0) {
+        int32_t prev = pip_sample_rate(PIP_SAMPLE_RATE_HI);
+
+        return prev < 0 ? 1 : prev / 100;
     }
     if (strcmp(a, "fault") == 0) {
         *(volatile uint32_t *)(uintptr_t)PIP_ROM_BASE = 0;
