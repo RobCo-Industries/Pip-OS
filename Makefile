@@ -46,6 +46,7 @@ PYTHON     ?= python3
 PURE_SRCS  := \
               kernel/audio_rules.c \
               kernel/bootlines.c \
+              kernel/dsound_rules.c \
               kernel/gfx_draw.c \
               kernel/holo_rules.c \
               kernel/input_events.c \
