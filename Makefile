@@ -122,18 +122,26 @@ include $(ROBCO_CORE)/mk/host.mk
 # ---- System sound tables ------------------------------------------------
 
 # kernel/sound_table.c and .h are generated from kernel/sound_params.json
-# and committed. `make sound-table` writes them again. Every `make` checks
-# that they match the parameters. See docs/BUILD.md.
+# and committed. `make sound-table` writes them again. The check runs
+# before anything compiles the table: the kernel object and the host
+# tests that link it take it as an order-only prerequisite, so a stale
+# table stops the build before any object or image is written. Every
+# image, card and package goal builds that object. SOUND_PARAMS lets
+# tests/host/sound_table_make_test.sh point the check at a changed copy.
+# See docs/BUILD.md.
+SOUND_PARAMS ?= kernel/sound_params.json
 .PHONY: sound-table sound-table-check sound-table-test
 all: sound-table-check
+$(BUILD)/obj/kernel/sound_table.o $(HOST_TESTS): | sound-table-check
 sound-table:
 	$(PYTHON) -I tools/sound_table.py
 
 sound-table-check:
-	$(PYTHON) -I tools/sound_table.py --check
+	$(PYTHON) -I tools/sound_table.py --check --params $(SOUND_PARAMS)
 
 sound-table-test:
 	$(PYTHON) -I -m unittest discover -s tests/tools -p test_sound_table.py
+	tests/host/sound_table_make_test.sh
 
 # ---- ROMs ---------------------------------------------------------------
 

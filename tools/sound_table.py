@@ -383,7 +383,7 @@ def main(argv=None):
         stale = [path for path, text in ((a.out_c, c_text), (a.out_h, h_text))
                  if read_text(path) != text]
         for path in stale:
-            print("sound_table.py: %s is stale: run python3 tools/sound_table.py"
+            print("sound_table.py: %s is stale: run make sound-table, then commit it"
                   % os.path.relpath(path, ROOT), file=sys.stderr)
         return 1 if stale else 0
     if not (a.dump or a.wav):

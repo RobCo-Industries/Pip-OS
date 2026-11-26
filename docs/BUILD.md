@@ -105,7 +105,7 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 | `sound_blip` | 353: 176 samples at 3469 Hz, then 177 at 2625 Hz |
 | `sound_note` | 65 516: the note's rise up to 9900 Hz, 2.97 s |
 
-After a change to the parameters, run `make sound-table` and commit the three files. Every `make` runs `tools/sound_table.py --check`, which fails when the committed files differ from what the tool writes. `make test-host` runs `tests/tools/test_sound_table.py`.
+After a change to the parameters, run `make sound-table` and commit the three files. `tools/sound_table.py --check` fails when the committed files differ from what the tool writes, and says to run `make sound-table`. It runs before anything compiles the table: `build/obj/kernel/sound_table.o` and the host tests take it as an order-only prerequisite. So `make`, `make kernel`, `make sdimage`, `make bootdir`, `make run`, `make sdk-package` and the test goals that build stop on a stale table before they write an image. The build never writes the table itself, so a forgotten commit fails instead of hiding. `make test-host` runs `tests/tools/test_sound_table.py` and `tests/host/sound_table_make_test.sh`.
 
 - Each table holds its sound at its level for `[audio] volume = 100`. The tool refuses a click sample more than `ceiling_steps`, 12 steps, from 128.
 - The note's segments climb to 15700 Hz, but the device stops at `device_top_hz`, 9900 Hz. At 22050 samples a second nothing above 11025 Hz plays. The table ends there with a 50 ms fade.
