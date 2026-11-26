@@ -1,6 +1,6 @@
 /*
  * The audio group: tone, sample, audio_stop, volume, audio_status,
- * play_seq and sample_queue.
+ * play_seq, sample_queue and sample_rate.
  *
  * One voice. RobCo-Core's audio driver plays in the background from the
  * tick interrupt; a new sound replaces the one that plays. The library
@@ -17,7 +17,8 @@
  * stopped restarts the 300 ms of quiet. audio_status and volume cut
  * nothing: owned is 0 whenever a click plays, so audio_status never
  * reports one, and the library reads the volume per sample, so a click
- * that plays takes a new level from there on.
+ * that plays takes a new level from there on. sample_rate cuts nothing
+ * either: a play keeps the rate it started with.
  */
 #include <robco/audio.h>
 #include <robco/irq.h>
@@ -45,6 +46,12 @@ static audio_note_t seq_buf[PIP_SEQ_MAX];
  */
 static uint8_t pcm_buf[2][PIP_SAMPLE_MAX];
 static pipos_pcmq_t pcmq = PIPOS_PCMQ_IDLE;
+/*
+ * The image's sample rate, and the ROM's while a holotape runs. play_rate
+ * is the rate the image's PCM play started with. Main context only.
+ */
+static pipos_rate_t rate = { PIP_SAMPLE_RATE, PIP_SAMPLE_RATE };
+static uint32_t play_rate = PIP_SAMPLE_RATE;
 /* play_seq's copy of the caller's notes. Main context only. */
 static pip_note_t user_notes[PIP_SEQ_MAX];
 
@@ -131,6 +138,7 @@ static int32_t sys_tone(const pipos_sys_ctx_t *ctx, uint32_t hz, uint32_t ms, ui
  */
 static int32_t start_pcm(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len)
 {
+    uint32_t hz;
     int32_t rc;
 
     /* A failure from here on stopped what the image played. */
@@ -142,9 +150,11 @@ static int32_t start_pcm(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len
     if (rc != 0) {
         return rc;
     }
-    if (audio_play_pcm(pcm_buf[0], len, PIP_SAMPLE_RATE, AUDIO_PRIORITY) != 0) {
+    hz = pipos_pcmq_rate(PIPOS_PCMQ_START, rate.rate, play_rate);
+    if (audio_play_pcm(pcm_buf[0], len, hz, AUDIO_PRIORITY) != 0) {
         return -PIP_EIO;
     }
+    play_rate = hz;
     pipos_pcmq_started(&pcmq, 0);
     owned = 1;
     outcome = PIPOS_ACALL_STARTED;
@@ -187,7 +197,7 @@ static int32_t sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t 
 {
     int32_t rc = pipos_audio_check_sample(len);
     pipos_pcmq_plan_t plan;
-    uint32_t s;
+    uint32_t s, hz;
     int q;
 
     if (rc != 0) {
@@ -212,6 +222,7 @@ static int32_t sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t 
     if (rc != 0) {
         return rc;
     }
+    /* The driver plays the buffer at the rate of the play it joins: play_rate. */
     q = audio_pcm_queue(pcm_buf[plan.buf], len);
     if (q == 0) {
         pipos_pcmq_queued(&pcmq, plan.buf);
@@ -224,9 +235,11 @@ static int32_t sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t 
     }
     /* The play ended since the check: nothing reads either buffer. */
     pipos_pcmq_drop(&pcmq);
-    if (audio_play_pcm(pcm_buf[plan.buf], len, PIP_SAMPLE_RATE, AUDIO_PRIORITY) != 0) {
+    hz = pipos_pcmq_rate(PIPOS_PCMQ_START, rate.rate, play_rate);
+    if (audio_play_pcm(pcm_buf[plan.buf], len, hz, AUDIO_PRIORITY) != 0) {
         return -PIP_EIO;
     }
+    play_rate = hz;
     pipos_pcmq_started(&pcmq, plan.buf);
     owned = 1;
     outcome = PIPOS_ACALL_STARTED;
@@ -286,6 +299,19 @@ static int32_t sys_volume(const pipos_sys_ctx_t *ctx, uint32_t new_level, uint32
     }
     outcome = PIPOS_ACALL_ASKED;
     return done(prev);
+}
+
+/*
+ * sample_rate, ABI 1.5. A question like volume: it cuts no click, starts
+ * and stops nothing, and drops no waiting buffer. The rate holds for the
+ * next play that starts.
+ */
+static int32_t sys_sample_rate(const pipos_sys_ctx_t *ctx, uint32_t hz, uint32_t a1,
+                               uint32_t a2, uint32_t a3)
+{
+    (void)ctx, (void)a1, (void)a2, (void)a3;
+    outcome = PIPOS_ACALL_ASKED;
+    return done(pipos_audio_rate_swap(&rate, hz));
 }
 
 /*
@@ -363,6 +389,7 @@ static const pipos_sys_entry_t audio_calls[] = {
     PIPOS_SYS_ENTRY(AUDIO, AUDIO_STATUS, sys_audio_status),
     PIPOS_SYS_ENTRY(AUDIO, PLAY_SEQ, sys_play_seq),
     PIPOS_SYS_ENTRY(AUDIO, SAMPLE_QUEUE, sys_sample_queue),
+    PIPOS_SYS_ENTRY(AUDIO, SAMPLE_RATE, sys_sample_rate),
 };
 
 const pipos_sys_table_t pipos_audio_table = PIPOS_SYS_TABLE(AUDIO, "audio", audio_calls);
@@ -389,17 +416,20 @@ void pipos_audio_init(void)
     pipos_pcmq_drop(&pcmq);
 }
 
-/* Only a sound an image started is stopped: the boot beep plays on. */
+/*
+ * Only a sound an image started is stopped: the boot beep plays on. Every
+ * image starts at 8000 Hz; a holotape's end gives the ROM its rate back.
+ */
 void pipos_audio_image_start(int kind)
 {
-    (void)kind;
     stop_owned();
+    pipos_audio_rate_image_start(&rate, kind);
 }
 
 void pipos_audio_image_end(int kind)
 {
-    (void)kind;
     stop_owned();
+    pipos_audio_rate_image_end(&rate, kind);
 }
 
 void pipos_audio_idle(void)

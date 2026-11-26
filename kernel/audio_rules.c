@@ -118,3 +118,41 @@ int pipos_audio_status_of(int owned, int busy)
 {
     return owned && busy;
 }
+
+int32_t pipos_audio_rate_swap(pipos_rate_t *r, uint32_t hz)
+{
+    uint32_t prev = r->rate;
+
+    if (hz != PIP_SAMPLE_RATE && hz != PIP_SAMPLE_RATE_HI) {
+        return -PIP_EINVAL;
+    }
+    r->rate = hz;
+    return (int32_t)prev;
+}
+
+void pipos_audio_rate_image_start(pipos_rate_t *r, int kind)
+{
+    if (kind == PIP_KIND_HOLOTAPE) {
+        r->rom_rate = r->rate;
+    }
+    r->rate = PIP_SAMPLE_RATE;
+}
+
+void pipos_audio_rate_image_end(pipos_rate_t *r, int kind)
+{
+    if (kind == PIP_KIND_HOLOTAPE) {
+        r->rate = r->rom_rate;
+    }
+}
+
+uint32_t pipos_pcmq_rate(int action, uint32_t in_force, uint32_t play_rate)
+{
+    switch (action) {
+    case PIPOS_PCMQ_QUEUE:
+        return play_rate;
+    case PIPOS_PCMQ_START:
+        return in_force;
+    default:
+        return 0;
+    }
+}

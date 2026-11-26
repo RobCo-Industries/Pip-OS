@@ -10,10 +10,11 @@
 
 TEST(abi_values)
 {
-    CHECK_EQ(PIP_ABI_VERSION, 0x00010004);
+    CHECK_EQ(PIP_ABI_VERSION, 0x00010005);
     CHECK_EQ(PIP_HW_RTC, 0x1u);
     CHECK_EQ(PIP_HW_AUDIO, 0x4u);
     CHECK_EQ(PIP_SYS_SAMPLE_QUEUE, 0x26);
+    CHECK_EQ(PIP_SYS_SAMPLE_RATE, 0x27);
     CHECK_EQ(PIP_ROM_HEAP_SIZE, 0x007F0000);
     CHECK_EQ(PIPOS_ROM_STARTUP, 0x017F0000u);
     CHECK_EQ(PIPOS_ROM_STUB, 0x017F0080u);
@@ -39,7 +40,7 @@ TEST(startup_block)
 
     memset(&s, 0xaa, sizeof(s));
     pipos_startup_rom(&s);
-    CHECK_EQ(s.abi_version, 0x00010004u);
+    CHECK_EQ(s.abi_version, 0x00010005u);
     CHECK_EQ(s.size, 128u);
     CHECK_EQ(s.heap_base, 0x01000000u);
     CHECK_EQ(s.heap_size, 0x007F0000u);
@@ -65,7 +66,7 @@ TEST(info_structs)
     memset(&s, 0xaa, sizeof(s));
     pipos_sys_info_fill(&s, 0x00070100u, 0x9000c1u, 0x2835u, 0x1c000000u, PIP_HW_AUDIO);
     CHECK_EQ(s.size, 32u);
-    CHECK_EQ(s.abi_version, 0x00010004u);
+    CHECK_EQ(s.abi_version, 0x00010005u);
     CHECK_EQ(s.pipos_version, 0x00070100u);
     CHECK_EQ(s.board_rev, 0x9000c1u);
     CHECK_EQ(s.soc, 0x2835u);

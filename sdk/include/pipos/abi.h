@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.4: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.5: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010004  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010005  /* (major << 16) | minor */
 
 /*
  * PIPOS_ABI_TARGET: the lowest ABI the project needs, in the same form,
@@ -21,6 +21,7 @@
  *
  * Hidden by target, from the Changes table of the spec:
  *   below 1.1: sample_queue
+ *   below 1.5: sample_rate
  * 1.2, 1.3 and 1.4 added no call.
  */
 #ifndef PIPOS_ABI_TARGET
@@ -101,6 +102,7 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
 #define PIP_SYS_AUDIO_STATUS            0x24
 #define PIP_SYS_PLAY_SEQ                0x25
 #define PIP_SYS_SAMPLE_QUEUE            0x26  /* ABI 1.1 */
+#define PIP_SYS_SAMPLE_RATE             0x27  /* ABI 1.5 */
 #define PIP_SYS_READ_SENSOR             0x30
 #define PIP_SYS_SENSOR_AVAILABLE        0x31
 #define PIP_SYS_GET_TIME                0x40
@@ -154,6 +156,7 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
     X(AUDIO_STATUS, audio_status) \
     X(PLAY_SEQ, play_seq) \
     X(SAMPLE_QUEUE, sample_queue) \
+    X(SAMPLE_RATE, sample_rate) \
     X(READ_SENSOR, read_sensor) \
     X(SENSOR_AVAILABLE, sensor_available) \
     X(GET_TIME, get_time) \
@@ -181,7 +184,7 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
     X(HOLO_EJECT_EVENT, holo_eject_event)
 
 /* Number of calls in the table. */
-#define PIP_SYSCALL_COUNT           51
+#define PIP_SYSCALL_COUNT           52
 /* Every number is below this. */
 #define PIP_SYS_NR_LIMIT            0x80
 
@@ -251,7 +254,8 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
 #define PIP_TONE_MS_MIN     1
 #define PIP_TONE_MS_MAX     60000
 #define PIP_NOTE_REST       0           /* pip_note_t.freq_hz */
-#define PIP_SAMPLE_RATE     8000
+#define PIP_SAMPLE_RATE     8000        /* the default rate, at every image start */
+#define PIP_SAMPLE_RATE_HI  37500       /* the other rate of sample_rate, since ABI 1.5 */
 #define PIP_SAMPLE_MAX      65536
 #define PIP_SEQ_MIN         1           /* play_seq count */
 #define PIP_SEQ_MAX         256
@@ -502,11 +506,19 @@ extern const uint32_t pip_hidden_sys_sample_queue PIP_ABI_HIDDEN(sample_queue, "
 #undef PIP_SYS_SAMPLE_QUEUE
 #define PIP_SYS_SAMPLE_QUEUE pip_hidden_sys_sample_queue
 #endif
+#if PIPOS_ABI_TARGET < 0x00010005
+extern const uint32_t pip_hidden_sys_sample_rate PIP_ABI_HIDDEN(sample_rate, "1.5");
+#undef PIP_SYS_SAMPLE_RATE
+#define PIP_SYS_SAMPLE_RATE pip_hidden_sys_sample_rate
+#endif
 
 #endif /* __ASSEMBLER__ */
 
 /* In assembly a hidden number is not defined. */
 #if defined(__ASSEMBLER__) && PIPOS_ABI_TARGET < 0x00010001
 #undef PIP_SYS_SAMPLE_QUEUE
+#endif
+#if defined(__ASSEMBLER__) && PIPOS_ABI_TARGET < 0x00010005
+#undef PIP_SYS_SAMPLE_RATE
 #endif
 #endif

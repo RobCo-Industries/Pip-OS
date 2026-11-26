@@ -531,6 +531,7 @@ static const struct call_row {
     { "audio_stop, the image's sound plays", 1, PIPOS_ACALL_STOPPED, 1 },
     { "audio_stop, nothing of the image plays", 0, PIPOS_ACALL_IDLE, 0 },
     { "volume", 0, PIPOS_ACALL_ASKED, 0 },
+    { "sample_rate", 0, PIPOS_ACALL_ASKED, 0 },
     { "audio_status", 0, PIPOS_ACALL_ASKED, 0 },
 };
 
@@ -618,7 +619,7 @@ TEST(rom_quiet_from_the_sound_end)
     CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
 }
 
-/* audio_status and volume leave a playing click and the rules alone. */
+/* audio_status, volume and sample_rate leave a playing click and the rules alone. */
 TEST(rom_questions_leave_a_click)
 {
     struct pipos_dsound s, before;

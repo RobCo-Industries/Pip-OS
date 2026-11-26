@@ -1,4 +1,7 @@
-/* audio_rules.c: every limit at its edge, the note conversion, the volume swap. */
+/*
+ * audio_rules.c: every limit at its edge, the note conversion, the volume
+ * swap, the sample rate and the rate each play takes.
+ */
 #include <stdint.h>
 #include <string.h>
 
@@ -328,4 +331,85 @@ TEST(sync_before_the_cut)
             CHECK_EQ(pipos_pcmq_plan(&q, 0).action, PIPOS_PCMQ_START);
         }
     }
+}
+
+TEST(rate_swap)
+{
+    pipos_rate_t r = { PIP_SAMPLE_RATE, PIP_SAMPLE_RATE };
+
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37500), 8000);
+    CHECK_EQ(r.rate, 37500u);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37500), 37500);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 8000), 37500);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 8000), 8000);
+    /* Any other value changes nothing. */
+    CHECK_EQ(pipos_audio_rate_swap(&r, 0), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 7999), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 8001), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37499), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37501), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 44100), -PIP_EINVAL);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 0xffffffffu), -PIP_EINVAL);
+    CHECK_EQ(r.rate, 8000u);
+}
+
+/*
+ * The rate a call plays at, in each queue state: the plan sample_queue
+ * gets, with the rate in force and the rate the play started with.
+ */
+static const struct rate_row {
+    const char *what;
+    int play, wait, can_queue;
+    uint32_t in_force, play_rate, want;
+} rate_table[] = {
+    { "nothing plays, the rate was set to 37500", -1, -1, 0, 37500, 8000, 37500 },
+    { "nothing plays, 8000", -1, -1, 0, 8000, 37500, 8000 },
+    { "joins a play at 8000 after a set to 37500", 0, -1, 1, 37500, 8000, 8000 },
+    { "joins a play at 37500 after a set to 8000", 0, -1, 1, 8000, 37500, 37500 },
+    { "the waiting buffer took over, joins its play", 1, -1, 1, 37500, 8000, 8000 },
+    { "the last buffer plays, no queue: a new play", 0, -1, 0, 37500, 8000, 37500 },
+    { "a buffer waits: busy, nothing plays", 0, 1, 0, 37500, 8000, 0 },
+};
+
+TEST(rate_of_each_call)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(rate_table) / sizeof(rate_table[0]); i++) {
+        const struct rate_row *r = &rate_table[i];
+        pipos_pcmq_t q = q_state(r->play, r->wait);
+        pipos_pcmq_plan_t plan = pipos_pcmq_plan(&q, r->can_queue);
+
+        CHECK_EQ(pipos_pcmq_rate(plan.action, r->in_force, r->play_rate), r->want);
+    }
+    /* sample always starts a new play at the rate in force. */
+    CHECK_EQ(pipos_pcmq_rate(PIPOS_PCMQ_START, 37500, 8000), 37500u);
+    CHECK_EQ(pipos_pcmq_rate(PIPOS_PCMQ_START, 8000, 37500), 8000u);
+}
+
+TEST(rate_per_image)
+{
+    pipos_rate_t r = { PIP_SAMPLE_RATE, PIP_SAMPLE_RATE };
+
+    /* A ROM starts at 8000, whatever the image before it set. */
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37500), 8000);
+    pipos_audio_rate_image_end(&r, PIP_KIND_ROM);
+    pipos_audio_rate_image_start(&r, PIP_KIND_ROM);
+    CHECK_EQ(r.rate, 8000u);
+
+    /* A holotape starts at 8000; the ROM gets its 37500 back after it. */
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37500), 8000);
+    pipos_audio_rate_image_start(&r, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(r.rate, 8000u);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37500), 8000);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 8000), 37500);
+    pipos_audio_rate_image_end(&r, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(r.rate, 37500u);
+
+    /* A tape that set 37500 under a ROM at 8000: the ROM keeps 8000. */
+    CHECK_EQ(pipos_audio_rate_swap(&r, 8000), 37500);
+    pipos_audio_rate_image_start(&r, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(pipos_audio_rate_swap(&r, 37500), 8000);
+    pipos_audio_rate_image_end(&r, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(r.rate, 8000u);
 }
