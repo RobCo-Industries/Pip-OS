@@ -17,6 +17,9 @@ Lines it reads, each an "@RC ... ev=audio op=..." marker of any stage:
     op=stop hz=0 vol= t_ms=              what plays stops, or a tone ends
   printed by the newer library only:
     op=pcm_mix len= crc= t_ms=           an overlay starts over the play
+    op=voice rate= spans= len= vol= crc= t_ms=
+                                         a voice starts: a note the
+                                         library computes from spans
     the rest ramp, a plain op=pcm rate=22050 len=882 vol=100 whose CRC is
     the library's ramp. The same bytes at another rate or volume are an
     ordinary play. Once the ramp reaches its last sample, silence is
@@ -36,11 +39,22 @@ Rules it applies, from the library's driver:
   plays and prints no line, so such a line is a bad log. An overlay goes
   on across op=pcm_next and ends at its own end, or when its play ends
   or is cut.
+- Voice spans come from the .voice files of the --pcm folders, such as
+  sound_table.py --dump writes, found by the CRC-32 of their bytes and
+  their length, 28 bytes a span. A file must pass the library's span
+  checks, and its sum of n must equal len=. An unknown pair plays as
+  silence, with one warning per pair. The tool renders a voice with the
+  library's integer steps, from tools/voice_engine.py. An overlay over a
+  voice adds to the voice on 1/256 of a step, then the volume applies
+  and the sum rounds once to the nearest step, a half step away from
+  128. --scale does not change a voice. A voice ends at op=pcm_end or
+  op=stop. op=pcm_next on a voice is a bad log: the library refuses a
+  queue while a voice plays.
 - Volume: 128 + (s - 128) * vol / 100. --scale cut
   rounds toward 128, as the pinned library does. --scale nearest rounds to
   the nearest step, a half step away from 128, as the newer library does.
   --scale auto, the default, picks nearest when the log has an op=pcm_mix
-  line or the rest ramp, whole or cut, and cut otherwise.
+  or op=voice line or the rest ramp, whole or cut, and cut otherwise.
   A play keeps the volume its line prints. The driver applies a volume
   change to the samples that follow, but prints no line for it, so the
   file is wrong for a play whose volume changes on the way.
@@ -55,12 +69,13 @@ Rules it applies, from the library's driver:
   of 100 percent is full scale, so a tone never clips.
 
 Limits: a line of at most 4096 bytes, at most 1000000 lines, at most
-300 s of output plus a 0.3 s tail, at most 4096 .u8 files of at most 4 MiB
-each and 64 MiB together.
+300 s of output plus a 0.3 s tail, at most 4096 .u8 and .voice files of
+at most 4 MiB each and 64 MiB together.
 Each number is checked when its line is read, before anything is built
 from it. From the library: rate= 4000 to 37500, hz= 20 to 20000, vol= 0
 to 100, as the driver caps it before the trace prints it. len= is 1 to
 11250000, 300 s at 37500 Hz, and so is a play with its queued buffers.
+spans= is 1 to 149796, the spans of a 4 MiB file.
 n= of op=pcm_end is at most 11250000 and last= below it. t_ms= is at most
 300000. n= of ev=audio_drop is 0 to 4294967295.
 
@@ -70,12 +85,29 @@ with one line that says what and where.
 
 import argparse
 import array
+import importlib.util
 import math
 import os
 import re
 import struct
 import sys
 import zlib
+
+
+def _load_engine():
+    """tools/voice_engine.py, found beside this file. python -I leaves the
+    script's folder off sys.path, so it is loaded by its path."""
+    name = "pipos_voice_engine"
+    if name not in sys.modules:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_engine.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        sys.modules[name] = mod
+    return sys.modules[name]
+
+
+voice = _load_engine()
 
 OUT_RATE = 37500            # 9.6 MHz PWM clock / range 256
 PWM_CLOCK = 9600000
@@ -103,12 +135,14 @@ HZ_MAX = 20000
 VOL_MAX = 100
 MAX_PCM_LEN = MAX_SECONDS * RATE_MAX
 MAX_DROP = 0xffffffff
+MAX_SPANS = MAX_FILE_BYTES // 28
 
 FIELDS = {
     "pcm": ("rate", "len", "vol", "crc", "t_ms"),
     "pcm_next": ("len", "crc", "t_ms"),
     "pcm_end": ("n", "last", "t_ms"),
     "pcm_mix": ("len", "crc", "t_ms"),
+    "voice": ("rate", "spans", "len", "vol", "crc", "t_ms"),
     "tone": ("hz", "vol", "t_ms"),
     "stop": ("hz", "vol", "t_ms"),
 }
@@ -193,13 +227,15 @@ def parse_marker(text, where):
             if not NUM.match(v):
                 raise LogError("%s: %s=%s is not a whole number" % (where, f, v))
             out[f] = int(v)
-    if op in ("pcm", "pcm_next", "pcm_mix") and not 1 <= out["len"] <= MAX_PCM_LEN:
+    if op in ("pcm", "pcm_next", "pcm_mix", "voice") and not 1 <= out["len"] <= MAX_PCM_LEN:
         raise LogError("%s: len=%d is outside 1 to %d" % (where, out["len"], MAX_PCM_LEN))
     if op == "pcm_end" and out["n"] > MAX_PCM_LEN:
         raise LogError("%s: n=%d is past %d" % (where, out["n"], MAX_PCM_LEN))
     if op == "pcm_end" and out["last"] >= MAX_PCM_LEN:
         raise LogError("%s: last=%d is past %d" % (where, out["last"], MAX_PCM_LEN - 1))
-    if op == "pcm" and not RATE_MIN <= out["rate"] <= RATE_MAX:
+    if op == "voice" and not 1 <= out["spans"] <= MAX_SPANS:
+        raise LogError("%s: spans=%d is outside 1 to %d" % (where, out["spans"], MAX_SPANS))
+    if op in ("pcm", "voice") and not RATE_MIN <= out["rate"] <= RATE_MAX:
         raise LogError("%s: rate=%d is outside %d to %d"
                        % (where, out["rate"], RATE_MIN, RATE_MAX))
     if "vol" in out and out["vol"] > VOL_MAX:
@@ -243,7 +279,8 @@ def read_log(path):
 
 
 def load_pcm(dirs):
-    """{(crc, length): bytes} from the .u8 files of `dirs`."""
+    """{(crc, length): bytes} from the .u8 and .voice files of `dirs`.
+    A .voice file is kept as its list of spans."""
     found = {}
     count = 0
     total = 0
@@ -253,24 +290,40 @@ def load_pcm(dirs):
         except OSError as e:
             raise LogError("--pcm %s: %s" % (d, e.strerror))
         for n in names:
-            if not n.endswith(".u8"):
+            is_voice = n.endswith(".voice")
+            if not (n.endswith(".u8") or is_voice):
                 continue
             count += 1
             if count > MAX_FILES:
-                raise LogError("--pcm: more than %d .u8 files" % MAX_FILES)
+                raise LogError("--pcm: more than %d .u8 and .voice files" % MAX_FILES)
             p = os.path.join(d, n)
             size = os.path.getsize(p)
             if size > MAX_FILE_BYTES:
                 raise LogError("%s: larger than %d bytes" % (p, MAX_FILE_BYTES))
             total += size
             if total > MAX_PCM_BYTES:
-                raise LogError("--pcm: the .u8 files pass %d bytes together" % MAX_PCM_BYTES)
+                raise LogError("--pcm: the .u8 and .voice files pass %d bytes together"
+                               % MAX_PCM_BYTES)
             with open(p, "rb") as f:
                 data = f.read(MAX_FILE_BYTES + 1)
             if len(data) > MAX_FILE_BYTES:
                 raise LogError("%s: larger than %d bytes" % (p, MAX_FILE_BYTES))
-            if data:
-                found.setdefault((zlib.crc32(data), len(data)), data)
+            if not data and is_voice:
+                raise LogError("%s: no span" % p)
+            if not data:
+                continue
+            key = (zlib.crc32(data), len(data))
+            if is_voice:
+                try:
+                    spans = voice.unpack(data)
+                except ValueError as e:
+                    raise LogError("%s: %s" % (p, e))
+                bad = voice.check(spans)
+                if bad:
+                    raise LogError("%s: %s" % (p, bad))
+                found.setdefault(("voice",) + key, spans)
+            else:
+                found.setdefault(key, data)
     return found
 
 
@@ -300,6 +353,18 @@ class Play:
         return self.t0 + (len(self.data) * 1000 + self.rate - 1) // self.rate
 
 
+class VoicePlay(Play):
+    """A voice: samples from spans, and its overlays."""
+
+    def __init__(self, t0, rate, vol, spans, length):
+        Play.__init__(self, t0, rate, vol, b"", False)
+        self.spans = spans
+        self.length = length
+
+    def end_ms(self):
+        return self.t0 + (self.length * 1000 + self.rate - 1) // self.rate
+
+
 class Tone:
     def __init__(self, t0, hz, vol):
         self.t0 = t0
@@ -314,6 +379,7 @@ class Renderer:
         self.warn = warn
         self.unknown = set()
         self.silence = b""
+        self.unknown_voice = set()
         self.duty = array.array("f")
         self.rest = 0.0
         self.cur = None
@@ -331,6 +397,20 @@ class Renderer:
         if len(self.silence) < length:
             self.silence = bytes([128]) * length
         return memoryview(self.silence)[:length]
+
+    def lookup_voice(self, crc, spans, length, where):
+        """The spans of a voice, or None for an unknown one."""
+        found = self.pcm.get(("voice", crc, spans * voice.SPAN_BYTES))
+        if found is None:
+            if (crc, spans) not in self.unknown_voice:
+                self.unknown_voice.add((crc, spans))
+                self.warn("no .voice file has crc=%08x and %d spans: it plays as silence"
+                          % (crc, spans))
+            return None
+        if voice.length(found) != length:
+            raise LogError("%s: len=%d, but the spans of crc=%08x hold %d samples"
+                           % (where, length, crc, voice.length(found)))
+        return found
 
     def fill_to(self, frame, level):
         n = frame - len(self.duty)
@@ -350,6 +430,8 @@ class Renderer:
         start = len(self.duty)
         if isinstance(cur, Tone):
             self.render_tone(cur, start, end)
+        elif isinstance(cur, VoicePlay):
+            self.render_voice(cur, start, end)
         else:
             self.render_play(cur, start, end)
 
@@ -408,6 +490,32 @@ class Renderer:
             # The ramp reached its last sample. Cut before, it leaves duty 0.
             self.rest = 0.5
 
+    def render_voice(self, p, start, end):
+        """One rounding: the voice on 1/256 of a step plus the overlay,
+        times the volume, as the library's audio_voice_out()."""
+        out = self.duty
+        n = p.length
+        mixes = p.mixes
+        m = 0
+        mix0, mix = mixes[0] if mixes else (n, b"")
+        v = voice.Voice(p.spans) if p.spans is not None else None
+        for f in range(start, end):
+            i = p.index(f)
+            if i < 0:
+                out.append(self.rest)
+                continue
+            if i >= n:
+                out.append(self.rest)
+                continue
+            q = v.at(i) if v is not None else 0
+            j = i - mix0
+            while j >= len(mix) and m + 1 < len(mixes):
+                m += 1
+                mix0, mix = mixes[m]
+                j = i - mix0
+            o = mix[j] if 0 <= j < len(mix) else 128
+            out.append(voice.out_byte(q, o, p.vol) / 256.0)
+
     def run(self, events):
         last = 0
         for where, op, f in events:
@@ -428,17 +536,24 @@ class Renderer:
                     self.rest = 0.0
                 data = self.lookup(f["crc"], f["len"])
                 self.cur = Play(t, f["rate"], f["vol"], data, ramp)
+            elif op == "voice":
+                self.close(t)
+                spans = self.lookup_voice(f["crc"], f["spans"], f["len"], where)
+                self.cur = VoicePlay(t, f["rate"], f["vol"], spans, f["len"])
             elif op == "pcm_next":
                 if not isinstance(cur, Play) or cur.ended:
                     raise LogError("%s: op=pcm_next with no sample play" % where)
                 if cur.ramp:
                     raise LogError("%s: op=pcm_next on the rest ramp" % where)
+                if isinstance(cur, VoicePlay):
+                    raise LogError("%s: op=pcm_next on a voice: the library refuses a "
+                                   "queue while a voice plays" % where)
                 if len(cur.data) + f["len"] > MAX_PCM_LEN:
                     raise LogError("%s: the play's buffers pass %d bytes" % (where, MAX_PCM_LEN))
                 cur.data += self.lookup(f["crc"], f["len"])
             elif op == "pcm_mix":
                 if not isinstance(cur, Play) or cur.ended:
-                    raise LogError("%s: op=pcm_mix with no sample play" % where)
+                    raise LogError("%s: op=pcm_mix with no sample play or voice" % where)
                 if cur.ramp:
                     raise LogError("%s: op=pcm_mix on the rest ramp" % where)
                 k = -((cur.t0 - t) * cur.rate // 1000)      # first grid point at or after t
@@ -454,7 +569,7 @@ class Renderer:
                 cur.mixes.append((k, self.lookup(f["crc"], f["len"])))
             elif op == "pcm_end":
                 if not isinstance(cur, Play) or cur.ended:
-                    raise LogError("%s: op=pcm_end with no sample play" % where)
+                    raise LogError("%s: op=pcm_end with no sample play or voice" % where)
                 cur.ended = True
             elif op == "tone":
                 self.close(t)
@@ -508,7 +623,7 @@ def main(argv=None):
     ap.add_argument("log", metavar="LOG", help="a serial log with ev=audio markers")
     ap.add_argument("out", metavar="OUT.wav")
     ap.add_argument("--pcm", metavar="DIR", action="append", default=[], required=True,
-                    help="a folder of .u8 files, such as from sound_table.py --dump")
+                    help="a folder of .u8 and .voice files, such as from sound_table.py --dump")
     ap.add_argument("--scale", choices=("auto", "cut", "nearest"), default="auto",
                     help="how the volume rounds, see above")
     a = ap.parse_args(argv)
@@ -521,7 +636,7 @@ def main(argv=None):
         pcm = load_pcm(a.pcm)
         scale = a.scale
         if scale == "auto":
-            new = any(op == "pcm_mix" or is_ramp(op, f) for _, op, f in events)
+            new = any(op in ("pcm_mix", "voice") or is_ramp(op, f) for _, op, f in events)
             scale = "nearest" if new else "cut"
         if dropped:
             warn("the trace lost %d records: the file misses sounds" % dropped)

@@ -14,6 +14,8 @@
 #define SOUND_CLICK_CEILING 90u  /* steps from 128 no click passes */
 #define SOUND_BLIP_LEN      600u
 #define SOUND_BEEP_LEN      2250u
+#define SOUND_NOTE_SPANS    162u
+#define SOUND_NOTE_MS       6326u  /* the sum of n over the rate, rounded up */
 
 /* Disk clicks, played in turn. */
 extern const uint8_t sound_click[SOUND_CLICK_COUNT][SOUND_CLICK_LEN];
@@ -21,5 +23,11 @@ extern const uint8_t sound_click[SOUND_CLICK_COUNT][SOUND_CLICK_LEN];
 extern const uint8_t sound_blip[SOUND_BLIP_LEN];
 /* The soft beep: a sine with linear edges. */
 extern const uint8_t sound_beep[SOUND_BEEP_LEN];
+/*
+ * The rising note, spans for RobCo-Core's voice engine at SOUND_RATE_HZ.
+ * Each row is n, phase, inc, dinc, amp, damp, p2, the order and size of
+ * audio_voice_span_t. dinc and damp are signed, stored as two's complement.
+ */
+extern const uint32_t sound_note_spans[SOUND_NOTE_SPANS][7];
 
 #endif

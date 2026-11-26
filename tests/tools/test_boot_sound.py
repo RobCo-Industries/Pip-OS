@@ -576,7 +576,7 @@ class Limits(Case):
         try:
             self.sound("a", bytes([1]) * 600)
             self.sound("b", bytes([2]) * 600)
-            self.assertFails(["x"], "--pcm: the .u8 files pass 1000 bytes together")
+            self.assertFails(["x"], "--pcm: the .u8 and .voice files pass 1000 bytes together")
         finally:
             bs.MAX_PCM_BYTES = old
 
@@ -602,8 +602,141 @@ class Limits(Case):
         text = out.getvalue()
         for s in ("4096 bytes", "1000000 lines", "300 s", "op=pcm_mix", "4000 to 37500",
                   "20 to 20000", "11250000", "4294967295",
-                  "pins today", "newer library only"):
+                  "pins today", "newer library only", "op=voice", "149796", ".voice"):
             self.assertIn(s, text)
+
+
+
+# ---- Voices ----------------------------------------------------------------
+
+V = bs.voice
+SINE_TOP = 256 << 22            # the phase of the sine table's peak
+
+
+def voice_line(t, spans, vol=100, rate=FR, length=None, count=None):
+    data = V.pack(spans)
+    return ("@RC stage=pipos ev=audio op=voice rate=%d spans=%d len=%d vol=%d crc=%s t_ms=%d"
+            % (rate, len(spans) if count is None else count,
+               V.length(spans) if length is None else length, vol, crc(data), t))
+
+
+class Voice(Case):
+    def spans(self, name, spans):
+        with open(os.path.join(self.pcm_dir, name + ".voice"), "wb") as f:
+            f.write(V.pack(spans))
+        return spans
+
+    def test_voice_overlay_and_end(self):
+        sp = self.spans("v", [(1000, 0, 0x10000000, 0, 20 << 16, 0, 0),
+                              (1000, 0, 0x01000000, 50, 20 << 16, -300, 2603)])
+        over = self.sound("o", bytes([140]) * 300)
+        duty, w = self.render([voice_line(40, sp, vol=80), mix(50, over), end(94)])
+        self.assertEqual(w, [])
+        v0 = frame(40)
+        m0 = frame(50) - v0
+        voc = V.Voice(sp)
+        for i in range(2000):
+            o = over[i - m0] if 0 <= i - m0 < 300 else 128
+            self.assertEqual(duty[v0 + i], V.out_byte(voc.at(i), o, 80) / 256, i)
+        self.assertEqual(duty[v0 - 1], 0.0)
+        self.assertEqual(duty[v0 + 2000], 0.0)
+        # The test vector of the engine: sample 4 is 5119, sample 5 4730.
+        self.assertEqual(duty[v0 + 4], V.out_byte(5119, 128, 80) / 256)
+
+    def test_one_rounding(self):
+        # The voice is 100 on 1/256 of a step, the overlay +1 step, the
+        # volume 40: (100 + 256) * 40 / 25600 rounds once to 1 step. Two
+        # roundings, the voice first, would give 0.
+        amp = 101 << 8
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, amp, 0, 0)])
+        self.assertEqual(V.span_at(sp[0], 0), 100)
+        over = self.sound("o", bytes([129]) * 375)
+        duty, _ = self.render([voice_line(0, sp, vol=40), mix(20, over), end(100)])
+        self.assertEqual(duty[frame(10)], 128 / 256)
+        self.assertEqual(duty[frame(21)], 129 / 256)
+        self.assertEqual(bs.scale_nearest(128 + 0, 40) + bs.scale_nearest(129, 40) - 128, 128)
+
+    def test_scale_option_does_not_change_a_voice(self):
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
+        a, _ = self.render([voice_line(0, sp, vol=50)], scale="cut")
+        b, _ = self.render([voice_line(0, sp, vol=50)], scale="nearest")
+        self.assertEqual(a, b)
+        self.assertEqual(a[5], V.out_byte(V.span_at(sp[0], 5), 128, 50) / 256)
+
+    def test_stop_cuts_a_voice(self):
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
+        duty, _ = self.render([voice_line(0, sp), stop(40)])
+        self.assertNotEqual(duty[frame(39)], 0.0)
+        self.assertEqual(duty[frame(41)], 0.0)
+
+    def test_unknown_voice_is_silence_with_one_warning(self):
+        sp = [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)]
+        duty, w = self.render([voice_line(0, sp), end(100), voice_line(200, sp), end(300)])
+        self.assertEqual(len(w), 1)
+        self.assertIn("no .voice file has crc=", w[0])
+        self.assertEqual(duty[frame(50)], 128 / 256)
+        self.assertEqual(duty[frame(250)], 128 / 256)
+
+    def test_found_by_crc_and_length(self):
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
+        _, w = self.render([voice_line(0, sp, count=2, length=3750)])
+        self.assertEqual(len(w), 1)
+
+    def test_queue_on_a_voice_is_a_bad_log(self):
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
+        d = self.sound("a", bytes([140]) * 100)
+        self.assertFails([voice_line(0, sp), nxt(10, d)], "serial.log:2: op=pcm_next on a voice")
+
+    def test_len_must_match_the_spans(self):
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
+        self.assertFails([voice_line(0, sp, length=3751)],
+                         "len=3751, but the spans of crc=")
+
+    def test_bad_voice_file(self):
+        with open(os.path.join(self.pcm_dir, "odd.voice"), "wb") as f:
+            f.write(bytes(27))
+        self.assertFails([end(0)], "27 bytes is not a whole number of spans")
+
+    def test_voice_file_outside_the_limits(self):
+        self.spans("v", [(10, 0, 0, 0, 0, -1, 0)])
+        self.assertFails([end(0)], "span 0: amp leaves 0 to")
+
+    def test_empty_voice_file_is_an_error(self):
+        open(os.path.join(self.pcm_dir, "v.voice"), "wb").close()
+        self.assertFails([end(0)], "v.voice: no span")
+
+    def test_empty_sample_file_is_skipped(self):
+        open(os.path.join(self.pcm_dir, "e.u8"), "wb").close()
+        rc, err, _ = self.main([stop(0)])
+        self.assertEqual(rc, 0, err)
+
+    def test_auto_picks_nearest_on_a_voice(self):
+        sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            bs.main([self.log([voice_line(0, sp)]), os.path.join(self.dir, "o.wav"),
+                     "--pcm", self.pcm_dir])
+        self.assertIn("scale nearest", out.getvalue())
+
+    def test_bounds(self):
+        base = "@RC stage=pipos ev=audio op=voice rate=%s spans=%s len=%s vol=%s crc=12345678 t_ms=0"
+        for args, text in (((37501, 1, 1, 100), "rate=37501 is outside 4000 to 37500"),
+                           ((3999, 1, 1, 100), "rate=3999 is outside"),
+                           ((37500, 0, 1, 100), "spans=0 is outside 1 to 149796"),
+                           ((37500, 149797, 1, 100), "spans=149797 is outside 1 to 149796"),
+                           ((37500, 1, 0, 100), "len=0 is outside"),
+                           ((37500, 1, 11250001, 100), "len=11250001 is outside"),
+                           ((37500, 1, 1, 101), "vol=101 is past 100")):
+            t = time.monotonic()
+            self.assertFails([base % args], text)
+            self.assertLess(time.monotonic() - t, 0.5)
+        self.assertFails(["@RC stage=pipos ev=audio op=voice rate=37500 len=1 vol=1 "
+                          "crc=12345678 t_ms=0"], "op=voice has no spans=")
+
+    def test_voice_at_the_bound_is_read(self):
+        _, w = self.render(["@RC stage=pipos ev=audio op=voice rate=37500 spans=149796 "
+                            "len=1 vol=100 crc=12345678 t_ms=0", stop(1)])
+        self.assertEqual(len(w), 1)
 
 
 if __name__ == "__main__":
