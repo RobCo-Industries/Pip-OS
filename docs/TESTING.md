@@ -309,7 +309,7 @@ Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` on
 
 Each run on a real board is recorded here, with the commit that ran. A result holds only for that board and that commit.
 
-Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3 and 1.4, the SPI panel backend, the holotape slot and this tree with RobCo-Core `cab5f69` have not run on a board. RobCo-Core records its own hardware runs in its docs.
+Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3 and 1.4, the SPI panel backend, the holotape slot and this tree with RobCo-Core `712db81` have not run on a board. RobCo-Core records its own hardware runs in its docs.
 
 ### Hardware checklist
 

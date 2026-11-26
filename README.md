@@ -13,7 +13,7 @@ What works now:
 - Boot on all four QEMU boards: `raspi0`, `raspi1ap`, `raspi2b` and `raspi3b`.
 - MMU and caches, interrupts, a 100 Hz tick and a kernel heap.
 - Boot text on the HDMI framebuffer and the serial console. The boot screen counts the holotapes on the card.
-- Configuration from `/PIPBOY/PIPOS.CFG`: colour scheme, boot line delay, volume and power-on beep.
+- Configuration from `/PIPBOY/PIPOS.CFG`: colour scheme, boot line delay, boot text speed and key click, volume and power-on beep.
 - The ROM check: the kernel loads `/PIPBOY/ROM1.ROM` into the ROM slot and validates it. The boot screen shows its name and version, or the reason it failed.
 - Running the ROM in user mode, with the MMU keeping it inside its own memory. A fault stops the ROM and shows on screen.
 - Every system call of RobCo-Core's Pip-OS ABI: graphics on a 320x240 back buffer, input events, one audio voice with tones, sequences and 8-bit samples, the clock and `power`, saves and read-only files on the card, and holotapes that the ROM runs from `/PIPBOY/HOLO/` in their own sandbox. See [docs/API.md](docs/API.md).
