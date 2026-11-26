@@ -251,6 +251,7 @@ static void apply_settings(const pipos_settings_t *s)
     audio_set_volume(s->volume);
     pipos_audio_start_volume(s->volume);
     pipos_screen_delay(s->line_delay_ms);
+    pipos_screen_typing(s->char_delay_ms, s->key_click);
     if (s->beep) {
         audio_beep();
     }
@@ -375,6 +376,7 @@ void robco_main(void)
     pipos_sys_init();
 
     rom = boot_screen(card, &res);
+    pipos_screen_typing(0, 0); /* later lines, a fault for one, appear at once */
     rom_loaded = rom;
     if (rom) {
         pipos_rom_run(&res);
