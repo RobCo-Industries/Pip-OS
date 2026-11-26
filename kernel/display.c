@@ -329,6 +329,17 @@ void pipos_display_line(const char *t)
     pipos_display_console();
 }
 
+void pipos_display_text(const char *const lines[], unsigned n)
+{
+    unsigned i;
+
+    rows = 0;
+    for (i = 0; i < n; i++) {
+        add_line(lines[i]);
+    }
+    pipos_display_console();
+}
+
 /*
  * A panic after power blanked the screen must still show: wake the panel
  * first, then send the whole console frame. tft_sleep() returns at once

@@ -17,6 +17,12 @@
  * outlast it. The main context closes the gate, waits for the voice,
  * starts the note and opens the gate again.
  *
+ * When the last boot line starts, typing on, the main context closes the
+ * gate for good and drops what is owed: the quiet second before the
+ * scroll. A click that plays then ends by itself. A boot with no ROM opens
+ * the gate again after the last line. The scroll's blips play from the
+ * main context while the gate is closed.
+ *
  * After the jump to a ROM the kernel plays no click, so a click never meets
  * a ROM's own sound. A click that still plays at the jump ends first.
  *
@@ -314,6 +320,44 @@ void pipos_dsound_note(uint32_t char_ms, uint32_t line_ms)
     }
     pipos_dsound_open(&rules);
     irq_restore(irq);
+}
+
+int pipos_dsound_quiet(uint32_t at_ms)
+{
+    unsigned dropped;
+    uint32_t irq;
+
+    if (!on || jumped) {
+        return 0;
+    }
+    irq = irq_save();
+    dropped = rules.owed;
+    pipos_dsound_close(&rules);
+    irq_restore(irq);
+    pipos_dsound_poll();
+    k_printf("@RC stage=" PIPOS_STAGE " ev=quiet dropped=%u t_ms=%u\n", dropped,
+             (unsigned)at_ms);
+    return 1;
+}
+
+void pipos_dsound_reopen(void)
+{
+    uint32_t irq;
+
+    if (!on || jumped) {
+        return;
+    }
+    irq = irq_save();
+    pipos_dsound_open(&rules);
+    irq_restore(irq);
+}
+
+int pipos_dsound_blip(void)
+{
+    if (!on || jumped) {
+        return 0;
+    }
+    return audio_play_pcm(sound_blip, SOUND_BLIP_LEN, SOUND_RATE_HZ, 0) == 0;
 }
 
 void pipos_dsound_note_wait(void)

@@ -309,6 +309,9 @@ static int boot_screen(int card, loader_result_t *res)
     pipos_screen_line(line);
 
     for (i = 0; pipos_boot_tail[i] != NULL; i++) {
+        if (pipos_boot_tail[i + 1] == NULL) {
+            pipos_screen_last_next();
+        }
         pipos_screen_line(pipos_boot_tail[i]);
     }
     return rc == RIMG_OK;
@@ -405,7 +408,7 @@ void robco_main(void)
     pipos_sys_init();
 
     rom = boot_screen(card, &res);
-    pipos_dsound_note_wait();
+    pipos_screen_end(rom);
     pipos_screen_typing(0); /* later lines, a fault for one, appear at once */
     rom_loaded = rom;
     if (rom) {

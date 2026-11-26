@@ -58,6 +58,15 @@ void pipos_screen_line(const char *text);
  * such as the panel's failure line.
  */
 void pipos_screen_note_next(void);
+/* The next line shown is the boot text's last line: the quiet second starts with it. */
+void pipos_screen_last_next(void);
+/*
+ * After the last boot line. rom is 1 when a ROM loaded and runs next. Waits
+ * for the note, then with typing on and a ROM, scrolls the text away.
+ */
+void pipos_screen_end(int rom);
+/* After a ROM ends, however: writes the scrolled boot text again, at once. */
+void pipos_screen_restore(void);
 
 /*
  * dsound.c: the disk click. Card and slot work and the typed boot text add
@@ -80,6 +89,16 @@ void pipos_dsound_line_done(unsigned owed);
  * line on outlasts it at these delays. Main context.
  */
 void pipos_dsound_note(uint32_t char_delay_ms, uint32_t line_delay_ms);
+/*
+ * The last boot line starts: with the sound on, closes the gate, drops what
+ * is owed and prints ev=quiet dropped=<n> t_ms=<at_ms>. Returns 1 when it
+ * closed the gate. pipos_dsound_reopen() opens it again, for a boot with no
+ * ROM.
+ */
+int pipos_dsound_quiet(uint32_t at_ms);
+void pipos_dsound_reopen(void);
+/* With the sound on, plays the scroll's blip. Returns 1 when it plays. */
+int pipos_dsound_blip(void);
 /* Waits while the note plays, polling the trace. */
 void pipos_dsound_note_wait(void);
 /* Before the jump to a ROM: no click plays from here on. */

@@ -85,6 +85,7 @@ void pipos_rom_run(const loader_result_t *res)
     im.start_line = start;
 
     rc = pipos_image_run(&im, &ex);
+    pipos_screen_restore(); /* the boot text comes back, however the ROM ended */
     if (rc != 0) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=error code=umode rc=%d\n", rc);
         return;
