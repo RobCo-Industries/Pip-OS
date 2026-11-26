@@ -44,17 +44,19 @@ So a local build with another compiler fails until it names that compiler, such 
 
 ## The checker
 
-`python3 tools/sdk_package.py check <zip> --forbid <text>...` prints one `FAIL` line per broken rule and exits 1 when there is one. It checks:
+`python3 tools/sdk_package.py check <zip> --forbid <text>...` prints one `FAIL` line per broken rule and exits 1 when there is one. It knows two kinds of package, `pipos` and `templates`. The `name` in `sdk.json` picks the kind, and `--kind <name>` forces one. A name that is not a kind it knows fails with one line that names the kinds, and the rules of every package still run.
+
+### Rules of every package
+
+It checks:
 
 - The file name: `<name>-<version>.zip`, with the name and the version of its `sdk.json`. A copy renamed to another version fails.
 - Entry names: UTF-8 as raw bytes, relative, `/` only, no empty, `.` or `..` part, no drive letter, no two names equal or equal but for case by their lower or upper case forms.
 - Each part of a name is a plain name on Linux, macOS and Windows: no `< > : " \ | ? *`, no control character, no ending dot or space, no Windows device name such as `CON` or `com1.txt`. The spec does not state this rule yet. RobCo Studio refuses such a package, so the check does too.
 - No entry named `.robco-archive`, the file RobCo Studio adds to an installed package, and no file that is also the folder of another entry. RobCo Studio refuses both; the spec does not state them yet.
 - Entries: regular files and folders only, stored or deflate.
-- `sdk.json` at the root, at most 4 MiB as RobCo Studio reads it, with the fields a `pipos` package carries, each of its JSON type and form.
+- `sdk.json` at the root, at most 4 MiB as RobCo Studio reads it, with the fields every package carries, each of its JSON type and form: `format`, `name`, `version`, `built_from`, `formats`, `licences` and `files`.
 - `files`: sorted by path in byte order with no repeat, each path by the name rules above, each with its size and a lower case SHA-256 that match the entry. No entry unlisted and no listed path missing.
-- The layout: every file of the spec's table and the ten headers, and nothing else but more headers in `include/pipos/`. No `include/pipos/pipos.h`.
-- `licences` names no GPL licence. The check reads what `sdk.json` declares, not the licence of a file's bytes.
 - No Pi firmware file.
 - Every string in `sdk.json`, keys included, is text: one that holds an unpaired surrogate, such as the escape `"\ud800"`, is a `FAIL` line, and the fields are not checked further.
 - Every file entry can be read. An entry with an unknown method, a wrong CRC or encryption is a `FAIL` line with its name, and its bytes are neither hashed nor searched.
@@ -65,9 +67,31 @@ A hit names the file, the offset and the run of printable bytes around it, at mo
 
 A forbidden text under 4 characters is an error, not a pass: it would match by chance. With `--skip-short` the check leaves such a text out and says so in one `note:` line. `make sdk-package` passes it, so a host or user name such as `pi` does not stop the build. The long forms of a short user name, such as `/home/pi`, are still searched. `PKG_HOST` and `PKG_USER` set the names, so a test can give a short one. The search compares bytes. It finds a Windows path only as written with single `\`, not with `/` or with the `\\` of a JSON string. The package is built on Linux only, so this is enough today.
 
+### Rules of a kind
+
+A kind is one entry of `KINDS` in `tools/sdk_package.py`: the fields it requires and forbids, its `formats`, its `requires` rule, its `built_from` and `licences` rules and its layout.
+
+| Rule | `pipos` | `templates` |
+|---|---|---|
+| Required fields | `abi`, `requires`, `tools`, `firmware` | None more |
+| Forbidden fields | None | `abi`, `tools`, `firmware` |
+| `formats` | `rimg`, `flags`, `boot`, `runner`, each `1` | `templates`, `project`, `scenario`, each `1` |
+| `requires` | Present and empty | Empty when present |
+| `abi` | The first two parts of `version` | Absent |
+| `tools`, `firmware` | `gcc` then `qemu`, and the pins of the three firmware files | Absent |
+| `built_from` | Any repositories | `RobCo-Reel` alone |
+| `licences` | No GPL licence. The check reads what `sdk.json` declares, not the licence of a file's bytes. | `MIT` in every entry, and every path under a prefix |
+| Layout | Every file of the spec's table and the ten headers, and nothing else but more headers in `include/pipos/`. No `include/pipos/pipos.h`. The spec lists files only, so a folder entry is not checked against the layout. | `templates.json`, `LICENSES/MIT.txt`, and one folder per template of `templates.json`. Nothing else, folder entries included: a folder entry is allowed only as `LICENSES/`, a template's `<id>/`, or a folder of a listed file. |
+
+For `templates` it also reads `templates.json` as the spec's section of that name says: `format` 1, one or more templates sorted by `id`, no field the spec does not define, `id`, `title`, `description` and `files` in their forms, `kind` equal to `holotape`, each `path` by the path rules of `robco.toml` with no token, paths sorted with no two that differ only in case. Every listed file is in the package, and every file under `<id>/` is listed. A file with `substitute` set holds no token but `@NAME@`. The `holotape-c` entry is the spec's, and its `robco.toml` and `tests/start.toml` are the spec's byte for byte.
+
+What the check does not decide for `templates`: that `icon.pbm` is a 32x32 PBM, the rules of `src/main.c`, that the golden image comes from QEMU, and the value of `kind`, which the spec gives only as `holotape` for `holotape-c`.
+
+### What it cannot decide
+
 What the check cannot decide from the archive alone: that each file comes from the source the spec names, that the headers equal `sdk/include/pipos/` byte for byte, that `tools` names the compiler that built `libpip.a`, and that `firmware` holds the pins of RobCo-Core's `tools/fetch_firmware.sh`. `make sdk-package` holds those when it builds.
 
-`tests/tools/test_sdk_package.py` builds small packages in a temp folder and breaks each rule once. It needs no build. `make sdk-package-test` runs it.
+`tests/tools/test_sdk_package.py` and, for the `templates` kind, `tests/tools/test_sdk_package_templates.py` build small packages in a temp folder and break each rule once. They need no build. `make sdk-package-test` runs both.
 
 ## The workflow
 
