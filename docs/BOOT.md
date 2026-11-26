@@ -142,9 +142,40 @@ The kernel keeps clicking while a ROM runs, in the ROM pace. The ROM's card and 
 | A sound the ROM started plays | The click waits. The debt holds up to 8. After 3 s of waiting in a row the kernel drops it. |
 | A kernel click plays | The click waits a tick. |
 
-A click never mixes over a ROM's sound. Every audio call of the ROM or a holotape first stops a kernel click that plays. So the ROM's sound always wins: a click it cuts ends with one `op=stop`, then the ROM's own `op=` line follows. `sample_queue` then starts a new play and never queues behind a click. `audio_status` never reports a click, because the tick clears the image's sound when it finds the voice idle, before it starts one. A call that starts or stops a sound also counts as a ROM sound for the 300 ms rule. `audio_status` and `volume` do not.
+A click never mixes over a ROM's sound. An audio call of the ROM or a holotape that may start or stop a sound first stops a kernel click that plays, right after its argument checks. From that cut to the call's end no click starts. So the ROM's sound always wins: a click it cuts ends with one `op=stop`, then the ROM's own `op=` line follows. `sample_queue` cuts in the same masked section where it reads the driver, so it starts a new play and never queues behind a click.
 
-When the ROM ends, the kernel drops the debt, goes back to the boot pace and opens the gate, as on a boot with no ROM after its last line. Card work after `ev=ready` still clicks. A holotape the test shell runs with no ROM gets the boot pace and the same yield.
+The 300 ms count from the end of the ROM's last sound. The tick holds the count at zero while a sound the ROM started plays, so a 2 s tone holds clicks for 2 s plus 300 ms. A call that really starts or stops a ROM sound also restarts the count, which covers a sound shorter than a tick. A call that starts nothing does not.
+
+| Call | Outcome | Cuts a click | Restarts the 300 ms |
+|---|---|---|---|
+| `tone` | `EINVAL` | no | no |
+| `tone` | `EIO` | yes | no |
+| `tone` | started | yes | yes |
+| `sample` | `EINVAL`, or `EFAULT` on the pointer check | no | no |
+| `sample` | `EFAULT` on the copy or `EIO`, nothing of the ROM's played | yes | no |
+| `sample` | `EFAULT` on the copy or `EIO`, the ROM's sound stopped | yes | yes |
+| `sample` | started | yes | yes |
+| `sample_queue` | `EINVAL`, or `EFAULT` on the pointer check | no | no |
+| `sample_queue` | `EBUSY` | no click can play then | no |
+| `sample_queue` | queued behind the ROM's play | no click can play then | no |
+| `sample_queue` | `EFAULT` on the copy or `EIO` while queueing | no click can play then | no |
+| `sample_queue` | `EFAULT` on the copy or `EIO`, no play to queue behind | yes | no |
+| `sample_queue` | started | yes | yes |
+| `play_seq` | `EINVAL` or `EFAULT` | no | no |
+| `play_seq` | `EIO` | yes | no |
+| `play_seq` | started | yes | yes |
+| `audio_stop` | the ROM's sound played and stops | yes | yes |
+| `audio_stop` | nothing of the ROM's plays | no, the click plays on | no |
+| `volume` | any | no | no |
+| `audio_status` | any | no | no |
+
+`tests/host/test_dsound.c` holds the same table. `sample_queue` runs its cut before it knows the outcome, but `EBUSY` and a queue need the ROM's own play, and no click plays then.
+
+A question cuts no click. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: the tick clears the ROM's sound when it finds the voice idle, before it starts a click, and the status reads that flag and the driver in one masked section. `volume` sets the level for what plays next. RobCo-Core reads the level per sample, so a click that plays changes level from its next sample.
+
+A click may start from the tick between two ROM calls, for example between `audio_status` and a `tone`. Each call is right on its own. The `audio_status` before it said 0, which was true. A `tone`, `sample` or `play_seq` after it cuts the click and starts on an idle driver. `sample_queue` cuts it and then finds no play to queue behind, so it starts a new one. `audio_stop` finds nothing of the ROM's playing and leaves the click alone. `volume` lets it play on. A second `audio_status` still says 0.
+
+When the ROM ends, the kernel drops the debt, goes back to the boot pace and opens the gate, as on a boot with no ROM after its last line. Card work after `ev=ready` still clicks. A holotape the test shell runs with no ROM gets the boot pace and the same cut.
 
 With the system sound off nothing of this exists: no click, no marker, and the audio calls behave as before.
 
