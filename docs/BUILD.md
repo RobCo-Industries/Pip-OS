@@ -58,6 +58,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `make test`, `make test-host`, `make test-target` | The tests, see [TESTING.md](TESTING.md) |
 | `make sdk-package` | `build/pipos-<version>.zip`, the SDK package, then its check. See [SDK_PACKAGE.md](SDK_PACKAGE.md). |
 | `make check-pins` | The CI pins and the RobCo-Core doc links match the submodule |
+| `make sound-table` | Writes `kernel/sound_table.c` and `.h` again, see [System sound tables](#system-sound-tables) |
 | `make clean` | Removes `build/` |
 
 | Variable | Default | Meaning |
@@ -84,14 +85,32 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 | `kernel/` | Kernel sources and `robco_config.h` |
 | `kernel/syscall.c`, `kernel/sys.h` | The system-call dispatcher and the interface of the call groups |
 | `kernel/sys_<group>.c` | One group of system calls each: `system`, `gfx`, `input`, `audio`, `time`, `storage`, `holo` |
-| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: the `*_rules.c` files, `gfx_draw.c`, `input_events.c`, `time_clock.c`, `bootlines.c`, `settings.c`, `sysabi.c` and `sysdispatch.c` in `kernel/` |
+| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: the `*_rules.c` files, `gfx_draw.c`, `input_events.c`, `time_clock.c`, `bootlines.c`, `settings.c`, `sound_table.c`, `sysabi.c` and `sysdispatch.c` in `kernel/` |
 | `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk`, and the examples `examples/hello` and `examples/tape`, and the runner ROM `examples/runner` |
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
 | `conformance/` | The conformance ROM and its tapes, built with the SDK only, see [TESTING.md](TESTING.md#conformance-rom) |
 | `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py`, test ROMs in `tests/roms/` |
+| `kernel/sound_params.json`, `tools/sound_table.py` | The system sounds and the tool that writes their tables, see [System sound tables](#system-sound-tables) |
 | `pytest.ini` | The boards the QEMU tests run on by default |
 | `external/robco-core/` | The library |
+
+## System sound tables
+
+`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a rising note and a line blip. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`, tables of unsigned 8-bit samples at 22050 Hz, where 128 is silence. Both files are committed, so a build runs no Python for them. The kernel does not play them yet, and `--gc-sections` leaves them out of the image.
+
+| Table | Bytes |
+|---|---|
+| `sound_click` | 12 clicks of 464 samples, 21 ms each |
+| `sound_blip` | 353: 176 samples at 3469 Hz, then 177 at 2625 Hz |
+| `sound_note` | 65 516: the note's rise up to 9900 Hz, 2.97 s |
+
+After a change to the parameters, run `make sound-table` and commit the three files. Every `make` runs `tools/sound_table.py --check`, which fails when the committed files differ from what the tool writes. `make test-host` runs `tests/tools/test_sound_table.py`.
+
+- Each table holds its sound at its level for `[audio] volume = 100`. The tool refuses a click sample more than `ceiling_steps`, 12 steps, from 128.
+- The note's segments climb to 15700 Hz, but the device stops at `device_top_hz`, 9900 Hz. At 22050 samples a second nothing above 11025 Hz plays. The table ends there with a 50 ms fade.
+- The same parameters give the same bytes on every system and every Python 3. The tool uses only add, subtract, multiply, divide and comparisons, which IEEE 754 fixes. It builds its own logarithm, exponential and sine from them, and its noise is a 32-bit xorshift from `seed`. It calls no `math` function and no `random`.
+- `--wav DIR` writes each sound as an 8-bit WAV file, to listen to. `--dump DIR` writes each buffer as a raw `.u8` file.
 
 ## Button pins
 

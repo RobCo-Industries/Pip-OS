@@ -50,6 +50,7 @@ PURE_SRCS  := \
               kernel/keyclick.c \
               kernel/settings.c \
               kernel/slot_rules.c \
+              kernel/sound_table.c \
               kernel/storage_rules.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \
@@ -117,6 +118,22 @@ include $(ROBCO_CORE)/mk/host.mk
 
 # Target tests boot the image built here; keep top-level targets serial.
 .NOTPARALLEL:
+
+# ---- System sound tables ------------------------------------------------
+
+# kernel/sound_table.c and .h are generated from kernel/sound_params.json
+# and committed. `make sound-table` writes them again. Every `make` checks
+# that they match the parameters. See docs/BUILD.md.
+.PHONY: sound-table sound-table-check sound-table-test
+all: sound-table-check
+sound-table:
+	$(PYTHON) -I tools/sound_table.py
+
+sound-table-check:
+	$(PYTHON) -I tools/sound_table.py --check
+
+sound-table-test:
+	$(PYTHON) -I -m unittest discover -s tests/tools -p test_sound_table.py
 
 # ---- ROMs ---------------------------------------------------------------
 
@@ -271,7 +288,7 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
-           workflow-exprs-test
+           workflow-exprs-test sound-table-test
 
 # Every workflow line with a ${{ expression has the one safe KEY: value shape.
 .PHONY: workflow-exprs-test
