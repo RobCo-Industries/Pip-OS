@@ -40,6 +40,19 @@ MUST_FAIL = {
     "shell": "        shell: ${{ x }} {0}\n",
     "args": "          args: ${{ x }}\n",
     "entrypoint upper": "          Entrypoint: ${{ x }}\n",
+    "anchor before block": "        run: &script |\n          X: ${{ x }}\n",
+    "alias": "        steps: *script\n        X: ${{ x }}\n",
+    "merge key": "        <<: {}\n        X: ${{ x }}\n",
+    "flow sequence": '    steps: [{run: "echo ${{ x }}"}]\n',
+    "flow mapping value": "        with: {path: ${{ x }}}\n",
+    "quoted multi-line run": (
+        '        run: "echo a\n          X: b ${{ x }}"\n'
+    ),
+    "quoted value ends": '        env:\n          A: "x\n          B: ${{ x }}"\n',
+    "tag before block": (
+        "        run: !!str |\n          env:\n            X: ${{ x }}\n"
+    ),
+    "plain continuation": "        run: echo a\n          X: ${{ x }}\n",
 }
 
 MUST_PASS = {
@@ -54,6 +67,9 @@ MUST_PASS = {
     "block ends then env": (
         "      - run: |\n          echo ok\n        env:\n          TAG: ${{ x }}\n"
     ),
+    "quotes inside expr": "          TAG: ${{ a && b || '' }}\n",
+    "sibling if": "      - name: x\n        if: ${{ x }}\n",
+    "concurrency group": "concurrency:\n  group: g-${{ github.ref }}\n",
 }
 
 
@@ -67,6 +83,10 @@ class Rule(unittest.TestCase):
         for name, text in MUST_PASS.items():
             with self.subTest(name):
                 self.assertEqual(lines(text), [], name)
+
+    def test_anchor_fails_file_once(self):
+        found = list(cwe.findings("a: &x 1\nb: *x\n"))
+        self.assertEqual(found, [(1, "anchors and aliases are not read")])
 
     def test_old_tag_step_fails_on_its_run_line(self):
         old = (
