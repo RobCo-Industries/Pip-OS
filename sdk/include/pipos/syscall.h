@@ -75,7 +75,11 @@ int32_t pip_play_seq(const pip_note_t *notes, uint32_t count);
  * Like pip_sample, but plays right after a sample that plays, with no gap.
  * One can wait: then -PIP_EBUSY. ABI 1.1: -PIP_ENOSYS on a 1.0 Pip-OS.
  */
+#if PIPOS_ABI_TARGET >= 0x00010001
 int32_t pip_sample_queue(const uint8_t *data, uint32_t length);
+#else
+int32_t pip_sample_queue(const uint8_t *data, uint32_t length) PIP_ABI_HIDDEN(sample_queue, "1.1");
+#endif
 
 /* Time, sensors and power. */
 /* PIP_SENSOR_*. 0, or -PIP_ENODEV. */

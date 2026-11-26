@@ -4,7 +4,8 @@
  * at 0x20 with the META flag, a zeroed META block at 0x60, then code.
  * `rimg.py seal` writes the name, version, title, icon and CRC.
  *
- * Override with -D: PIP_IMG_MAGIC ("ROM1" or "ROBCO78"), PIP_IMG_SUBTYPE.
+ * Override with -D: PIP_IMG_MAGIC ("ROM1" or "ROBCO78"), PIP_IMG_SUBTYPE,
+ * PIPOS_ABI_TARGET (the abi_version, see pipos/abi.h).
  */
 #include <pipos/abi.h>
 
@@ -40,7 +41,7 @@ pip_rimg:
     .word   __image_file_size
     .word   __image_mem_size
     .word   0                               @ crc32, written by rimg.py seal
-    .word   PIP_ABI_VERSION
+    .word   PIPOS_ABI_TARGET                @ abi_version, PIP_ABI_VERSION when not set
     .word   0                               @ image_version, rimg.py seal --image-version
     .word   PIP_IMG_SUBTYPE
     .space  16, 0                           @ name, rimg.py seal --name

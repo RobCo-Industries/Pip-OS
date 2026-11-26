@@ -11,6 +11,31 @@
 
 #define PIP_ABI_VERSION     0x00010004  /* (major << 16) | minor */
 
+/*
+ * PIPOS_ABI_TARGET: the lowest ABI the project needs, in the same form,
+ * such as 0x00010003 for 1.3. The build passes it with -D. The headers
+ * hide the wrapper and the number of every call added after it, so a use
+ * fails to compile. Structs, error codes and constants stay visible.
+ * crt0.S writes it into the header's abi_version. Not defined, it is the
+ * ABI of these headers and every call is visible.
+ *
+ * Hidden by target, from the Changes table of the spec:
+ *   below 1.1: sample_queue
+ * 1.2, 1.3 and 1.4 added no call.
+ */
+#ifndef PIPOS_ABI_TARGET
+#define PIPOS_ABI_TARGET    PIP_ABI_VERSION
+#endif
+#define PIP_ABI_STR_(...)   #__VA_ARGS__
+#define PIP_ABI_STR(...)    PIP_ABI_STR_(__VA_ARGS__)
+#if PIPOS_ABI_TARGET > PIP_ABI_VERSION
+#ifdef __ASSEMBLER__
+    .error PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of these headers, PIP_ABI_VERSION)
+#else
+_Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of these headers, PIP_ABI_VERSION));
+#endif
+#endif
+
 /* log: at most this many bytes, NUL included. */
 #define PIP_LOG_MAX         256
 
@@ -464,5 +489,24 @@ PIP_ABI_AT(pip_mem_info_t, heap_size, 0x04);
 PIP_ABI_AT(pip_mem_info_t, stack_top, 0x08);
 PIP_ABI_AT(pip_mem_info_t, stack_size, 0x0C);
 
+/*
+ * A call newer than PIPOS_ABI_TARGET: its number names an unavailable
+ * object, so any use fails with the call and the ABI that added it.
+ */
+#define PIP_ABI_HIDDEN(name, abi) \
+    __attribute__((unavailable(#name " was added in Pip-OS ABI " abi \
+                               ", above the target ABI " PIP_ABI_STR(PIPOS_ABI_TARGET))))
+
+#if PIPOS_ABI_TARGET < 0x00010001
+extern const uint32_t pip_hidden_sys_sample_queue PIP_ABI_HIDDEN(sample_queue, "1.1");
+#undef PIP_SYS_SAMPLE_QUEUE
+#define PIP_SYS_SAMPLE_QUEUE pip_hidden_sys_sample_queue
+#endif
+
 #endif /* __ASSEMBLER__ */
+
+/* In assembly a hidden number is not defined. */
+#if defined(__ASSEMBLER__) && PIPOS_ABI_TARGET < 0x00010001
+#undef PIP_SYS_SAMPLE_QUEUE
+#endif
 #endif

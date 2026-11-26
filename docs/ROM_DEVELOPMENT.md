@@ -46,16 +46,48 @@ include $(PIPOS_SDK)/pipos-app.mk
 | `ICON` | META icon: a 32x32 PBM, P1 or P4, or 128 raw bytes |
 | `VERSION` | Image version, such as `1.2.0` |
 | `SUBTYPE` | Holotape subtype: `game` or `0`, the default, or `utility` or `1`. A data tape, `2`, has no slot, so the build refuses it. A ROM takes only `0`. A change reseals the image. |
+| `ABI` | The lowest Pip-OS ABI the image needs, `MAJOR.MINOR`, such as `1.3`. See [The target ABI](#the-target-abi). Not set, the image targets the ABI of the headers, 1.4. |
 | `BUILD` | Output folder, `build` by default |
 | `CFLAGS_EXTRA` | More compiler flags |
 | `ROBCO_CORE` | RobCo-Core, `$(PIPOS_SDK)/../external/robco-core` by default |
 | `CI=1` | Warnings become errors |
+| `FLAGS_JSON` | Where `flags-json` writes, `$(BUILD)/flags.json` by default |
 
-Targets are `all` and `clean`. The fragment compiles with the kernel's CPU flags: ARMv6, ARM state, soft float, `-ffreestanding -nostdlib`. It builds `libpip.a` in `$(BUILD)/libpip`, links with `-lgcc` for division and other compiler helpers, seals with `rimg.py seal` and checks the result with `rimg.py verify`.
+Targets are `all`, `clean` and `flags-json`. The fragment compiles with the kernel's CPU flags: ARMv6, ARM state, soft float, `-ffreestanding -nostdlib`. It builds `libpip.a` in `$(BUILD)/libpip`, links with `-lgcc` for division and other compiler helpers, seals with `rimg.py seal` and checks the result with `rimg.py verify`.
 
 `make` rebuilds what a change affects: an edited source or header, a new setting, a source added to or removed from `SRCS`. Every object lands under `$(BUILD)/obj` with its source extension, so `start.c` and `start.S` can sit side by side. If sealing or verifying fails, no image is left behind. Paths with spaces are not supported.
 
 A holotape builds the same way with `KIND=holotape`. It links at `0x00800000`.
+
+`libpip.a` is archived with `ar rcsD`, which stores no dates or ids, so two builds from one commit give the same archive.
+
+### The target ABI
+
+`ABI := 1.3` states the lowest ABI the image needs. `pipos-app.mk` passes `-DPIPOS_ABI_TARGET=0x00010003` to `crt0.S` and to every source of `SRCS`, never to `libpip.a`.
+
+- `crt0.S` writes the value into the header's `abi_version`. The loader checks only the major, so the image loads on every 1.x Pip-OS.
+- The headers hide the wrapper and the `PIP_SYS_*` number of every call added after the target. A use fails to compile with an error that names the call and the ABI that added it.
+- Structs, error codes and the constants of newer ABIs stay visible, such as `PIP_HW_TAPE`, `PIP_EV_TAPE` and `PIP_HOLO_EV_*`.
+- A target above the headers' ABI fails to compile, with both versions in the error.
+- Make refuses a value that is not `MAJOR.MINOR` in decimal, a leading zero, a major other than 1 or a minor above 65535, before it compiles anything.
+- Without `ABI`, no define is passed and the image has the same bytes as before the variable existed.
+
+The calls hidden by target, from the spec's change list:
+
+| Target | Hidden |
+|---|---|
+| 1.0 | `sample_queue` |
+| 1.1 to 1.4 | Nothing |
+
+ABI 1.2, 1.3 and 1.4 added no call. A change of `ABI` rebuilds the startup code and every source.
+
+### flags.json
+
+`make flags-json` writes the build flags as the section "flags.json" of RobCo-Core's `docs/spec/SDK_PACKAGE.md` describes them, for a tool that builds without `make`. It writes the variables the build rules use, so the file and the build cannot drift apart. Paths are relative to a package root: `include`, `lib/crt0.S`, `lib/holotape.ld`, `lib/rom.ld`, `lib/libpip.a`. No flag holds a path.
+
+The file leaves out what is the project's or `make`'s own: `CFLAGS_EXTRA`, `-Werror` of `CI=1`, `-MMD -MP` and the map file. `-Wl,--no-warn-rwx-segments` is in `ldflags` only when the linker of the machine that writes the file knows it.
+
+`tests/host/flags_json_test.sh` builds the example tape and the example ROM twice, by `make` and by `tests/host/flags_json_build.py`, which follows the spec's build order and reads only `flags.json` and a package folder. Both give the same SHA-256. This is tested on one machine only.
 
 ## Writing a holotape
 
