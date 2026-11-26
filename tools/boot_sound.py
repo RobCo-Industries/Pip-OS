@@ -58,10 +58,10 @@ Limits: a line of at most 4096 bytes, at most 1000000 lines, at most
 300 s of output plus a 0.3 s tail, at most 4096 .u8 files of at most 4 MiB
 each and 64 MiB together.
 Each number is checked when its line is read, before anything is built
-from it. From the library: rate= 4000 to 22050, hz= 20 to 20000, vol= 0
+from it. From the library: rate= 4000 to 37500, hz= 20 to 20000, vol= 0
 to 100, as the driver caps it before the trace prints it. len= is 1 to
-6615000, 300 s at 22050 Hz, and so is a play with its queued buffers.
-n= of op=pcm_end is at most 6615000 and last= below it. t_ms= is at most
+11250000, 300 s at 37500 Hz, and so is a play with its queued buffers.
+n= of op=pcm_end is at most 11250000 and last= below it. t_ms= is at most
 300000. n= of ev=audio_drop is 0 to 4294967295.
 
 Exit status: 0 on success, 2 on a bad log, a bad option or a file error,
@@ -97,7 +97,7 @@ RAMP_RATE = 22050
 # records it. Its AUDIO_PCM_LEN_MAX is 2^31 - 1 bytes, more than the output
 # can hold: a play is at most 300 s at the highest rate.
 RATE_MIN = 4000
-RATE_MAX = 22050
+RATE_MAX = 37500
 HZ_MIN = 20
 HZ_MAX = 20000
 VOL_MAX = 100

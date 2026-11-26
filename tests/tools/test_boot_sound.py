@@ -129,6 +129,17 @@ class Placement(Case):
         self.assertEqual(duty[(225 * FR) // RATE], 170 / 256)
         self.assertEqual(duty[frame(21)], 0.0)
 
+    def test_play_at_the_output_rate_is_one_sample_per_frame(self):
+        d = self.sound("fast", bytes((60 + 7 * i) % 256 for i in range(750)))   # 20 ms
+        duty, w = self.render([pcm(40, d, rate=FR), end(60)])
+        self.assertEqual(w, [])
+        start = frame(40)
+        self.assertEqual(start, 40 * FR // 1000)
+        self.assertEqual(duty[start - 1], 0.0)
+        for i in range(750):
+            self.assertEqual(duty[start + i], d[i] / 256)
+        self.assertEqual(duty[start + 750], 0.0)
+
 
 class Volume(Case):
     def test_cut_toward_128(self):
@@ -476,12 +487,12 @@ class Bounds(Case):
 
     def test_huge_len_with_unknown_crc(self):
         self.fast_fail("@RC stage=pipos ev=audio op=pcm rate=22050 len=9999999999 vol=100 "
-                       "crc=12345678 t_ms=0", "serial.log:1: len=9999999999 is outside 1 to 6615000")
+                       "crc=12345678 t_ms=0", "serial.log:1: len=9999999999 is outside 1 to 11250000")
 
     def test_len_one_past_the_bound(self):
         for op in ("pcm rate=22050 vol=100", "pcm_next", "pcm_mix"):
-            self.fast_fail("@RC stage=pipos ev=audio op=%s len=6615001 crc=12345678 t_ms=0" % op,
-                           "len=6615001 is outside 1 to 6615000")
+            self.fast_fail("@RC stage=pipos ev=audio op=%s len=11250001 crc=12345678 t_ms=0" % op,
+                           "len=11250001 is outside 1 to 11250000")
 
     def test_len_zero(self):
         self.fast_fail("@RC stage=pipos ev=audio op=pcm_mix len=0 crc=12345678 t_ms=0",
@@ -489,19 +500,19 @@ class Bounds(Case):
 
     def test_len_at_the_bound_is_read(self):
         events, _ = bs.read_log(self.log(
-            ["@RC stage=pipos ev=audio op=pcm rate=22050 len=6615000 vol=100 crc=12345678 t_ms=0"]))
+            ["@RC stage=pipos ev=audio op=pcm rate=22050 len=11250000 vol=100 crc=12345678 t_ms=0"]))
         self.assertEqual(events[0][2]["len"], bs.MAX_PCM_LEN)
 
     def test_chained_buffers_past_the_bound(self):
-        line = "@RC stage=pipos ev=audio op=%s len=4000000 crc=12345678 t_ms=0"
+        line = "@RC stage=pipos ev=audio op=%s len=6000000 crc=12345678 t_ms=0"
         rc, err, _ = self.main([line.replace("%s", "pcm rate=22050 vol=100"), line % "pcm_next"])
         self.assertEqual(rc, 2, err)
-        self.assertIn("serial.log:2: the play's buffers pass 6615000", err.splitlines()[-1])
+        self.assertIn("serial.log:2: the play's buffers pass 11250000", err.splitlines()[-1])
 
     def test_rate(self):
-        for rate in (3999, 22051, 9999999999):
+        for rate in (3999, 37501, 9999999999):
             self.fast_fail("@RC stage=pipos ev=audio op=pcm rate=%d len=4 vol=100 crc=12345678 "
-                           "t_ms=0" % rate, "rate=%d is outside 4000 to 22050" % rate)
+                           "t_ms=0" % rate, "rate=%d is outside 4000 to 37500" % rate)
 
     def test_vol(self):
         self.fast_fail("@RC stage=pipos ev=audio op=pcm rate=8000 len=4 vol=101 crc=12345678 t_ms=0",
@@ -516,10 +527,10 @@ class Bounds(Case):
                            "hz=%d is outside 20 to 20000" % hz)
 
     def test_end_counts(self):
-        self.fast_fail("@RC stage=pipos ev=audio op=pcm_end n=6615001 last=0 t_ms=0",
-                       "n=6615001 is past 6615000")
-        self.fast_fail("@RC stage=pipos ev=audio op=pcm_end n=1 last=6615000 t_ms=0",
-                       "last=6615000 is past 6614999")
+        self.fast_fail("@RC stage=pipos ev=audio op=pcm_end n=11250001 last=0 t_ms=0",
+                       "n=11250001 is past 11250000")
+        self.fast_fail("@RC stage=pipos ev=audio op=pcm_end n=1 last=11250000 t_ms=0",
+                       "last=11250000 is past 11249999")
 
     def test_t_ms(self):
         self.fast_fail("@RC stage=pipos ev=audio op=stop hz=0 vol=5 t_ms=9999999999",
@@ -589,8 +600,8 @@ class Limits(Case):
         with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
             bs.main(["--help"])
         text = out.getvalue()
-        for s in ("4096 bytes", "1000000 lines", "300 s", "op=pcm_mix", "4000 to 22050",
-                  "20 to 20000", "6615000", "4294967295",
+        for s in ("4096 bytes", "1000000 lines", "300 s", "op=pcm_mix", "4000 to 37500",
+                  "20 to 20000", "11250000", "4294967295",
                   "pins today", "newer library only"):
             self.assertIn(s, text)
 
