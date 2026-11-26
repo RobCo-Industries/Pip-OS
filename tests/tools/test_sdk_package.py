@@ -638,6 +638,26 @@ def test_user_in_a_machine_form_fails(package, planted):
     assert_fails(package, "docs/API.md: holds", users=["runner"])
 
 
+# A hit names the whole printable run around it, so a CI log shows the
+# path that got in, and one text given twice is reported once.
+def test_hit_shows_the_printable_run_around_it(package):
+    path = b"/home/runner/work/_temp/gcc/xpack/arm-none-eabi/include"
+    rewrite(package, replace_file(entries(package), "docs/API.md",
+                                  b"\x00\x01" + path + b"\x00tail"))
+    status, out = check(package, "/home/runner", users=["runner"])
+    assert status == 1, out
+    assert f"in {path.decode()!r}" in out, out
+    assert out.count("docs/API.md: holds '/home/runner'") == 1, out
+
+
+def test_hit_in_a_long_run_is_cut(package):
+    data = b"a" * 500 + b"/home/runner/x" + b"b" * 500
+    rewrite(package, replace_file(entries(package), "docs/API.md", data))
+    status, out = check(package, "/home/runner/x")
+    assert status == 1, out
+    assert "in '..." + "a" * 80 + "/home/runner/x" + "b" * 80 + "...'" in out, out
+
+
 # ---- check: an entry that cannot be read ----------------------------------------------
 
 def patch_local_header(path, name, offset, value):

@@ -402,7 +402,31 @@ def forbidden_texts(args):
         if len(t) < FORBID_MIN:
             raise Error(f"forbidden text {t!r} is shorter than {FORBID_MIN} characters, "
                         "so the search would not mean anything")
-    return texts
+    # The same text twice, such as --forbid $HOME and the home folder of
+    # --user, would report each hit twice.
+    return list(dict.fromkeys(texts))
+
+
+# A hit is shown with the printable run of bytes around it, at most this
+# many bytes on each side, so a log names the whole path that got in.
+RUN_SIDE = 80
+
+
+def printable_run(data, at, length):
+    """The run of printable ASCII bytes that holds data[at:at + length],
+    cut to RUN_SIDE bytes on each side, as text. A cut end gets '...'."""
+    start = at
+    while start > 0 and at - start < RUN_SIDE and 0x20 <= data[start - 1] < 0x7f:
+        start -= 1
+    end = at + length
+    while end < len(data) and end - at - length < RUN_SIDE and 0x20 <= data[end] < 0x7f:
+        end += 1
+    text = data[start:end].decode("utf-8", "replace")
+    if start > 0 and 0x20 <= data[start - 1] < 0x7f:
+        text = "..." + text
+    if end < len(data) and 0x20 <= data[end] < 0x7f:
+        text += "..."
+    return text
 
 
 def check(args):
@@ -522,7 +546,8 @@ def check(args):
             for f in forbid:
                 at = data.find(f.encode("utf-8"))
                 if at >= 0:
-                    fail(f"{n}: holds {f!r} of the build machine at offset {at}")
+                    fail(f"{n}: holds {f!r} of the build machine at offset {at}, "
+                         f"in {printable_run(data, at, len(f.encode('utf-8')))!r}")
     for p in problems:
         print(f"FAIL: {p}")
     if not problems:
