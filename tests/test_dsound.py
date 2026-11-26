@@ -117,7 +117,7 @@ def test_clicks_follow_the_work(board, kernel_image, tmp_path, need_mtools):
 def test_a_big_rom_owes_at_most_the_cap(board, kernel_image, tmp_path, need_mtools):
     crcs, beep_crc = table_crcs(tmp_path)
     rom = make_rom(name="BIG", payload_size=3 * 1024 * 1024)
-    sd = make_card(tmp_path / "sd.img", {CFG: cfg(delay=0), ROM: rom})
+    sd = make_card(tmp_path / "sd.img", {CFG: cfg(delay=10), ROM: rom})
     with booted(kernel_image, board, sd=sd) as vm:
         settle(vm)
         trace = pipos_markers(vm, "audio")
@@ -147,3 +147,36 @@ def test_no_card_prints_and_plays_nothing(board, kernel_image, need_mtools):
         no_exception(vm)
     assert not pipos_markers(vm, "disk"), vm.serial
     assert f" len={CLICK_LEN} " not in vm.serial, vm.serial
+
+
+def test_slow_typing_with_a_big_rom_drops_no_record(board, kernel_image, tmp_path,
+                                                     need_mtools):
+    """Typing at 100 ms per character after a big load keeps the debt at its cap
+    for seconds. The kernel polls between characters, so the 64-record trace
+    queue never fills and every click keeps its end."""
+    crcs, beep_crc = table_crcs(tmp_path)
+    rom = make_rom(name="SLOWTYPINGROM123", payload_size=3 * 1024 * 1024)
+    sd = make_card(tmp_path / "sd.img", {CFG: cfg(delay=100), ROM: rom})
+    with booted(kernel_image, board, sd=sd) as vm:
+        trace = pipos_markers(vm, "audio")
+        no_exception(vm)
+    serial = vm.serial
+    assert not pipos_markers(vm, "audio_drop"), serial
+    starts = check_clicks(trace, crcs, beep_crc)
+    assert len(starts) >= 40, len(starts)
+    ends = [m for m in trace if m["op"] == "pcm_end"]
+    assert len(ends) == len([m for m in trace if m["op"] == "pcm"]), trace
+
+
+def test_no_click_record_after_the_jump(board, kernel_image, tmp_path, need_mtools):
+    """Every record of a click that started before ev=jump prints before it.
+    At 100 ms per character the limiter pays the debt faster than the text adds
+    to it, so the last click of the last line often ends well before the jump."""
+    rom = make_rom(name="JUMP")
+    sd = make_card(tmp_path / "sd.img", {CFG: cfg(delay=100), ROM: rom})
+    with booted(kernel_image, board, sd=sd) as vm:
+        no_exception(vm)
+    serial = vm.serial
+    before = serial[:serial.index("ev=jump")]
+    assert f" len={CLICK_LEN} " in before, serial
+    assert "ev=audio " not in serial[serial.index("ev=jump"):], serial
