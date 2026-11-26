@@ -432,5 +432,5 @@ sdk-package:
 	    --forbid "$$HOME" --forbid "$$(id -un)" --forbid "$$(hostname)"
 
 # The checker's own tests. They need no build.
-sdk-package-test:
-	$(PYTHON) -m pytest -q -p no:cacheprovider tests/tools/test_sdk_package.py
+sdk-package-test: venv
+	$(VENV)/bin/pytest -q -p no:cacheprovider tests/tools/test_sdk_package.py
