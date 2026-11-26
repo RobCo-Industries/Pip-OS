@@ -111,9 +111,10 @@ void pipos_config_load(int card, pipos_settings_t *s)
     pipos_settings_default(s);
     rc = config_read(card, s, &err_line);
     k_printf("@RC stage=" PIPOS_STAGE " ev=config rc=%s path=" PIPOS_CFG_PATH
-             " line=%u scheme=%s line_delay_ms=%u volume=%u beep=%d\n",
+             " line=%u scheme=%s line_delay_ms=%u volume=%u beep=%d"
+             " char_delay_ms=%u key_click=%d\n",
              rc, err_line, pipos_scheme_name(s->scheme), (unsigned)s->line_delay_ms,
-             s->volume, s->beep);
+             s->volume, s->beep, (unsigned)s->char_delay_ms, s->key_click);
 }
 
 unsigned pipos_holo_count(int card)

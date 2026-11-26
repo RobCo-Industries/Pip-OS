@@ -167,6 +167,8 @@ beep = yes
 | `line_delay_ms` in `[display]` | 0 to 2000, pause between boot lines | `0` |
 | `volume` in `[audio]` | 0 to 100 | `100` |
 | `beep` in `[audio]` | `yes` or `no` | `yes` |
+| `char_delay_ms` in `[display]` | 0 to 100, pause after each boot text character | `0` |
+| `key_click` in `[audio]` | `yes` or `no`, a click per character. It needs `char_delay_ms` above 0. | `no` |
 
 A bad value keeps the default. A line that is not INI makes Pip-OS ignore the whole file.
 
