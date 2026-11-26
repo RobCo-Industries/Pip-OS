@@ -130,11 +130,23 @@ Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After e
 
 `at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks before the jump never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`. Card calls a ROM makes print no `ev=disk` line.
 
-With typing on, the gate closes when the last boot line starts, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll). At the jump to a ROM the debt drops to 8. A click that still plays at the jump ends first.
+With typing on, the gate closes when the last boot line starts, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll). At the jump to a ROM the debt drops to 8, and no new click starts. A click that still plays at the jump ends first. The 700 ms of the ROM start after that wait, right before `ev=jump` prints.
 
 ### Clicks under a ROM
 
-The kernel keeps clicking while a ROM runs, in the ROM pace. The ROM's card and slot calls add to the debt as at boot, and a holotape's do too: the holotape runs inside the ROM's call. The cap is 8. Clicks come in groups of 1 to 4, 30 to 80 ms apart, with a pause of 300 to 900 ms more after each group. No click plays in the first 700 ms after the jump. If the gate closed for the quiet second, it opens again then. So a ROM that makes no card call gets no click with typing on. With typing off the boot's debt, cut to 8, still plays after those 700 ms.
+The kernel keeps clicking while a ROM runs, in the ROM pace. The ROM's card and slot calls add to the debt as at boot, and a holotape's do too: the holotape runs inside the ROM's call. The cap is 8. Clicks come in groups of 1 to 4, 30 to 80 ms apart, with a pause of 300 to 900 ms more after each group. No click plays in the first 700 ms after the jump. They start right before `ev=jump` prints, after the kernel waited for a boot click that still played.
+
+When work is owed:
+
+| Phase | Work is owed | A click may play |
+|---|---|---|
+| Boot, gate open | yes, up to 40 | yes |
+| Boot, gate closed: the note starts, or from the quiet second to the jump | no | no |
+| The jump, while a boot click ends | yes, up to 8 | no |
+| The first 700 ms after the jump | yes, up to 8 | no |
+| Under the ROM | yes, up to 8 | when nothing plays and the ROM's last sound is 300 ms old |
+
+From the jump on, every card or slot call owes clicks, whatever the gate was at the jump. A ROM that loads its files right after the jump hears their clicks once the 700 ms have passed. Work done while a ROM sound plays, or in the 300 ms after it, is owed too, and plays after them. A ROM that makes no card call gets no click with typing on: the quiet second dropped the boot's debt. With typing off the boot's debt, cut to 8, still plays after those 700 ms.
 
 | When a click is due | What happens |
 |---|---|
@@ -142,7 +154,7 @@ The kernel keeps clicking while a ROM runs, in the ROM pace. The ROM's card and 
 | A sound the ROM started plays | The click waits. The debt holds up to 8. After 3 s of waiting in a row the kernel drops it. |
 | A kernel click plays | The click waits a tick. |
 
-A click never mixes over a ROM's sound. An audio call of the ROM or a holotape that may start or stop a sound first stops a kernel click that plays, right after its argument checks. From that cut to the call's end no click starts. So the ROM's sound always wins: a click it cuts ends with one `op=stop`, then the ROM's own `op=` line follows. `sample_queue` cuts in the same masked section where it reads the driver, so it starts a new play and never queues behind a click.
+A click never mixes over a ROM's sound. An audio call of the ROM or a holotape that may start or stop a sound first stops a kernel click that plays, right after its argument checks. From that cut to the call's end no click starts. So the ROM's sound always wins: a click it cuts ends with one `op=stop`, then the ROM's own `op=` line follows. Before the cut, the call brings what it knows of the ROM's play up to date against the driver, in the same masked section. A play that ended, long ago or one tick ago, a queued sample that ended, a click that plays and the pending stop of a click just cut all mean the ROM has nothing playing. So `sample_queue` starts a new play there: it never queues behind a click and never answers `EBUSY` when nothing of the ROM's plays. `audio_status` and `audio_stop` run the same step.
 
 The 300 ms count from the end of the ROM's last sound. The tick holds the count at zero while a sound the ROM started plays, so a 2 s tone holds clicks for 2 s plus 300 ms. A call that really starts or stops a ROM sound also restarts the count, which covers a sound shorter than a tick. A call that starts nothing does not.
 
@@ -171,7 +183,7 @@ The 300 ms count from the end of the ROM's last sound. The tick holds the count 
 
 `tests/host/test_dsound.c` holds the same table. `sample_queue` runs its cut before it knows the outcome, but `EBUSY` and a queue need the ROM's own play, and no click plays then.
 
-A question cuts no click. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: the tick clears the ROM's sound when it finds the voice idle, before it starts a click, and the status reads that flag and the driver in one masked section. `volume` sets the level for what plays next. RobCo-Core reads the level per sample, so a click that plays changes level from its next sample.
+A question cuts no click. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core reads the level per sample, so a click that plays changes level from its next sample.
 
 A click may start from the tick between two ROM calls, for example between `audio_status` and a `tone`. Each call is right on its own. The `audio_status` before it said 0, which was true. A `tone`, `sample` or `play_seq` after it cuts the click and starts on an idle driver. `sample_queue` cuts it and then finds no play to queue behind, so it starts a new one. `audio_stop` finds nothing of the ROM's playing and leaves the click alone. `volume` lets it play on. A second `audio_status` still says 0.
 
@@ -233,7 +245,7 @@ After the last line the kernel first waits for the note, if it still plays. Then
 @RC stage=pipos ev=scroll lines=15 blips=13
 ```
 
-The SPI panel gets no frame per step, only the clear. With the system sound off and typing on, the scroll runs the same, in silence, with `blips=0` and no `ev=quiet`. With the sound on, the gate stays closed through the scroll and the jump, and opens again 700 ms after the jump, see [Clicks under a ROM](#clicks-under-a-rom).
+The SPI panel gets no frame per step, only the clear. With the system sound off and typing on, the scroll runs the same, in silence, with `blips=0` and no `ev=quiet`. With the sound on, the gate stays closed through the scroll. From the jump on the ROM's work is owed again, and its clicks play 700 ms or more after the jump, see [Clicks under a ROM](#clicks-under-a-rom).
 
 A boot with no ROM never scrolls. Its gate opens again after the last line, so card work after `ev=ready` still clicks.
 
