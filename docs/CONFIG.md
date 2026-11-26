@@ -33,7 +33,9 @@ beep = yes
 
 Numbers are unsigned decimal. A `+` sign is accepted.
 
-For a real device we suggest `char_delay_ms = 20`, `line_delay_ms = 200` and `key_click = yes`. The boot text then takes about 9 to 10 seconds. Both new keys are off by default, so a card without them boots as before.
+For a real device we suggest `char_delay_ms = 20`, `line_delay_ms = 200` and `key_click = yes`. The boot text then takes about 11 seconds. Every character costs `char_delay_ms`, spaces included, and each line but the first waits `line_delay_ms`. The standard boot text has 15 lines and about 363 characters, so 7.3 s of characters and 2.8 s between lines. The power-on beep and the wait for each line's last click add the rest. A measured boot took 10.65 s.
+
+Below about 20 ms per character the clicks set the pace, not `char_delay_ms`. The driver starts and ends a sound only on its 100 Hz tick, so a click can take up to two ticks from request to end, and the next character waits for it. Both new keys are off by default, so a card without them boots as before.
 
 ## SPI panel
 
