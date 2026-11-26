@@ -14,6 +14,7 @@ typedef struct {
     pipos_settings_t s;
     pipos_config_report_t report;
     void *ctx;
+    int sound_named;        /* 1 once a valid system_sound line was read */
 } parse_ctx_t;
 
 static int lower(int c)
@@ -150,7 +151,7 @@ void pipos_settings_default(pipos_settings_t *s)
     s->volume = PIPOS_VOLUME_MAX;
     s->beep = 1;
     s->char_delay_ms = 0;
-    s->key_click = 0;
+    s->system_sound = 0;
     s->backend = PIPOS_BACKEND_HDMI;
     s->tft.cs = 0;
     s->tft.dc = 25;
@@ -303,11 +304,19 @@ static int on_key(const char *section, const char *key, const char *value, unsig
         } else {
             ok = 0;
         }
-    } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "key_click") == 0) {
+    } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "system_sound") == 0) {
         if (parse_bool(value, &v) == 0) {
-            p->s.key_click = v;
+            p->s.system_sound = v;
+            p->sound_named = 1;
         } else {
             ok = 0;
+        }
+    } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "key_click") == 0) {
+        /* The old name of system_sound. A valid system_sound line wins. */
+        if (parse_bool(value, &v) != 0) {
+            ok = 0;
+        } else if (!p->sound_named) {
+            p->s.system_sound = v;
         }
     } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "volume") == 0) {
         if (parse_uint(value, PIPOS_VOLUME_MAX, &n) == 0) {
@@ -426,6 +435,7 @@ int pipos_settings_parse(const char *text, size_t len, pipos_settings_t *s,
     p.s = *s;
     p.report = report_fn;
     p.ctx = ctx;
+    p.sound_named = 0;
     rc = ini_parse(text, len, on_key, &p, err_line);
     if (rc != 0) {
         return rc;

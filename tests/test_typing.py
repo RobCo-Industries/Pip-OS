@@ -1,12 +1,16 @@
-"""Boot text that writes itself: [display] char_delay_ms and [audio] key_click.
+"""Boot text that writes itself, [display] char_delay_ms, and the system sound,
+[audio] system_sound or its old name key_click.
 
-QEMU has no PWM model, so clicks show as the trace backend's
-"ev=audio op=tone|stop" markers. The kernel polls the trace while it
-writes a line, so the markers of a line's clicks come before that line on
-the UART, and the line itself arrives whole.
+QEMU has no PWM model, so sounds show as the trace backend's "ev=audio"
+markers. Typing makes no sound. With the system sound on, the boot plays the
+library's rest ramp and then the soft beep, a table sample.
 """
 
+import os
 import re
+import subprocess
+import sys
+import zlib
 
 from pipos_helpers import (booted, config_issues, config_summary, dump, make_card,
                            no_exception, pipos_markers)
@@ -14,23 +18,36 @@ from pipos_helpers import (booted, config_issues, config_summary, dump, make_car
 CFG = "PIPBOY/PIPOS.CFG"
 DELAY_MS = 2
 
-# The rule of kernel/keyclick.h, restated so a change there fails here.
-BASE_HZ, STEP_HZ, STEPS = 3000, 150, 5
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The library's rest ramp, as its trace prints it at volume 100.
+RAMP = {"op": "pcm", "rate": "22050", "len": "882", "vol": "100"}
 
 
-def click_hz(c, pos):
-    if c == " " or not ("!" <= c <= "~"):
-        return 0
-    return BASE_HZ + STEP_HZ * ((ord(c) + pos) % STEPS)
+def beep_crc(tmp_path):
+    """CRC-32 of sound_beep, from the table generator's own dump."""
+    out = tmp_path / "pcm"
+    subprocess.run([sys.executable, "-I", os.path.join(ROOT, "tools", "sound_table.py"),
+                    "--dump", str(out)], check=True)
+    return f"{zlib.crc32((out / 'beep.u8').read_bytes()):08x}"
 
 
-def cfg(delay=None, click=None, beep="no"):
+def audio(vm):
+    return pipos_markers(vm, "audio")
+
+
+def is_ramp(m):
+    return all(m.get(k) == v for k, v in RAMP.items())
+
+
+def cfg(delay=None, click=None, beep="no", sound=None):
     text = "[display]\nscheme = green\n"
     if delay is not None:
         text += f"char_delay_ms = {delay}\n"
     text += f"[audio]\nvolume = 100\nbeep = {beep}\n"
     if click is not None:
         text += f"key_click = {click}\n"
+    if sound is not None:
+        text += f"system_sound = {sound}\n"
     return text.encode()
 
 
@@ -46,48 +63,6 @@ def boot_lines(vm):
     return rows
 
 
-def clicks_per_line(vm, lines):
-    """Walks the serial log: the audio markers seen before each boot line."""
-    out = []
-    pending = []
-    want = list(lines)
-    for raw in vm.serial.splitlines():
-        if raw.startswith("@RC "):
-            m = dict(kv.split("=", 1) for kv in raw[4:].split() if "=" in kv)
-            if m.get("stage") == "pipos" and m.get("ev") == "audio":
-                pending.append((m["op"], int(m["hz"]), int(m["t_ms"])))
-            continue
-        if want and raw == want[0]:
-            out.append((want.pop(0), pending))
-            pending = []
-    assert not want, (want, vm.serial)
-    return out
-
-
-def test_clicks_follow_the_text(board, kernel_image, tmp_path, need_mtools):
-    with booted(kernel_image, board, sd=card(tmp_path, cfg(DELAY_MS, "yes"))) as vm:
-        cfgm = config_summary(vm)
-        assert (cfgm["char_delay_ms"], cfgm["key_click"]) == (str(DELAY_MS), "1"), vm.serial
-        lines = boot_lines(vm)
-        per_line = clicks_per_line(vm, lines)
-        no_exception(vm)
-    assert not pipos_markers(vm, "audio_drop"), vm.serial
-    assert "PIP-OS READY" in lines
-    last_stop = -1
-    total = 0
-    for text, marks in per_line:
-        want = [click_hz(c, i) for i, c in enumerate(text) if click_hz(c, i)]
-        assert [m[1] for m in marks if m[0] == "tone"] == want, (text, marks)
-        # Each click ends, on its own, before the next one starts.
-        assert [m[0] for m in marks] == ["tone", "stop"] * len(want), (text, marks)
-        for op, _, t in marks:
-            assert t >= last_stop, (text, marks)
-            if op == "stop":
-                last_stop = t
-        total += len(want)
-    assert total > 300
-
-
 def test_no_click_keeps_the_text(board, kernel_image, tmp_path, need_mtools):
     with booted(kernel_image, board, sd=card(tmp_path, cfg(DELAY_MS, "no"))) as vm:
         lines = boot_lines(vm)
@@ -100,19 +75,45 @@ def test_no_click_keeps_the_text(board, kernel_image, tmp_path, need_mtools):
     assert "PIP-OS READY" in lines
 
 
-def test_delay_zero_makes_no_sound(board, kernel_image, tmp_path, need_mtools):
+def test_system_sound_plays_the_ramp_then_the_soft_beep(board, kernel_image, tmp_path,
+                                                         need_mtools):
+    crc = beep_crc(tmp_path)
+    sd = card(tmp_path, cfg(DELAY_MS, beep="yes", sound="yes"))
+    with booted(kernel_image, board, sd=sd) as vm:
+        cfgm = config_summary(vm)
+        lines = boot_lines(vm)
+        tr = audio(vm)
+        no_exception(vm)
+    assert cfgm["key_click"] == "1", vm.serial
+    assert "PIP-OS READY" in lines
+    assert not pipos_markers(vm, "sound"), vm.serial
+    assert is_ramp(tr[0]), tr
+    assert tr[1]["op"] == "pcm_end", tr
+    assert (tr[2]["op"], tr[2]["rate"], tr[2]["len"], tr[2]["crc"]) == \
+        ("pcm", "37500", "2250", crc), tr
+    assert tr[3]["op"] == "pcm_end", tr
+    # Typing makes no sound: nothing else plays during the boot text.
+    assert len(tr) == 4, tr
+    assert not [m for m in tr if m["op"] == "tone"], tr
+
+
+def test_old_name_without_beep_plays_the_ramp_alone(board, kernel_image, tmp_path,
+                                                    need_mtools):
     with booted(kernel_image, board, sd=card(tmp_path, cfg(0, "yes"))) as vm:
         cfgm = config_summary(vm)
+        tr = audio(vm)
         no_exception(vm)
     assert (cfgm["char_delay_ms"], cfgm["key_click"]) == ("0", "1")
-    assert not pipos_markers(vm, "audio"), vm.serial
+    assert [m["op"] for m in tr] == ["pcm", "pcm_end"], tr
+    assert is_ramp(tr[0]), tr
 
 
-def test_beep_ends_before_the_first_click(board, kernel_image, tmp_path, need_mtools):
-    with booted(kernel_image, board, sd=card(tmp_path, cfg(DELAY_MS, "yes", beep="yes"))) as vm:
-        tr = [(m["op"], int(m["hz"])) for m in pipos_markers(vm, "audio")]
+def test_system_sound_wins_over_the_old_name(board, kernel_image, tmp_path, need_mtools):
+    with booted(kernel_image, board, sd=card(tmp_path, cfg(DELAY_MS, "yes", sound="no"))) as vm:
+        cfgm = config_summary(vm)
         no_exception(vm)
-    assert tr[:3] == [("tone", 1000), ("stop", 0), ("tone", click_hz("*", 0))], tr
+    assert cfgm["key_click"] == "0", vm.serial
+    assert not audio(vm), vm.serial
 
 
 def test_bad_values(board, kernel_image, tmp_path, need_mtools):
@@ -132,14 +133,14 @@ SUMMARY = re.compile(r"^@RC stage=pipos ev=config rc=ok path=\S+ line=0 scheme=.
 
 
 def test_keys_off_change_nothing_on_the_uart(board, kernel_image, tmp_path, need_mtools):
-    """A card without the keys and one with char_delay_ms = 0, key_click = yes."""
+    """A card without the keys and one with char_delay_ms = 0, system_sound = no."""
     logs = []
-    for name, text in (("absent", cfg()), ("zero", cfg(0, "yes"))):
+    for name, text in (("absent", cfg()), ("zero", cfg(0, "no", sound="no"))):
         sd = make_card(tmp_path / f"{name}.img", {CFG: text})
         with booted(kernel_image, board, sd=sd) as vm:
             logs.append(vm.serial)
             no_exception(vm)
     summaries = [SUMMARY.findall(log) for log in logs]
     assert [len(s) for s in summaries] == [1, 1], logs
-    assert summaries[0] != summaries[1]
+    assert summaries[0] == summaries[1]
     assert SUMMARY.sub("", logs[0]) == SUMMARY.sub("", logs[1])

@@ -49,8 +49,8 @@ void pipos_input_flush(void);
 
 /* screen.c: boot text on the screen console and the UART. */
 void pipos_screen_delay(uint32_t ms);
-/* [display] char_delay_ms and [audio] key_click for the boot text. */
-void pipos_screen_typing(uint32_t char_delay_ms, int key_click);
+/* [display] char_delay_ms for the boot text. */
+void pipos_screen_typing(uint32_t char_delay_ms);
 void pipos_screen_line(const char *text);
 
 /*

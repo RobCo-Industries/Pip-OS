@@ -28,6 +28,7 @@
 #include "display.h"
 #include "pipos.h"
 #include "slot_backend.h"
+#include "sound_table.h"
 #include "storage.h"
 #include "sys.h"
 
@@ -245,13 +246,36 @@ static void start_clock(void)
     }
 }
 
+/*
+ * The system sound: the rest ramp, then the soft beep if beep is on.
+ * Returns 1 when the ramp played. If the ramp fails, it prints ev=sound and
+ * returns 0: the boot goes on as with the system sound off.
+ */
+static int start_sound(int beep)
+{
+    int rc = audio_rest_mid();
+
+    if (rc != 0) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=sound rc=%d\n", rc);
+        return 0;
+    }
+    audio_wait();
+    if (beep) {
+        audio_play_pcm(sound_beep, SOUND_BEEP_LEN, SOUND_RATE_HZ, 0);
+    }
+    return 1;
+}
+
 static void apply_settings(const pipos_settings_t *s)
 {
     console_set_scheme(s->scheme);
     audio_set_volume(s->volume);
     pipos_audio_start_volume(s->volume);
     pipos_screen_delay(s->line_delay_ms);
-    pipos_screen_typing(s->char_delay_ms, s->key_click);
+    pipos_screen_typing(s->char_delay_ms);
+    if (s->system_sound && start_sound(s->beep)) {
+        return;
+    }
     if (s->beep) {
         audio_beep();
     }
@@ -376,7 +400,7 @@ void robco_main(void)
     pipos_sys_init();
 
     rom = boot_screen(card, &res);
-    pipos_screen_typing(0, 0); /* later lines, a fault for one, appear at once */
+    pipos_screen_typing(0); /* later lines, a fault for one, appear at once */
     rom_loaded = rom;
     if (rom) {
         pipos_rom_run(&res);
