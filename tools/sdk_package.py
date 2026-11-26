@@ -296,7 +296,7 @@ def check_manifest(doc, fail):
     tools = doc.get("tools")
     if not is_list(tools) or [t.get("name") if is_dict(t) else None
                               for t in tools] != ["gcc", "qemu"] or not all(
-            is_str(t["name"]) and is_str(t.get("version")) and re.fullmatch(r"[\x21-\x7e]{1,64}", t["version"])
+            is_str(t.get("version")) and re.fullmatch(r"[\x21-\x7e]{1,64}", t["version"])
             and '"' not in t["version"] and "\\" not in t["version"] for t in tools):
         fail("sdk.json: tools is not gcc then qemu, each with a version")
     fw = doc.get("firmware")
