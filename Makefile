@@ -272,7 +272,7 @@ test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-exampl
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
            workflow-exprs-test
 
-# No run: block of a workflow pastes a tag, branch or event text.
+# No run: script of a workflow holds a ${{ expression.
 .PHONY: workflow-exprs-test
 workflow-exprs-test:
 	$(PYTHON) -I -m unittest discover -s tests/tools -p test_check_workflow_exprs.py
