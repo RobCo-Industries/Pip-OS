@@ -1,4 +1,6 @@
+#include "bootlines.h"
 #include "dsound_rules.h"
+#include "sound_table.h"
 #include "rc_test.h"
 
 TEST(io_adds)
@@ -175,4 +177,77 @@ TEST(rom_cuts_the_debt_to_8)
         }
     }
     CHECK_EQ(n, 8);
+}
+
+/* The stock boot text from line 2 on: 271 characters and 13 line delays. */
+TEST(note_text_counts_the_boot_lines)
+{
+    static const char *const head[] = { "BANNER", "AB", "", "CDE", NULL };
+    static const char *const tail[] = { "F", NULL };
+    static const char *const none[] = { NULL };
+    unsigned chars, delays;
+
+    pipos_dsound_note_text(pipos_boot_head, pipos_boot_tail, &chars, &delays);
+    CHECK_EQ(chars, 271u);
+    CHECK_EQ(delays, 13u);
+    /* The banner is line 1: it ends before the note starts. */
+    pipos_dsound_note_text(head, tail, &chars, &delays);
+    CHECK_EQ(chars, 6u);
+    CHECK_EQ(delays, 5u);
+    pipos_dsound_note_text(none, none, &chars, &delays);
+    CHECK_EQ(chars, 0u);
+    CHECK_EQ(delays, 2u);
+    CHECK_EQ(pipos_dsound_printable("A\tB\x01 "), 3u);
+}
+
+TEST(note_fits_when_the_text_outlasts_it)
+{
+    CHECK_EQ(SOUND_NOTE_MS, 6326u);
+    /* 271 * 20 + 13 * 200 = 8020 */
+    CHECK_EQ(pipos_dsound_note_fits(271, 13, 20, 200, SOUND_NOTE_MS), 1);
+    /* 271 * 2 + 13 * 0 = 542 */
+    CHECK_EQ(pipos_dsound_note_fits(271, 13, 2, 0, SOUND_NOTE_MS), 0);
+    /* The bound itself fits, one ms less does not. */
+    CHECK_EQ(pipos_dsound_note_fits(100, 10, 10, 100, 2000), 1);
+    CHECK_EQ(pipos_dsound_note_fits(100, 10, 10, 100, 2001), 0);
+    /* Typing off: no note, however long the line delay. */
+    CHECK_EQ(pipos_dsound_note_fits(271, 13, 0, 10000, SOUND_NOTE_MS), 0);
+    /* No overflow at the top of the range. */
+    CHECK_EQ(pipos_dsound_note_fits(4000000000u, 0, 4000000000u, 0, 0xffffffffu), 1);
+}
+
+TEST(way_of_a_due_click)
+{
+    CHECK_EQ(PIPOS_NOTE_TAIL_MS, 30u);
+    /* Idle: its own play, note or not. */
+    CHECK_EQ(pipos_dsound_way(0, 0, 0, 0), PIPOS_CLICK_PLAY);
+    CHECK_EQ(pipos_dsound_way(0, 1, 0, 0), PIPOS_CLICK_PLAY);
+    /* Busy with anything but the note: it waits. */
+    CHECK_EQ(pipos_dsound_way(1, 0, 5000, 0), PIPOS_CLICK_WAIT);
+    /* Over the note, more than 30 ms left: it mixes. */
+    CHECK_EQ(pipos_dsound_way(1, 1, 6000, 0), PIPOS_CLICK_MIX);
+    CHECK_EQ(pipos_dsound_way(1, 1, 31, 0), PIPOS_CLICK_MIX);
+    /* The note's last 30 ms: it waits. */
+    CHECK_EQ(pipos_dsound_way(1, 1, 30, 0), PIPOS_CLICK_WAIT);
+    CHECK_EQ(pipos_dsound_way(1, 1, 1, 0), PIPOS_CLICK_WAIT);
+    CHECK_EQ(pipos_dsound_way(1, 1, 0, 0), PIPOS_CLICK_WAIT);
+    /* An overlay still runs: it waits. */
+    CHECK_EQ(pipos_dsound_way(1, 1, 6000, 1), PIPOS_CLICK_WAIT);
+}
+
+/* A click refused by the driver comes back on the next tick, in turn. */
+TEST(refused_click_is_not_lost)
+{
+    struct pipos_dsound s, before;
+    int k;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_open(&s);
+    pipos_dsound_add(&s, 2);
+    before = s;
+    k = pipos_dsound_tick(&s, 1);
+    CHECK_EQ(k, 0);
+    s = before;
+    CHECK_EQ(pipos_dsound_tick(&s, 1), 0);
+    CHECK_EQ(s.owed, 1u);
 }

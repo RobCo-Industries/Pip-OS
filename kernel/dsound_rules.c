@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 #include "dsound_rules.h"
 
 static unsigned rnd(struct pipos_dsound *s)
@@ -22,7 +24,7 @@ unsigned pipos_dsound_io_adds(uint32_t count)
     return 2u + count / 4u;
 }
 
-unsigned pipos_dsound_text_adds(const char *text)
+unsigned pipos_dsound_printable(const char *text)
 {
     unsigned n = 0;
 
@@ -31,7 +33,50 @@ unsigned pipos_dsound_text_adds(const char *text)
             n++;
         }
     }
-    return 1u + n / 6u;
+    return n;
+}
+
+unsigned pipos_dsound_text_adds(const char *text)
+{
+    return 1u + pipos_dsound_printable(text) / 6u;
+}
+
+void pipos_dsound_note_text(const char *const head[], const char *const tail[],
+                            unsigned *chars, unsigned *delays)
+{
+    unsigned i;
+
+    *chars = 0;
+    *delays = 2; /* the holotape and ROM lines */
+    for (i = 1; head[0] != NULL && head[i] != NULL; i++) {
+        *chars += pipos_dsound_printable(head[i]);
+        if (i > 1) {
+            (*delays)++;
+        }
+    }
+    for (i = 0; tail[i] != NULL; i++) {
+        *chars += pipos_dsound_printable(tail[i]);
+        (*delays)++;
+    }
+}
+
+int pipos_dsound_note_fits(unsigned chars, unsigned delays, uint32_t char_ms,
+                           uint32_t line_ms, uint32_t note_ms)
+{
+    uint64_t text = (uint64_t)chars * char_ms + (uint64_t)delays * line_ms;
+
+    return char_ms > 0 && text >= note_ms;
+}
+
+int pipos_dsound_way(int busy, int note, uint32_t left_ms, int mix_busy)
+{
+    if (!busy) {
+        return PIPOS_CLICK_PLAY;
+    }
+    if (note && left_ms > PIPOS_NOTE_TAIL_MS && !mix_busy) {
+        return PIPOS_CLICK_MIX;
+    }
+    return PIPOS_CLICK_WAIT;
 }
 
 /* Callers mask IRQs: the tick callback reads the same state. */

@@ -14,6 +14,12 @@
 #define PIPOS_CLICK_CAP     40u /* about 3.7 s of sound at the boot pace */
 #define PIPOS_CLICK_CAP_ROM  8u
 #define PIPOS_CLICK_SEED     1u
+#define PIPOS_NOTE_TAIL_MS  30u /* no click joins the note this close to its end */
+
+/* What a due click does now. */
+#define PIPOS_CLICK_WAIT 0 /* it waits a tick */
+#define PIPOS_CLICK_PLAY 1 /* it is its own play */
+#define PIPOS_CLICK_MIX  2 /* it mixes over the note */
 
 struct pipos_dsound {
     uint32_t rnd;
@@ -29,6 +35,35 @@ unsigned pipos_dsound_io_adds(uint32_t count);
 
 /* What one boot line written with typing on adds: 1 + printable / 6. */
 unsigned pipos_dsound_text_adds(const char *text);
+
+/* Printable characters in text, 0x20 to 0x7e. */
+unsigned pipos_dsound_printable(const char *text);
+
+/*
+ * The text the note plays over: every fixed boot line from the second on.
+ * head and tail are NULL-terminated, the holotape and ROM lines sit between
+ * them. *chars gets the printable characters of head[1] on and of tail.
+ * *delays gets the line delays after the second line starts: one per later
+ * line, the holotape and ROM lines included.
+ */
+void pipos_dsound_note_text(const char *const head[], const char *const tail[],
+                            unsigned *chars, unsigned *delays);
+
+/*
+ * 1 when the text outlasts the note:
+ * chars * char_ms + delays * line_ms >= note_ms. Typing off gives 0.
+ */
+int pipos_dsound_note_fits(unsigned chars, unsigned delays, uint32_t char_ms,
+                           uint32_t line_ms, uint32_t note_ms);
+
+/*
+ * What a due click does. busy is audio_busy(). note is 1 while the kernel's
+ * note plays or waits for its tick, left_ms what is left of it. mix_busy is
+ * audio_pcm_mix_busy(). An idle voice plays the click. Over the note it
+ * mixes while more than PIPOS_NOTE_TAIL_MS remain and no overlay runs.
+ * Anything else makes it wait.
+ */
+int pipos_dsound_way(int busy, int note, uint32_t left_ms, int mix_busy);
 
 /* Adds clicks to the debt, up to the cap. A closed gate adds nothing. */
 void pipos_dsound_add(struct pipos_dsound *s, unsigned clicks);
