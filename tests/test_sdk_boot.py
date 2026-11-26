@@ -22,15 +22,17 @@ import contextlib
 import json
 import os
 import shutil
+import subprocess
 import zipfile
 
 import pytest
 
 from harness.boot import Vm, _connect_unix
+from harness.env import minimal_env
 from harness.plugin import have_mtools, selected_boards
 from harness.qemu import COMMON_ARGS, KEEPALIVE_INTERVAL, Qemu, keepalive_default
 
-from pipos_helpers import READY, _mtools, TIMEOUT, no_exception, one
+from pipos_helpers import READY, TIMEOUT, no_exception, one
 from test_runner import PART_OFFSET, RUN_LINE, read_run, runner_lines, sim_card
 
 # The boards boot.json must list, by RobCo-Core's docs/spec/TESTING.md.
@@ -143,6 +145,12 @@ def boot_from_json(doc, board, stub, image, sd):
             vm.close()
         else:
             q.close()
+
+
+def _mtools(*args):
+    """Runs an mtools command and returns its output bytes."""
+    env = minimal_env(MTOOLS_SKIP_CHECK="1")
+    return subprocess.run(list(args), check=True, env=env, capture_output=True).stdout
 
 
 def card_read(sd, name):
