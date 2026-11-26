@@ -8,8 +8,9 @@
  * own state on top.
  *
  * With the system sound on, the kernel's disk click shares the voice.
- * A call that may start or stop a sound calls pipos_dsound_cut_click()
- * after its argument checks: a click that plays stops and no new one
+ * A call that may start or stop a sound calls cut_click() after its
+ * argument checks. It first syncs owned and pcmq with the driver, then
+ * cuts: a click that plays stops and no new one
  * starts until the call ends, so the image's sound starts a new play and
  * sample_queue never queues behind a click. Every call ends with
  * pipos_dsound_call_done() and what it did: only a sound that started or
@@ -56,6 +57,33 @@ static void stop_owned(void)
     pipos_pcmq_drop(&pcmq);
 }
 
+/*
+ * Brings owned and pcmq up to date against the driver: see
+ * pipos_audio_reconcile(). Every handler runs it before it reads them.
+ */
+static void sync_play(void)
+{
+    uint32_t s = irq_save();
+
+    owned = pipos_audio_reconcile(owned, &pcmq, audio_busy() != 0, pipos_dsound_click_plays(),
+                                  audio_pcm_can_queue());
+    irq_restore(s);
+}
+
+/*
+ * The sync, then the click cut, under one irq_save(): no click starts in
+ * between. After it owned and pcmq say what the image plays, and a click
+ * that played counts as nothing of the image's.
+ */
+static void cut_click(void)
+{
+    uint32_t s = irq_save();
+
+    sync_play();
+    pipos_dsound_cut_click();
+    irq_restore(s);
+}
+
 /* What the call that runs did, for pipos_dsound_call_done(). Main context only. */
 static int outcome;
 
@@ -73,7 +101,7 @@ static int32_t tone(uint32_t hz, uint32_t ms)
     if (rc != 0) {
         return rc;
     }
-    pipos_dsound_cut_click();
+    cut_click();
     outcome = PIPOS_ACALL_FAILED;
     /* audio_tone() replaces the PCM and drops the waiting buffer. */
     pipos_pcmq_drop(&pcmq);
@@ -134,7 +162,7 @@ static int32_t sample(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len)
     if (rc != 0) {
         return rc;
     }
-    pipos_dsound_cut_click();
+    cut_click();
     return start_pcm(ctx, data, len);
 }
 
@@ -147,13 +175,13 @@ static int32_t sys_sample(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t le
 }
 
 /*
- * sample_queue. The state is read under one irq_save(), so can_queue and
- * busy agree. The play may still end after that: then audio_pcm_queue()
+ * sample_queue. The sync, the cut and the plan run under one irq_save(),
+ * so the state the plan reads is the image's own play or nothing, never a
+ * click, a play that ended or a stale queued buffer. The play may still
+ * end after that: then audio_pcm_queue()
  * returns AUDIO_ERR_STATE, both buffers are free, and the data starts as a
  * new play. The copy goes only into a buffer the driver does not read, and
- * the queue call comes after the copy is complete. The click cut comes
- * inside the same irq_save(): the state read is the image's own play or
- * an idle driver, never a click.
+ * the queue call comes after the copy is complete.
  */
 static int32_t sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len)
 {
@@ -170,13 +198,8 @@ static int32_t sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t 
         return rc;
     }
     s = irq_save();
-    pipos_dsound_cut_click();
-    {
-        int can_queue = audio_pcm_can_queue();
-
-        pipos_pcmq_sync(&pcmq, can_queue, audio_busy() != 0);
-        plan = pipos_pcmq_plan(&pcmq, can_queue);
-    }
+    cut_click();
+    plan = pipos_pcmq_plan(&pcmq, audio_pcm_can_queue());
     irq_restore(s);
     if (plan.action == PIPOS_PCMQ_BUSY) {
         return -PIP_EBUSY;
@@ -230,8 +253,9 @@ static int32_t sys_audio_stop(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t 
 
     (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
     s = irq_save();
-    if (owned && audio_busy()) {
-        pipos_dsound_cut_click();
+    sync_play();
+    if (owned) {
+        cut_click();
         outcome = PIPOS_ACALL_STOPPED;
         audio_stop();
     } else {
@@ -277,8 +301,8 @@ static int32_t sys_audio_status(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_
 
     (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
     s = irq_save(); /* the tick neither clears owned nor starts a click in between */
-    owned = pipos_audio_status_of(owned, audio_busy());
-    rc = owned;
+    sync_play();
+    rc = pipos_audio_status_of(owned, audio_busy());
     irq_restore(s);
     outcome = PIPOS_ACALL_ASKED;
     return done(rc);
@@ -305,7 +329,7 @@ static int32_t play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t cou
     s = irq_save();
     rc = pipos_audio_convert(user_notes, count, seq_buf);
     if (rc == 0) {
-        pipos_dsound_cut_click();
+        cut_click();
         outcome = PIPOS_ACALL_FAILED;
         pipos_pcmq_drop(&pcmq);
         played = audio_play(seq_buf, count, AUDIO_PRIORITY);

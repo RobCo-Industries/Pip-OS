@@ -104,6 +104,16 @@ void pipos_pcmq_drop(pipos_pcmq_t *q)
     q->wait = -1;
 }
 
+int pipos_audio_reconcile(int owned, pipos_pcmq_t *q, int busy, int click, int can_queue)
+{
+    if (owned && busy && !click) {
+        pipos_pcmq_sync(q, can_queue, 1);
+        return 1;
+    }
+    pipos_pcmq_drop(q);
+    return 0;
+}
+
 int pipos_audio_status_of(int owned, int busy)
 {
     return owned && busy;

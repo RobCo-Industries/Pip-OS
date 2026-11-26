@@ -78,6 +78,21 @@ void pipos_pcmq_started(pipos_pcmq_t *q, int buf);
 void pipos_pcmq_drop(pipos_pcmq_t *q);
 
 /*
+ * Brings the state the handlers keep about the image's own play up to
+ * date against the driver, in one place, before a click is cut or a
+ * question is answered. owned is 1 after the image started a sound,
+ * busy is audio_busy(), click is 1 while a kernel click plays, can_queue
+ * is audio_pcm_can_queue(), all read under one irq_save(). Returns the new
+ * owned. The image's play goes on only when owned and busy hold and no
+ * click plays: then the queue syncs as in pipos_pcmq_sync(). Anything else
+ * means nothing of the image plays: a play that ended, long ago or one
+ * tick ago, a click that plays, or the pending stop of a click just cut.
+ * Then owned is 0 and both buffers are free, so a cut leaves the state
+ * "the image has nothing playing" and sample_queue starts a new play.
+ */
+int pipos_audio_reconcile(int owned, pipos_pcmq_t *q, int busy, int click, int can_queue);
+
+/*
  * audio_status: owned is 1 after the image started a sound, busy is
  * audio_busy(). Returns the new owned, which is also the answer: 0 once
  * the driver went idle. The disk click's tick clears owned when it finds

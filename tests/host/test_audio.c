@@ -282,3 +282,50 @@ TEST(pcmq_drop_in_every_state)
         PLAY_WAIT(q, 0, -1);
     }
 }
+
+/*
+ * The sync every audio handler runs before it reads owned or the queue,
+ * before a click is cut. Each row is a driver state and the image's stale
+ * state; after the sync the handler must see only what the image plays.
+ */
+static const struct sync_row {
+    const char *what;
+    int owned, play, wait;     /* the state the handlers kept */
+    int busy, click, can_queue; /* the driver, read under one irq_save() */
+    int want_owned, want_play, want_wait, want_action;
+} sync_table[] = {
+    { "the image's play ended long ago", 1, 0, 1, 0, 0, 0, 0, -1, -1, PIPOS_PCMQ_START },
+    { "it ended one tick ago, the tick has not run", 1, 0, -1, 0, 0, 1, 0, -1, -1,
+      PIPOS_PCMQ_START },
+    { "its queued buffer took over", 1, 0, 1, 1, 0, 1, 1, 1, -1, PIPOS_PCMQ_QUEUE },
+    { "its queued buffer waits", 1, 0, 1, 1, 0, 0, 1, 0, 1, PIPOS_PCMQ_BUSY },
+    { "both buffers ended, a click plays", 0, 0, 1, 1, 1, 1, 0, -1, -1, PIPOS_PCMQ_START },
+    { "both ended, a click plays, owned still set", 1, 0, 1, 1, 1, 0, 0, -1, -1,
+      PIPOS_PCMQ_START },
+    { "a click was just cut, its stop pending", 0, 0, 1, 1, 0, 0, 0, -1, -1,
+      PIPOS_PCMQ_START },
+    { "nothing ever played", 0, -1, -1, 0, 0, 0, 0, -1, -1, PIPOS_PCMQ_START },
+};
+
+TEST(sync_before_the_cut)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(sync_table) / sizeof(sync_table[0]); i++) {
+        const struct sync_row *r = &sync_table[i];
+        pipos_pcmq_t q = q_state(r->play, r->wait);
+        int owned = pipos_audio_reconcile(r->owned, &q, r->busy, r->click, r->can_queue);
+
+        CHECK_EQ(owned, r->want_owned);
+        PLAY_WAIT(q, r->want_play, r->want_wait);
+        CHECK_EQ(pipos_pcmq_plan(&q, r->can_queue).action, r->want_action);
+        /* audio_status after the sync: only the image's own play counts. */
+        CHECK_EQ(pipos_audio_status_of(owned, r->busy), r->want_owned);
+        /* The cut and its pending stop: a second sync finds nothing of the image. */
+        if (r->click) {
+            owned = pipos_audio_reconcile(owned, &q, 1, 0, 0);
+            CHECK_EQ(owned, 0);
+            CHECK_EQ(pipos_pcmq_plan(&q, 0).action, PIPOS_PCMQ_START);
+        }
+    }
+}
