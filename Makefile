@@ -402,7 +402,18 @@ PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)
                     $(foreach t,$(PKG_TOOLCHAINS),-ffile-prefix-map=$(t)=toolchain)
 PKG_TOOL         := $(PYTHON) tools/sdk_package.py
 # The headers come from git, so a file git does not track never gets in.
-PKG_HEADERS       = $(sort $(shell git ls-files -- 'sdk/include/pipos/*.h'))
+# A git that fails, such as in a container that does not own the checkout,
+# would give an empty list and a package with no header: the build stops
+# with git's own message instead.
+ifneq ($(filter sdk-package,$(MAKECMDGOALS)),)
+PKG_HEADERS      := $(sort $(shell git ls-files -- 'sdk/include/pipos/*.h' 2>/dev/null || echo PKG_GIT_FAILED))
+ifneq ($(filter PKG_GIT_FAILED,$(PKG_HEADERS)),)
+$(error sdk-package: git ls-files failed, so the package would have no header. git says: $(shell git ls-files -- 'sdk/include/pipos/*.h' 2>&1 >/dev/null))
+endif
+ifeq ($(PKG_HEADERS),)
+$(error sdk-package: git ls-files lists no header in sdk/include/pipos, so the package would have none)
+endif
+endif
 # Every folder the build of the package reads, wildcards included. An
 # untracked file there stops the build: built_from would not hold it.
 PKG_INPUTS       := Makefile LICENSE boot docs/API.md kernel sdk tools
@@ -427,19 +438,29 @@ PKG_RUNNER        = $(MAKE) --no-print-directory -C sdk/examples/runner \
 
 .PHONY: sdk-package sdk-package-test sdk-package-inputs-test
 sdk-package:
-	@u="$$( { git status --porcelain --untracked-files=all -- $(PKG_INPUTS); \
-	    git -C $(ROBCO_CORE) status --porcelain --untracked-files=all -- $(PKG_CORE_INPUTS) \
-	    | sed 's|^?? |?? $(ROBCO_CORE)/|'; } | grep '^??')"; \
+	@s=$$(git status --porcelain --untracked-files=all -- $(PKG_INPUTS)) || { \
+	    echo "sdk-package: git status failed in $(CURDIR), see git's message above" >&2; exit 1; }; \
+	c=$$(git -C $(ROBCO_CORE) status --porcelain --untracked-files=all -- $(PKG_CORE_INPUTS)) || { \
+	    echo "sdk-package: git status failed in $(ROBCO_CORE), see git's message above" >&2; exit 1; }; \
+	u=$$(printf '%s\n' "$$s" | sed -n '/^?? /p'; printf '%s\n' "$$c" | sed -n 's|^?? |?? $(ROBCO_CORE)/|p'); \
 	if [ -n "$$u" ]; then \
 	    echo "sdk-package: untracked files in the inputs of the build, so built_from would not hold them:" >&2; \
 	    echo "$$u" >&2; exit 1; fi
-	@if [ -n "$$(git status --porcelain --untracked-files=no)" ]; then \
+	@t=$$(git status --porcelain --untracked-files=no) || { \
+	    echo "sdk-package: git status failed, so the work tree may have changes; see git's message above" >&2; exit 1; }; \
+	if [ -n "$$t" ]; then \
 	    echo "sdk-package: the work tree has changes, so built_from would not name its sources" >&2; \
-	    git status --short --untracked-files=no >&2; exit 1; fi
+	    echo "$$t" >&2; exit 1; fi
 	@test -d "$(PKG_GCC_INCLUDE)" && test -d "$(PKG_TOOLCHAIN)/bin" || { \
 	    echo "sdk-package: cannot find the folder of $(CROSS)gcc from its headers in '$(PKG_GCC_INCLUDE)'," \
 	        "so no path map can keep it out of the debug info" >&2; exit 1; }
 	rm -rf $(PKG_BUILD)
+	@mkdir -p $(PKG_BUILD); \
+	p=$$(git rev-parse --verify HEAD) && [ -n "$$p" ] || { \
+	    echo "sdk-package: git cannot name the commit of $(CURDIR), see git's message above" >&2; exit 1; }; \
+	r=$$(git -C $(ROBCO_CORE) rev-parse --verify HEAD) && [ -n "$$r" ] || { \
+	    echo "sdk-package: git cannot name the commit of $(ROBCO_CORE), see git's message above" >&2; exit 1; }; \
+	echo "--built-from Pip-OS=$$p --built-from RobCo-Core=$$r" > $(PKG_BUILD)/built_from.txt
 	$(MAKE) --no-print-directory kernel BUILD=$(PKG_BUILD)/kernel EXTRA_CFLAGS="$(PKG_MAPS)"
 	$(PKG_RUNNER)
 	$(PKG_RUNNER) flags-json FLAGS_JSON=$(PKG_BUILD)/flags.json
@@ -449,8 +470,7 @@ sdk-package:
 	    --build $(PACKAGE_BUILD) --gcc $(SDK_GCC_RELEASE) --qemu $(SDK_QEMU_VERSION) \
 	    --gcc-printed "$$($(CROSS)gcc -dumpfullversion)" \
 	    --firmware-script $(ROBCO_CORE)/tools/fetch_firmware.sh \
-	    --built-from Pip-OS=$$(git rev-parse HEAD) \
-	    --built-from RobCo-Core=$$(git -C $(ROBCO_CORE) rev-parse HEAD) \
+	    $$(cat $(PKG_BUILD)/built_from.txt) \
 	    $(addprefix --file ,$(PKG_FILES)) > $(PKG_BUILD)/zip.txt
 	$(PKG_TOOL) check "$$(cat $(PKG_BUILD)/zip.txt)" --forbid "$(CURDIR)" --forbid "$(PKG_BUILD)" \
 	    --forbid "$$HOME" --user "$$(id -un)" --forbid "$$(hostname)"
