@@ -707,7 +707,7 @@ class Voice(Case):
 
     def test_empty_sample_file_is_skipped(self):
         open(os.path.join(self.pcm_dir, "e.u8"), "wb").close()
-        rc, err, _ = self.main([end(0)])
+        rc, err, _ = self.main([stop(0)])
         self.assertEqual(rc, 0, err)
 
     def test_auto_picks_nearest_on_a_voice(self):
