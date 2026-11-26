@@ -35,6 +35,21 @@ def audio(vm):
     return pipos_markers(vm, "audio")
 
 
+def without_clicks(tr):
+    """The trace without the disk clicks and their ends. tests/test_dsound.py checks those."""
+    out = []
+    skip_end = False
+    for m in tr:
+        if m["op"] == "pcm" and m.get("len") == "789":
+            skip_end = True
+            continue
+        if skip_end and m["op"] == "pcm_end":
+            skip_end = False
+            continue
+        out.append(m)
+    return out
+
+
 def is_ramp(m):
     return all(m.get(k) == v for k, v in RAMP.items())
 
@@ -82,7 +97,7 @@ def test_system_sound_plays_the_ramp_then_the_soft_beep(board, kernel_image, tmp
     with booted(kernel_image, board, sd=sd) as vm:
         cfgm = config_summary(vm)
         lines = boot_lines(vm)
-        tr = audio(vm)
+        tr = without_clicks(audio(vm))
         no_exception(vm)
     assert cfgm["key_click"] == "1", vm.serial
     assert "PIP-OS READY" in lines
@@ -92,7 +107,7 @@ def test_system_sound_plays_the_ramp_then_the_soft_beep(board, kernel_image, tmp
     assert (tr[2]["op"], tr[2]["rate"], tr[2]["len"], tr[2]["crc"]) == \
         ("pcm", "37500", "2250", crc), tr
     assert tr[3]["op"] == "pcm_end", tr
-    # Typing makes no sound: nothing else plays during the boot text.
+    # Typing makes no sound of its own: only the disk clicks follow.
     assert len(tr) == 4, tr
     assert not [m for m in tr if m["op"] == "tone"], tr
 
@@ -101,7 +116,7 @@ def test_old_name_without_beep_plays_the_ramp_alone(board, kernel_image, tmp_pat
                                                     need_mtools):
     with booted(kernel_image, board, sd=card(tmp_path, cfg(0, "yes"))) as vm:
         cfgm = config_summary(vm)
-        tr = audio(vm)
+        tr = without_clicks(audio(vm))
         no_exception(vm)
     assert (cfgm["char_delay_ms"], cfgm["key_click"]) == ("0", "1")
     assert [m["op"] for m in tr] == ["pcm", "pcm_end"], tr

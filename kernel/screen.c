@@ -43,11 +43,14 @@ static void type_line(const char *text)
 
 void pipos_screen_line(const char *text)
 {
+    unsigned owed = 0;
+
     if (lines_shown++ > 0 && line_delay_ms > 0) {
         timer_delay_ms(line_delay_ms);
     }
     audio_poll(); /* prints audio trace records queued so far */
     if (char_delay_ms > 0) {
+        owed = pipos_dsound_line(text);
         type_line(text);
     } else {
         console_puts(text);
@@ -56,4 +59,7 @@ void pipos_screen_line(const char *text)
     pipos_display_line(text);
     uart_puts(text);
     uart_putc('\n');
+    if (char_delay_ms > 0) {
+        pipos_dsound_line_done(owed);
+    }
 }

@@ -54,6 +54,25 @@ void pipos_screen_typing(uint32_t char_delay_ms);
 void pipos_screen_line(const char *text);
 
 /*
+ * dsound.c: the disk click. Card and slot work and the typed boot text add
+ * to a debt of clicks; a tick callback pays it while the voice is free.
+ * Reads before PIPOS.CFG is parsed are counted and wait for the setting.
+ */
+struct blk_dev;
+/* The card's or the slot's device behind a wrapper that counts calls and blocks. */
+struct blk_dev *pipos_dsound_card(struct blk_dev *dev);
+struct blk_dev *pipos_dsound_slot(struct blk_dev *dev);
+/* After a boot stage: prints ev=disk at=<at>, or holds it until the setting is known. */
+void pipos_dsound_stage(const char *at);
+/* The setting is known: on opens the gate and prints the held stages. */
+void pipos_dsound_start(int on);
+/* A boot line written with typing on: before it, and after it with the result. */
+unsigned pipos_dsound_line(const char *text);
+void pipos_dsound_line_done(unsigned owed);
+/* Before the jump to a ROM: no click plays from here on. */
+void pipos_dsound_jump(void);
+
+/*
  * sys_gfx.c: on, the display shows black and present only updates the
  * back buffer; off, the last presented frame (or the console) comes back.
  */

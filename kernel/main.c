@@ -266,7 +266,8 @@ static int start_sound(int beep)
     return 1;
 }
 
-static void apply_settings(const pipos_settings_t *s)
+/* Returns 1 when the system sound runs. */
+static int apply_settings(const pipos_settings_t *s)
 {
     console_set_scheme(s->scheme);
     audio_set_volume(s->volume);
@@ -274,11 +275,12 @@ static void apply_settings(const pipos_settings_t *s)
     pipos_screen_delay(s->line_delay_ms);
     pipos_screen_typing(s->char_delay_ms);
     if (s->system_sound && start_sound(s->beep)) {
-        return;
+        return 1;
     }
     if (s->beep) {
         audio_beep();
     }
+    return 0;
 }
 
 static int boot_screen(int card, loader_result_t *res)
@@ -394,7 +396,7 @@ void robco_main(void)
 
     card = pipos_card_mount();
     pipos_config_load(card, &settings);
-    apply_settings(&settings);
+    pipos_dsound_start(apply_settings(&settings));
     pipos_display_start(&settings);
     pipos_slot_start(settings.holo_slot);
     pipos_sys_init();
@@ -403,6 +405,7 @@ void robco_main(void)
     pipos_screen_typing(0); /* later lines, a fault for one, appear at once */
     rom_loaded = rom;
     if (rom) {
+        pipos_dsound_jump();
         pipos_rom_run(&res);
     }
     ready_flag = 1;

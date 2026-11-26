@@ -6,6 +6,7 @@
  */
 #include <robco/holo.h>
 
+#include "pipos.h"
 #include "slot_backend.h"
 
 static int holo_be_init(void)
@@ -25,7 +26,13 @@ static int holo_be_present(void)
     return holo_present();
 }
 
+/* The slot's device behind the disk click wrapper. */
+static blk_dev_t *holo_be_blkdev(void)
+{
+    return pipos_dsound_slot(holo_blkdev());
+}
+
 const pipos_slot_backend_t pipos_slot_holo = {
     "holo", holo_be_init, holo_be_card, holo_be_present, holo_attach_start, holo_attach_step,
-    holo_detach, holo_blkdev,
+    holo_detach, holo_be_blkdev,
 };

@@ -38,7 +38,7 @@ int pipos_card_mount(void)
         k_printf("@RC stage=" PIPOS_STAGE " ev=card rc=nocard sd=%d\n", rc);
         return 0;
     }
-    rc = fs_mount_boot(PIPOS_VOLUME, sd_blkdev(), card_markers,
+    rc = fs_mount_boot(PIPOS_VOLUME, pipos_dsound_card(sd_blkdev()), card_markers,
                        sizeof(card_markers) / sizeof(card_markers[0]), &boot_vol);
     if (rc == PART_BOOT_ERR_RELEASE) {
         /* Only reads happened, so this volume is not the one to use: let it go. */
@@ -66,6 +66,7 @@ int pipos_card_mount(void)
                  (unsigned)boot_vol.slot, (unsigned)boot_vol.type, (unsigned)boot_vol.start_lba,
                  (unsigned)boot_vol.block_count, (unsigned)boot_vol.marker);
     }
+    pipos_dsound_stage("mount");
     return 1;
 }
 
@@ -110,6 +111,9 @@ void pipos_config_load(int card, pipos_settings_t *s)
 
     pipos_settings_default(s);
     rc = config_read(card, s, &err_line);
+    if (card) {
+        pipos_dsound_stage("config");
+    }
     k_printf("@RC stage=" PIPOS_STAGE " ev=config rc=%s path=" PIPOS_CFG_PATH
              " line=%u scheme=%s line_delay_ms=%u volume=%u beep=%d"
              " char_delay_ms=%u key_click=%d\n",
@@ -134,6 +138,9 @@ unsigned pipos_holo_count(int card)
         fs_closedir(&d);
     }
     k_printf("@RC stage=" PIPOS_STAGE " ev=holo count=%u\n", count);
+    if (card) {
+        pipos_dsound_stage("holo");
+    }
     return count;
 }
 
@@ -167,5 +174,8 @@ int pipos_rom_load(int card, loader_result_t *res)
     k_printf("@RC stage=" PIPOS_STAGE " ev=rom rc=%s name=%s version=%s size=%u crc=0x%08x\n",
              rimg_strerror(rc), name, version, (unsigned)res->file_size,
              (unsigned)res->crc32);
+    if (card) {
+        pipos_dsound_stage("rom");
+    }
     return rc;
 }
