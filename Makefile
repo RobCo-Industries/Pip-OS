@@ -25,6 +25,8 @@
 #   make conformance-bootdir DIR=<path>
 #                             bootdir with the conformance ROM as
 #                             PIPBOY/ROM1.ROM and its two holotapes
+#   make sdk-package          build/pipos-<version>.zip, the SDK package,
+#                             then its check: see docs/SDK_PACKAGE.md
 #
 # Another repository calls these as make -C <pip-os> <target> with an
 # absolute BUILD and absolute paths: see docs/ROM_DEVELOPMENT.md.
@@ -374,3 +376,61 @@ bootdir: $(BUILD)/$(IMAGE).img $(CARD_ROM) $(CARD_TAPES)
 conformance-bootdir: conformance
 	$(MAKE) --no-print-directory bootdir CLEAN=$(CLEAN) ROM=$(CONF_ROM) TAPE="$(CONF_TAPE) $(CONF_DATA)" \
 	    CARD_DIR=
+
+# ---- SDK package --------------------------------------------------------
+
+# pipos-<ABI>.<PACKAGE_BUILD>.zip in $(BUILD), laid out as RobCo-Core's
+# docs/spec/SDK_PACKAGE.md says. Everything is built again in $(PKG_BUILD)
+# with the compiler CROSS names. The path maps keep this folder out of the
+# debug info of pipos.elf and libpip.a; no image changes with them.
+# SDK_GCC_RELEASE is the xPack release sdk.json names. The build stops
+# unless the compiler prints its version part, so a package names the
+# compiler that built libpip.a. See docs/SDK_PACKAGE.md.
+SDK_GCC_RELEASE  ?= 15.2.1-1.1
+SDK_QEMU_VERSION ?= 10.1.2
+PACKAGE_BUILD    ?= 0
+PKG_BUILD         = $(abspath $(BUILD))/sdk-package
+PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)=build
+PKG_TOOL         := $(PYTHON) tools/sdk_package.py
+PKG_FILES         = LICENSES/MIT.txt=LICENSE \
+                    boot.json=$(PKG_BUILD)/boot.json \
+                    boot/PIPOS.CFG=boot/PIPOS.CFG \
+                    boot/PIPOS.IMG=$(PKG_BUILD)/kernel/$(IMAGE).img \
+                    boot/RUNNER.ROM=$(PKG_BUILD)/runner/RUNNER.ROM \
+                    boot/config.txt=boot/config.txt \
+                    boot/fwstub.bin=$(PKG_BUILD)/fwstub/fwstub.bin \
+                    boot/pipos.elf=$(PKG_BUILD)/kernel/$(IMAGE).elf \
+                    docs/API.md=docs/API.md \
+                    flags.json=$(PKG_BUILD)/flags.json \
+                    $(foreach h,$(sort $(wildcard sdk/include/pipos/*.h)),include/pipos/$(notdir $(h))=$(h)) \
+                    lib/crt0.S=sdk/crt0.S \
+                    lib/holotape.ld=sdk/holotape.ld \
+                    lib/libpip.a=$(PKG_BUILD)/runner/libpip/libpip.a \
+                    lib/rom.ld=sdk/rom.ld
+PKG_RUNNER        = $(MAKE) --no-print-directory -C sdk/examples/runner \
+                    BUILD=$(PKG_BUILD)/runner PATH_MAPS="$(PKG_MAPS)"
+
+.PHONY: sdk-package sdk-package-test
+sdk-package:
+	@if [ -n "$$(git status --porcelain --untracked-files=no)" ]; then \
+	    echo "sdk-package: the work tree has changes, so built_from would not name its sources" >&2; \
+	    git status --short --untracked-files=no >&2; exit 1; fi
+	rm -rf $(PKG_BUILD)
+	$(MAKE) --no-print-directory kernel BUILD=$(PKG_BUILD)/kernel EXTRA_CFLAGS="$(PKG_MAPS)"
+	$(PKG_RUNNER)
+	$(PKG_RUNNER) flags-json FLAGS_JSON=$(PKG_BUILD)/flags.json
+	$(MAKE) --no-print-directory -C $(ROBCO_CORE)/tests/fwstub BUILD=$(PKG_BUILD)/fwstub
+	$(MAKE) --no-print-directory -C $(ROBCO_CORE) boot-json BOOT_JSON=$(PKG_BUILD)/boot.json PYTHON=$(PYTHON)
+	$(PKG_TOOL) build --out $(abspath $(BUILD)) --abi-header sdk/include/pipos/abi.h \
+	    --build $(PACKAGE_BUILD) --gcc $(SDK_GCC_RELEASE) --qemu $(SDK_QEMU_VERSION) \
+	    --gcc-printed "$$($(CROSS)gcc -dumpfullversion)" \
+	    --firmware-script $(ROBCO_CORE)/tools/fetch_firmware.sh \
+	    --built-from Pip-OS=$$(git rev-parse HEAD) \
+	    --built-from RobCo-Core=$$(git -C $(ROBCO_CORE) rev-parse HEAD) \
+	    $(addprefix --file ,$(PKG_FILES)) > $(PKG_BUILD)/zip.txt
+	$(PKG_TOOL) check "$$(cat $(PKG_BUILD)/zip.txt)" --forbid "$(CURDIR)" --forbid "$(PKG_BUILD)" \
+	    --forbid "$$HOME" --forbid "$$(id -un)" --forbid "$$(hostname)"
+
+# The checker's own tests. They need no build.
+sdk-package-test:
+	$(PYTHON) -m pytest -q -p no:cacheprovider tests/tools/test_sdk_package.py
