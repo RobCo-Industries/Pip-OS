@@ -5,6 +5,7 @@
         --gcc-printed VERSION --qemu VERSION --firmware-script SCRIPT
         --built-from REPO=COMMIT... --file PATH=SOURCE...
     sdk_package.py check ZIP [--forbid TEXT]...
+    sdk_package.py plant ZIP OUT PATH TEXT
 
 `build` writes sdk.json and the archive. The archive bytes depend only on
 the files and the arguments: entries in byte order of their names with
@@ -14,6 +15,9 @@ sdk.json first, stored, dated 1980-01-01 00:00, mode 0644, no extra fields.
 and the pipos layout, and searches every file, sdk.json included, for each
 --forbid text: the build folder, the user name and the host name. It prints
 one FAIL line per broken rule and exits 1 when there is one.
+
+`plant` writes a copy of ZIP with TEXT added to the end of one file and its
+sdk.json entry updated, so CI can show that the search fails.
 
 Stdlib only.
 """
@@ -378,6 +382,24 @@ def check(args):
     return 1 if problems else 0
 
 
+def plant(args):
+    """A copy of ZIP whose PATH ends with TEXT, its sdk.json entry updated,
+    so CI can show that the search fails on a real package."""
+    with zipfile.ZipFile(args.zip) as z:
+        items = [(i.filename, z.read(i)) for i in z.infolist()]
+    data = dict(items)
+    if args.path not in data or args.path == MANIFEST:
+        raise Error(f"{args.path}: not a listed file of {args.zip}")
+    data[args.path] += args.text.encode("utf-8")
+    doc = json.loads(data[MANIFEST])
+    for e in doc["files"]:
+        if e["path"] == args.path:
+            e["size"], e["sha256"] = len(data[args.path]), sha256(data[args.path])
+    data[MANIFEST] = (json.dumps(doc, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    write_zip(args.out, [(n, data[n]) for n, _ in items])
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -394,9 +416,14 @@ def main(argv=None):
     c = sub.add_parser("check")
     c.add_argument("zip")
     c.add_argument("--forbid", action="append", default=[])
+    p = sub.add_parser("plant")
+    p.add_argument("zip")
+    p.add_argument("out")
+    p.add_argument("path")
+    p.add_argument("text")
     args = ap.parse_args(argv)
     try:
-        return build(args) if args.cmd == "build" else check(args)
+        return {"build": build, "check": check, "plant": plant}[args.cmd](args)
     except Error as e:
         print(f"sdk_package: {e}", file=sys.stderr)
         return 1

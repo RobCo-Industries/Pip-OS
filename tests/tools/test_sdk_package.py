@@ -381,3 +381,10 @@ def test_not_a_zip(tmp_path):
     p = tmp_path / "x.zip"
     p.write_bytes(b"no")
     assert_fails(str(p), "not a zip archive")
+
+
+def test_plant_makes_a_copy_only_the_search_refuses(package, tmp_path):
+    out = tmp_path / "planted.zip"
+    assert run("plant", package, out, "docs/API.md", "pkghost-42")[0] == 0
+    assert check(str(out))[0] == 0
+    assert_fails(str(out), "docs/API.md: holds 'pkghost-42'", "pkghost-42")
