@@ -1,0 +1,140 @@
+name: sdk-package
+
+# Builds pipos-<version>.zip, the SDK package of RobCo-Core's
+# docs/spec/SDK_PACKAGE.md, with the pinned xPack compiler, checks it and
+# keeps it as an artifact on every run. See docs/SDK_PACKAGE.md.
+#
+# Only the publish job publishes, and only for a pushed tag of the form
+# pipos-<version>, such as pipos-1.4.0. A pull request, a push to master
+# or a manual start is a dry run: the same package, as an artifact.
+
+on:
+  push:
+    branches: [master]
+    tags:
+      - "pipos-*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The compiler of every package, and the SHA-256 of its linux-x64
+  # archive from the xPack release notes. sdk.json names this release.
+  XPACK_RELEASE: 15.2.1-1.1
+  XPACK_SHA256: da6a49ad4003944b823c6c93702a8787c922ab34bd7e918ec0eaf6933a9b1ff6
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tests of the package checker
+        run: make sdk-package-test
+      # The only arm-none-eabi compiler of this job, so libpip.a can come
+      # from no other.
+      - name: xPack arm-none-eabi-gcc
+        run: |
+          if command -v arm-none-eabi-gcc; then
+            echo "another arm-none-eabi-gcc is on the path"; exit 1
+          fi
+          name="xpack-arm-none-eabi-gcc-$XPACK_RELEASE"
+          f="$name-linux-x64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/gcc" && cd "$RUNNER_TEMP/gcc"
+          curl -fsSLo "$f" "https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v$XPACK_RELEASE/$f"
+          echo "$XPACK_SHA256  $f" | sha256sum -c -
+          tar xzf "$f"
+          echo "CROSS=$RUNNER_TEMP/gcc/$name/bin/arm-none-eabi-" >> "$GITHUB_ENV"
+      # A tag pipos-X.Y.Z builds X.Y.Z: Z is PACKAGE_BUILD, and X.Y must be
+      # the ABI the headers report, which the file name then shows.
+      - name: Version
+        env:
+          TAG: ${{ startsWith(github.ref, 'refs/tags/pipos-') && github.ref_name || '' }}
+        run: |
+          build=0
+          if [ -n "$TAG" ]; then
+            build=$(echo "$TAG" | sed -n 's/^pipos-[0-9]*\.[0-9]*\.\([0-9]*\)$/\1/p')
+            test -n "$build"
+          fi
+          echo "PACKAGE_BUILD=$build" >> "$GITHUB_ENV"
+      # make sdk-package checks the archive itself: every rule, and no
+      # path, user name or host name of this machine in any file.
+      - name: Build the package
+        run: |
+          make sdk-package CROSS="$CROSS" PACKAGE_BUILD="$PACKAGE_BUILD" \
+            SDK_GCC_RELEASE="$XPACK_RELEASE" PYTHON=python3
+          ls build/pipos-*.zip
+          sha256sum build/pipos-*.zip | tee first.sha256
+      - name: A second build gives the same bytes
+        run: |
+          make sdk-package CROSS="$CROSS" PACKAGE_BUILD="$PACKAGE_BUILD" \
+            SDK_GCC_RELEASE="$XPACK_RELEASE" PYTHON=python3
+          sha256sum -c first.sha256
+      - name: The tag names the package
+        if: startsWith(github.ref, 'refs/tags/pipos-')
+        run: test -f "build/${{ github.ref_name }}.zip"
+      # The search must be able to fail: a copy with this host's name in
+      # one file is refused.
+      - name: The check refuses a planted host name
+        run: |
+          zip=$(ls build/pipos-*.zip)
+          python3 tools/sdk_package.py plant "$zip" "$RUNNER_TEMP/planted.zip" docs/API.md "$(hostname)"
+          set +e
+          python3 tools/sdk_package.py check "$RUNNER_TEMP/planted.zip" --forbid "$(hostname)" > planted.log 2>&1
+          code=$?
+          set -e
+          cat planted.log
+          test "$code" -eq 1
+          grep -F "FAIL: docs/API.md: holds" planted.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pipos-package
+          path: build/pipos-*.zip
+          if-no-files-found: error
+
+  # Publishes only for a pushed tag that starts with pipos-. The package
+  # job has already refused a tag that does not name the package it built.
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/pipos-')
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pipos-package
+          path: dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -f "dist/$TAG.zip"
+          test "$(ls dist | wc -l)" -eq 1
+          (cd dist && sha256sum "$TAG.zip")
+          {
+            echo "The Pip-OS SDK package $TAG, built with xPack arm-none-eabi-gcc $XPACK_RELEASE."
+            echo
+            echo "sdk.json lists every file with its SHA-256, the commits it was built from and the"
+            echo "firmware pins. The package holds no firmware file. See docs/SDK_PACKAGE.md."
+          } > notes.md
+          gh release create "$TAG" "dist/$TAG.zip" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$TAG" --notes-file notes.md
