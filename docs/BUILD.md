@@ -98,21 +98,36 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 
 ## System sound tables
 
-`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a line blip and a soft beep. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`, tables of unsigned 8-bit samples at 37500 Hz, the PWM carrier rate, where 128 is silence. The file also holds a `note` block that the tool ignores for now: a later change plays the rising note live from a small table of spans. Both files are committed, so a build runs no Python for them. The kernel plays the soft beep when `[audio] system_sound` is on. The clicks and the blip are not played yet. `--gc-sections` keeps only the beep in the image.
+`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a line blip, a soft beep and a rising note. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`. The click, the blip and the beep are tables of unsigned 8-bit samples at 37500 Hz, the PWM carrier rate, where 128 is silence. The note is a small table of spans for RobCo-Core's voice engine, which computes it live, one sample per interrupt. Both files are committed, so a build runs no Python for them. The kernel plays the soft beep when `[audio] system_sound` is on. The clicks, the blip and the note are not played yet: the pinned RobCo-Core has no voice engine. `--gc-sections` keeps only the beep in the image.
 
 | Table | Bytes |
 |---|---|
 | `sound_click` | 12 clicks of 789 samples, 21 ms each, peak 88 steps |
 | `sound_blip` | 600: 300 samples at 3469 Hz and 48 steps, then 300 at 2625 Hz and 40 steps |
 | `sound_beep` | 2250: a 1000 Hz sine at 24 steps, 60 ms, with 10 ms linear edges |
+| `sound_note_spans` | 4536: 162 spans of seven `uint32_t`, `SOUND_NOTE_SPANS`. The note lasts `SOUND_NOTE_MS`, 6326 ms. |
 
-The three tables take 12 318 bytes.
+The sample tables take 12 318 bytes, the spans 4536.
+
+### The note's spans
+
+Each row of `sound_note_spans` is `n, phase, inc, dinc, amp, damp, p2`, the order and size of RobCo-Core's `audio_voice_span_t`. The table is plain `uint32_t`, so it builds without the library's type. `dinc` and `damp` are signed and stored as two's complement.
+
+- Pitch: 1890 Hz, then a glide by a constant ratio to 2120 Hz in 300 ms, 2566 in 1125, 4200 in 1350, 8000 in 1350, 15700 in 1050, then 15700 Hz held.
+- Level: 20 steps at 1890 Hz and `20 * 1890 / hz` above, so 6 dB less per octave. The held whine falls 30 dB over 2500 ms, even in dB, with a linear taper over its last 200 ms. The note fades in over 150 ms.
+- A second partial at twice the pitch, 22 dB under, `p2` 2603, while the pitch is under 8437 Hz.
+- One span per 40 ms at most. A span starts at every corner: the end of each glide, the end of the fade in, the start of the taper and the sample where the second partial stops. Each piece between corners splits into equal spans. A corner at a half sample rounds up.
+- Each span starts on the curve: `inc` is `floor(hz * 2^32 / 37500)` and `amp` the level in 1/65536 of a step, rounded to nearest. `dinc` is the nearest whole step that takes `inc` to the next span's start. `damp` rounds toward zero, so the level never passes the next span's start and never rises where the law falls. The tool carries the phase with the engine's own closed form, so the wave has no step at a span edge.
+- Inside a span the engine moves the pitch linearly. Against the curve's constant ratio the worst error is 0.008 percent.
+- The note ends at the first span from which the peak stays under half a step, where it would round to silence. That is after 237 190 samples. The last span starts at 0.52 step. Past the last span the engine gives 0.
+
+`tools/voice_engine.py` is the engine in pure Python, sample for sample: the 1024-entry sine table, the per-sample integer steps and the one rounding with an overlay and the volume. `tools/sound_table.py` and `tools/boot_sound.py` both load it. It builds its sine from a fixed sum, and a test checks the table's CRC-32, `05067686`.
 
 After a change to the parameters, run `make sound-table` and commit the three files. `tools/sound_table.py --check` fails when the committed files differ from what the tool writes, and says to run `make sound-table`. It runs before anything compiles the table: `build/obj/kernel/sound_table.o` and the host tests take it as an order-only prerequisite. So `make`, `make kernel`, `make sdimage`, `make bootdir`, `make run`, `make sdk-package` and the test goals that build stop on a stale table before they write an image. The build never writes the table itself, so a forgotten commit fails instead of hiding. `make test-host` runs `tests/tools/test_sound_table.py` and `tests/host/sound_table_make_test.sh`.
 
 - Each table holds its sound at its level for `[audio] volume = 100`. The tool refuses a click sample more than `ceiling_steps`, 90 steps, from 128. That leaves 37 steps under 127 for a sound mixed under a click.
 - The same parameters give the same bytes on every system and every Python 3. The tool uses only add, subtract, multiply, divide and comparisons, which IEEE 754 fixes. It builds its own logarithm, exponential and sine from them, and its noise is a 32-bit xorshift from `seed`. It calls no `math` function and no `random`.
-- `--wav DIR` writes each sound as an 8-bit WAV file, to listen to. `--dump DIR` writes each buffer as a raw `.u8` file.
+- `--wav DIR` writes each sound as an 8-bit WAV file, to listen to. The note's file is the engine's integer render at volume 100. `--dump DIR` writes each buffer as a raw `.u8` file and the note as `note.voice`: the spans as 28-byte little-endian records, the bytes whose CRC-32 the trace prints.
 
 ## Button pins
 
