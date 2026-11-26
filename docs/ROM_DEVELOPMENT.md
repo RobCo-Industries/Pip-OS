@@ -46,6 +46,7 @@ include $(PIPOS_SDK)/pipos-app.mk
 | `ICON` | META icon: a 32x32 PBM, P1 or P4, or 128 raw bytes |
 | `VERSION` | Image version, such as `1.2.0` |
 | `SUBTYPE` | Holotape subtype: `game` or `0`, the default, or `utility` or `1`. A data tape, `2`, has no slot, so the build refuses it. A ROM takes only `0`. A change reseals the image. |
+| `ABI` | The lowest Pip-OS ABI the image needs, `MAJOR.MINOR`, such as `1.3`. See [The target ABI](#the-target-abi). Not set, the image targets the ABI of the headers, 1.4. |
 | `BUILD` | Output folder, `build` by default |
 | `CFLAGS_EXTRA` | More compiler flags |
 | `ROBCO_CORE` | RobCo-Core, `$(PIPOS_SDK)/../external/robco-core` by default |
@@ -56,6 +57,28 @@ Targets are `all` and `clean`. The fragment compiles with the kernel's CPU flags
 `make` rebuilds what a change affects: an edited source or header, a new setting, a source added to or removed from `SRCS`. Every object lands under `$(BUILD)/obj` with its source extension, so `start.c` and `start.S` can sit side by side. If sealing or verifying fails, no image is left behind. Paths with spaces are not supported.
 
 A holotape builds the same way with `KIND=holotape`. It links at `0x00800000`.
+
+`libpip.a` is archived with `ar rcsD`, which stores no dates or ids, so two builds from one commit give the same archive.
+
+### The target ABI
+
+`ABI := 1.3` states the lowest ABI the image needs. `pipos-app.mk` passes `-DPIPOS_ABI_TARGET=0x00010003` to `crt0.S` and to every source of `SRCS`, never to `libpip.a`.
+
+- `crt0.S` writes the value into the header's `abi_version`. The loader checks only the major, so the image loads on every 1.x Pip-OS.
+- The headers hide the wrapper and the `PIP_SYS_*` number of every call added after the target. A use fails to compile with an error that names the call and the ABI that added it.
+- Structs, error codes and the constants of newer ABIs stay visible, such as `PIP_HW_TAPE`, `PIP_EV_TAPE` and `PIP_HOLO_EV_*`.
+- A target above the headers' ABI fails to compile, with both versions in the error.
+- Make refuses a value that is not `MAJOR.MINOR` in decimal, a leading zero, a major other than 1 or a minor above 65535, before it compiles anything.
+- Without `ABI`, no define is passed and the image has the same bytes as before the variable existed.
+
+The calls hidden by target, from the spec's change list:
+
+| Target | Hidden |
+|---|---|
+| 1.0 | `sample_queue` |
+| 1.1 to 1.4 | Nothing |
+
+ABI 1.2, 1.3 and 1.4 added no call. A change of `ABI` rebuilds the startup code and every source.
 
 ## Writing a holotape
 
