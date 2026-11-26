@@ -4,7 +4,7 @@ A running image calls the kernel with `svc #0`. The call number goes in r7, the 
 
 [`sdk/include/pipos/abi.h`](../sdk/include/pipos/abi.h) holds the call numbers, the error codes, the structs and every limit. [`sdk/include/pipos/syscall.h`](../sdk/include/pipos/syscall.h) declares a `pip_<name>()` wrapper for every call, plus a raw `pip_syscall()`. They live in `libpip.a`. See [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md).
 
-Pip-OS implements ABI 1.4, `PIP_ABI_VERSION` `0x00010004`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 to 1.3 still runs. The kernel serves all 51 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
+Pip-OS implements ABI 1.5, `PIP_ABI_VERSION` `0x00010005`. The SDK seals images with it. The loader checks only the major version, so an image sealed for 1.0 to 1.4 still runs. The kernel serves all 52 calls of the spec's table. A number outside the table returns `-PIP_ENOSYS` (-38). The boot prints the served numbers in the `ev=syscalls` marker.
 
 | Error | Value |
 |---|---|
@@ -54,7 +54,7 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 - `ticks_ms` moves in steps of 10 ms, the 100 Hz tick.
 - `sleep_ms` waits on the 1 MHz system timer, so it never ends early. The tick wakes it, so it can run up to 10 ms long. IRQs stay on, and the kernel runs its main-loop work while it waits.
 - The exit status is the low 8 bits of `status`. `exit` prints it as `ev=rom_exit status=<0 to 255>` for the ROM. For a holotape, `holo_launch` returns it.
-- `sys_info` writes `size` 32, `abi_version` `0x00010004`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, `hw_flags` and one reserved word set to 0.
+- `sys_info` writes `size` 32, `abi_version` `0x00010005`, `pipos_version` `(major << 16) | (minor << 8) | patch`, the firmware `board_rev`, `soc` as `0x2835`, `0x2836` or `0x2837`, `mem_size` in bytes, `hw_flags` and one reserved word set to 0.
 - `hw_flags` sits at offset `0x18` and is new in ABI 1.3. Bit 0, `PIP_HW_RTC`, is set when a clock chip answered at boot. Bit 2, `PIP_HW_AUDIO`, is set when the audio driver started at boot, so the sound calls can play. When the PWM output fails at boot and the trace backend takes over, the bit is set too. Bit 3, `PIP_HW_TAPE`, is set when `PIPOS.CFG` sets `[holotape] slot = on` and the slot backend started at boot, since ABI 1.4. Bit 1 and bits 4 to 31 are 0. A Pip-OS before 1.3 writes 0 there, so a ROM checks `abi_version >= 0x00010003` before it reads the field.
 - What a ROM can tell its user: a set time lasts past power-off only when `PIP_HW_RTC` is set, the time lies in 946684800 to 4102444799, and `set_time` returns 0. With the bit clear the time is lost at power-off. The full rule is in the spec's [System information](https://github.com/RobCo-Industries/RobCo-Core/blob/0a5b37ee2b05077d1e2fd0bc3882d18e3ae5e835/docs/spec/PIPOS_ABI.md#system-information) section.
 - `mem_info` reports the caller's own region. For the ROM: `heap_base` `0x01000000`, `heap_size` `0x007F0000`, `stack_top` `0x01800000`, `stack_size` `0x00010000`. For a holotape: `0x01800000`, `0x007F0000`, `0x02000000`, `0x00010000`.
@@ -123,12 +123,13 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 | Number | Name | Arguments | Result | Errors |
 |---|---|---|---|---|
 | `0x20` | `tone` | `uint32 freq_hz, duration_ms` | 0 | `EINVAL` for `freq_hz` outside 20 to 20000 or `duration_ms` outside 1 to 60000, `EIO` |
-| `0x21` | `sample` | `const uint8 *data`, `uint32 length` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EIO` |
+| `0x21` | `sample` | `const uint8 *data`, `uint32 length`, played at the rate of `sample_rate` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EIO` |
 | `0x22` | `audio_stop` | none | 0, also when nothing plays | none |
 | `0x23` | `volume` | `uint32 level` | The previous level | `EINVAL` for `level` above 100 |
 | `0x24` | `audio_status` | none | 1 while a sound the image started plays or a queued sample waits, else 0 | none |
 | `0x25` | `play_seq` | `const pip_note_t *notes`, `uint32 count` | 0 | `EINVAL` for `count` outside 1 to 256 or any bad note, `EFAULT`, `EIO` |
 | `0x26` | `sample_queue` | `const uint8 *data`, `uint32 length` | 0 | `EINVAL` for `length` outside 1 to 65536, `EFAULT`, `EBUSY` when a sample already waits, `EIO` |
+| `0x27` | `sample_rate` | `uint32 hz`, 8000 or 37500 | The previous rate | `EINVAL` for any other value |
 
 `EIO` means the audio driver refused the sound. The rules are in the spec's [Audio](https://github.com/RobCo-Industries/RobCo-Core/blob/0a5b37ee2b05077d1e2fd0bc3882d18e3ae5e835/docs/spec/PIPOS_ABI.md#audio) section.
 
@@ -140,7 +141,32 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 - `sample_queue` checks the length, then the pointer, then whether a sample waits. When a sample plays, it copies the data and queues it behind, with no gap. When none plays, it acts as `sample`. `sample_queue` is new in ABI 1.1. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#playing-long-audio) has a streaming loop.
 - `tone`, `sample`, `play_seq` and `audio_stop` drop the waiting sample with the one that plays. Image start and end stop both.
 - With `[audio] system_sound` on, the kernel may play a short disk click between the ROM's sounds, owed by the ROM's card and slot calls. See [BOOT.md](BOOT.md#clicks-under-a-rom). A ROM's sound always wins: a call that starts or stops a sound first stops a click that plays, and `sample_queue` never queues behind one. `audio_status` and `volume` cut no click. `audio_status` reads a click as silence: it returns 0 while only a click plays. `volume` sets the level for what plays next, and a click that plays takes the new level from its next sample, so it may change level midway. Nothing a ROM can observe shows a click. Each click prints its own `op=pcm len=789` record on the trace backend. A ROM cannot switch the clicks off in this version. The owner turns them off with `system_sound = no` in `PIPOS.CFG`, the default.
+- `sample_rate` sets the rate of `sample` and `sample_queue`: 8000 or 37500 Hz. It returns the rate before. Any other value returns `-PIP_EINVAL` and changes nothing. A valid value never fails, whatever plays, and also with `PIP_HW_AUDIO` clear. It starts, stops and drops nothing, and cuts no click, like `volume`. `sample_rate` is new in ABI 1.5. See [Sample rate](#sample-rate).
 - On PWM the sound goes out on the audio pins in [HARDWARE.md](HARDWARE.md). Samples are not tried on real hardware yet.
+
+### Sample rate
+
+A play takes the rate in force when it starts and keeps it to its end. A call to `sample_rate` never changes a sound that plays.
+
+| Call | Rate it plays at |
+|---|---|
+| `sample` | The rate in force at the call |
+| `sample_queue` behind a play | The rate of the play it joins, whatever the rate in force |
+| `sample_queue` with no sample playing | The rate in force at the call: it starts a new play |
+| `tone`, `play_seq` | Not affected |
+
+So a ROM may set the rate, call `sample`, and set the old rate back at once. A ROM that streams with `sample_queue` keeps its rate set until the stream ends: a late chunk starts a new play at the rate in force.
+
+The rate belongs to the image. Every image starts at 8000 Hz, a ROM and a holotape alike. A holotape's rate ends with it: when it ends, the ROM gets back the rate it had at `holo_launch`. The kernel keeps both in the audio group's per-image hooks. The volume belongs to the device and does not reset.
+
+The limits stay in bytes at both rates: 1 to 65536 bytes per call and one waiting sample.
+
+| Rate | One second takes | 65536 bytes last |
+|---|---|---|
+| 8000 Hz | 8000 bytes | 8.192 s |
+| 37500 Hz | 37500 bytes | About 1.748 s |
+
+37500 Hz is one sample per period of the PWM carrier, `AUDIO_PCM_RATE_MAX` in RobCo-Core. The trace shows the rate of each play in `op=pcm rate=`.
 
 QEMU has no PWM model. There Pip-OS uses RobCo-Core's trace backend: each change of sound prints one line on the UART instead of playing it.
 

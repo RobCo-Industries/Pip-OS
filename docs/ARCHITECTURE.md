@@ -181,7 +181,7 @@ A panel call that fails after boot is counted. The first prints `ev=display_erro
 
 ### audio
 
-`sys_audio.c`: `tone`, `sample`, `audio_stop`, `volume`, `audio_status`, `play_seq`. One voice through RobCo-Core's `audio.h`, PWM on hardware and a trace backend in QEMU. A new sound replaces the one that plays. `sample` copies up to 64 KiB of 8000 Hz PCM into one static buffer. `play_seq` takes up to 256 notes. `image_start` and `image_end` stop a sound the image started. Pure rules in `audio_rules.c`, tested by `tests/host/test_audio.c`.
+`sys_audio.c`: `tone`, `sample`, `audio_stop`, `volume`, `audio_status`, `play_seq`, `sample_queue`, `sample_rate`. One voice through RobCo-Core's `audio.h`, PWM on hardware and a trace backend in QEMU. A new sound replaces the one that plays. `sample` copies up to 64 KiB of PCM into a static buffer, at 8000 or 37500 Hz. `play_seq` takes up to 256 notes. `image_start` and `image_end` stop a sound the image started. The sample rate is per-image state, like the drawing state: `image_start` saves the ROM's rate when a holotape starts and sets 8000 Hz for every image, and a holotape's `image_end` gives the ROM its rate back. A new play passes the rate in force to the driver. A queued buffer passes none: the driver plays it at the rate of its play. Pure rules in `audio_rules.c`, tested by `tests/host/test_audio.c`.
 
 ### time
 

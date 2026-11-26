@@ -181,11 +181,12 @@ The 300 ms count from the end of the ROM's last sound. The tick holds the count 
 | `audio_stop` | the ROM's sound played and stops | yes | yes |
 | `audio_stop` | nothing of the ROM's plays | no, the click plays on | no |
 | `volume` | any | no | no |
+| `sample_rate` | any | no | no |
 | `audio_status` | any | no | no |
 
 `tests/host/test_dsound.c` holds the same table. `sample_queue` runs its cut before it knows the outcome, but `EBUSY` and a queue need the ROM's own play, and no click plays then.
 
-A question cuts no click. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core reads the level per sample, so a click that plays changes level from its next sample.
+A question cuts no click. `sample_rate` is one too: it changes no sound that plays, only the next play that starts. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core reads the level per sample, so a click that plays changes level from its next sample.
 
 A click may start from the tick between two ROM calls, for example between `audio_status` and a `tone`. Each call is right on its own. The `audio_status` before it said 0, which was true. A `tone`, `sample` or `play_seq` after it cuts the click and starts on an idle driver. `sample_queue` cuts it and then finds no play to queue behind, so it starts a new one. `audio_stop` finds nothing of the ROM's playing and leaves the click alone. `volume` lets it play on. A second `audio_status` still says 0.
 
@@ -310,7 +311,7 @@ After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-
 | r0 | `0x017F0000`, the startup block |
 | r1 to r3 | 0 |
 | lr | `0x017F0080`, the return stub. Returning acts like `exit(r0)`. |
-| `abi_version`, `size` | `0x00010004`, 128 |
+| `abi_version`, `size` | `0x00010005`, 128 |
 | `heap_base`, `heap_size` | `0x01000000`, `0x007F0000` |
 | `stack_top`, `kind`, `flags`, `args` | `0x01800000`, 0, 0, empty |
 
