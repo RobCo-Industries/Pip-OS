@@ -270,7 +270,14 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
-           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test
+           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
+           workflow-exprs-test
+
+# Every workflow line with a ${{ expression has the one safe KEY: value shape.
+.PHONY: workflow-exprs-test
+workflow-exprs-test:
+	$(PYTHON) -I -m unittest discover -s tests/tools -p test_check_workflow_exprs.py
+	$(PYTHON) -I tools/check_workflow_exprs.py $(wildcard .github/workflows/*.yml .github/workflows/*.yaml)
 
 .PHONY: flags-json-test sdk-example-test sdk-abi-target-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
