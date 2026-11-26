@@ -308,6 +308,8 @@ def load_pcm(dirs):
                 data = f.read(MAX_FILE_BYTES + 1)
             if len(data) > MAX_FILE_BYTES:
                 raise LogError("%s: larger than %d bytes" % (p, MAX_FILE_BYTES))
+            if not data and is_voice:
+                raise LogError("%s: no span" % p)
             if not data:
                 continue
             key = (zlib.crc32(data), len(data))

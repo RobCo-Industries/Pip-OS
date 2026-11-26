@@ -701,6 +701,15 @@ class Voice(Case):
         self.spans("v", [(10, 0, 0, 0, 0, -1, 0)])
         self.assertFails([end(0)], "span 0: amp leaves 0 to")
 
+    def test_empty_voice_file_is_an_error(self):
+        open(os.path.join(self.pcm_dir, "v.voice"), "wb").close()
+        self.assertFails([end(0)], "v.voice: no span")
+
+    def test_empty_sample_file_is_skipped(self):
+        open(os.path.join(self.pcm_dir, "e.u8"), "wb").close()
+        rc, err, _ = self.main([end(0)])
+        self.assertEqual(rc, 0, err)
+
     def test_auto_picks_nearest_on_a_voice(self):
         sp = self.spans("v", [(3750, SINE_TOP, 0, 0, 30 << 16, 0, 0)])
         out = io.StringIO()
