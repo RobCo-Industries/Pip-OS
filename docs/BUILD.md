@@ -19,7 +19,7 @@ On macOS with Homebrew:
 brew install arm-none-eabi-gcc qemu mtools python
 ```
 
-RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/2e79ee009d7a9e7c8554100138df0a525701911c/docs/guide/GETTING_STARTED.md) lists the versions in detail.
+RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/guide/GETTING_STARTED.md) lists the versions in detail.
 
 ## Build the image
 
@@ -39,6 +39,7 @@ In an existing clone, run `git submodule update --init` first. `CI=1` turns warn
 | `build/roms/<name>/<name>.rom` | The test ROMs, see [TESTING.md](TESTING.md#test-roms) |
 | `build/examples/hello/ROM1.ROM` | The SDK's hello example, see [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md) |
 | `build/examples/tape/BEACON.HTP` | The SDK's tape example |
+| `build/examples/runner/RUNNER.ROM` | The runner ROM that `robco run` and `robco test` boot |
 | `build/conformance/`, `build/conformance.img` | The conformance ROM, its tapes and its card from `make conformance` and `make conformance-card`, see [TESTING.md](TESTING.md#conformance-rom) |
 
 The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. The link fails when the image and its stacks pass `0x00400000`, the end of the Pip-OS slot. `python3 external/robco-core/tools/rimg.py info build/pipos.img` prints its header.
@@ -55,6 +56,7 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `make conformance`, `make conformance-card`, `make conformance-bootdir DIR=<dir>` | The conformance ROM, its card and its real-card files |
 | `make sdk-example`, `make test-roms` | The SDK examples and the test ROMs only |
 | `make test`, `make test-host`, `make test-target` | The tests, see [TESTING.md](TESTING.md) |
+| `make sdk-package` | `build/pipos-<version>.zip`, the SDK package, then its check. See [SDK_PACKAGE.md](SDK_PACKAGE.md). |
 | `make check-pins` | The CI pins and the RobCo-Core doc links match the submodule |
 | `make clean` | Removes `build/` |
 
@@ -83,7 +85,7 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 | `kernel/syscall.c`, `kernel/sys.h` | The system-call dispatcher and the interface of the call groups |
 | `kernel/sys_<group>.c` | One group of system calls each: `system`, `gfx`, `input`, `audio`, `time`, `storage`, `holo` |
 | `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: the `*_rules.c` files, `gfx_draw.c`, `input_events.c`, `time_clock.c`, `bootlines.c`, `settings.c`, `sysabi.c` and `sysdispatch.c` in `kernel/` |
-| `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk`, and the examples `examples/hello` and `examples/tape` |
+| `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk`, and the examples `examples/hello` and `examples/tape`, and the runner ROM `examples/runner` |
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
 | `conformance/` | The conformance ROM and its tapes, built with the SDK only, see [TESTING.md](TESTING.md#conformance-rom) |
@@ -155,4 +157,4 @@ FAT holds only files and folders. `tools/card.py` does all the card staging and 
 - In `DIR`, a link at any path `bootdir` writes or removes stops it, and nothing changes. That covers the files and folders it writes, every folder on the way to them, the stale files `CLEAN=1` removes and `BOOTDIR.LST`. A link elsewhere in `DIR` is left alone. A `PIPBOY/PIPOS.CFG` that exists, even as a link, is kept and never written.
 - `DIR` itself may be a link to a folder, for example when you keep the card folder somewhere else. `bootdir` resolves it once, says so, and writes into the real folder.
 
-`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/2e79ee009d7a9e7c8554100138df0a525701911c/docs/spec/BOARD_SUPPORT.md#configtxt).
+`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/BOARD_SUPPORT.md#configtxt).
