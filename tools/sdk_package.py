@@ -32,6 +32,7 @@ import os
 import re
 import stat
 import sys
+import unicodedata
 import zipfile
 import zlib
 
@@ -75,6 +76,13 @@ USER_FORMS = ("/home/{}", "/Users/{}", "\\Users\\{}", "{}@")
 # a bad CRC, encryption, a cut or corrupt stream.
 READ_ERRORS = (zipfile.BadZipFile, NotImplementedError, RuntimeError, zlib.error,
                EOFError, OSError, ValueError)
+
+# The bit of a zip entry that marks its name as UTF-8.
+UTF8_FLAG = 0x800
+# The file RobCo Studio adds to an installed package folder.
+RECORD = ".robco-archive"
+# The largest sdk.json RobCo Studio reads, 4 MiB.
+MANIFEST_MAX = 4 << 20
 
 HEX40 = re.compile(r"[0-9a-f]{40}")
 HEX64 = re.compile(r"[0-9a-f]{64}")
@@ -240,10 +248,33 @@ def name_problem(name):
         return "is absolute"
     if len(body) >= 2 and body[0].isascii() and body[0].isalpha() and body[1] == ":":
         return "starts with a drive letter"
-    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in body):
+    if any(unicodedata.category(c) == "Cc" for c in body):
         return "holds a control character"
     if any(c in ("", ".", "..") for c in body.split("/")):
         return "has an empty, . or .. component"
+    for part in body.split("/"):
+        why = portable_problem(part)
+        if why:
+            return f"has the part {part!r}, which {why}"
+    return None
+
+
+# The spec does not state the portable name rule yet. RobCo Studio refuses a
+# package whose entry name breaks it, so check refuses it too: each part
+# must be one plain name on Linux, macOS and Windows alike.
+NOT_PORTABLE = set('<>:"/\\|?*')
+DEVICES = {"con", "prn", "aux", "nul"} | {f"{d}{n}" for d in ("com", "lpt") for n in range(1, 10)}
+
+
+def portable_problem(part):
+    """Why one part of a name is not a plain name on every system, or None."""
+    if part.endswith((".", " ")):
+        return "ends with a dot or a space"
+    if any(c in NOT_PORTABLE for c in part):
+        return 'holds one of < > : " / \\ | ? *'
+    stem = part.split(".", 1)[0].rstrip(" ").lower()
+    if stem in DEVICES:
+        return "is a device name of Windows"
     return None
 
 
@@ -315,6 +346,11 @@ def check_manifest(doc, fail):
             and is_list(e.get("paths")) and all(is_str(p) for p in e["paths"])
             for e in lic):
         fail("sdk.json: licences is not a list of paths and spdx")
+    elif any("GPL" in e["spdx"].upper() for e in lic):
+        # "What a package must never contain": no file under the GPL in
+        # pipos. The check reads what sdk.json declares; it cannot read the
+        # licence of a file's bytes.
+        fail("sdk.json: licences names a GPL licence, and pipos holds no file under the GPL")
     files = doc.get("files")
     if not is_list(files):
         fail("sdk.json: files is not an array")
@@ -328,6 +364,12 @@ def check_manifest(doc, fail):
             fail(f"sdk.json: files[{i}] is not a path, a size and a lower case SHA-256")
             continue
         p = e["path"]
+        why = name_problem(p) if not p.endswith("/") else "ends with /"
+        if why:
+            fail(f"sdk.json: files: {p!r}: the path {why}")
+        twin = next((q for q in out if q != p and same_but_case(q, p)), None)
+        if twin is not None:
+            fail(f"sdk.json: files: {p} differs only in case from {twin}")
         if prev is not None and prev.encode("utf-8") >= p.encode("utf-8"):
             fail(f"sdk.json: files: {p} is not after {prev} in byte order")
         prev = p
@@ -369,14 +411,26 @@ def check(args):
     fail = problems.append
     try:
         z = zipfile.ZipFile(args.zip)
+    except UnicodeDecodeError as e:
+        print(f"FAIL: {args.zip}: an entry marked UTF-8 has a name that is not UTF-8: {e}")
+        return 1
     except (OSError, zipfile.BadZipFile) as e:
         print(f"FAIL: {args.zip}: not a zip archive: {e}")
         return 1
     with z:
-        infos = z.infolist()
-        names, seen = [], {}
-        for info in infos:
+        # Each entry with its name as RobCo Studio reads it: the raw bytes as
+        # UTF-8, whether or not the entry is marked UTF-8.
+        entries = []
+        for info in z.infolist():
             n = info.filename
+            if not info.flag_bits & UTF8_FLAG:
+                try:
+                    n = n.encode("cp437").decode("utf-8")
+                except UnicodeDecodeError:
+                    fail(f"{n!r}: the name is not UTF-8")
+            entries.append((info, n))
+        names, seen = [], {}
+        for info, n in entries:
             why = name_problem(n)
             if why:
                 fail(f"{n!r}: the name {why}")
@@ -392,18 +446,38 @@ def check(args):
                 elif same_but_case(other, key):
                     fail(f"{n}: differs only in case from {seen[other]}")
             seen[key] = n
+            # The spec does not state this yet: RobCo Studio writes RECORD
+            # into the installed folder, so it refuses an entry of that name.
+            if same_but_case(key, RECORD):
+                fail(f"{n}: an entry named {RECORD} would clash with the install record")
             if kind == "file":
                 names.append(n)
             base = key.rsplit("/", 1)[-1]
             if base in FIRMWARE_FILES:
                 fail(f"{n}: a Pi firmware file is never part of a package")
+        # A file cannot also be the folder of another entry.
+        files_of = {k for k in seen if not seen[k].endswith("/") and seen[k] in names}
+        for key in seen:
+            parts = key.split("/")
+            for i in range(1, len(parts)):
+                parent = "/".join(parts[:i])
+                if any(same_but_case(f, parent) for f in files_of):
+                    fail(f"{seen[key]}: {parent} is a file of the archive")
+                    break
         # Each file entry is read once. One that cannot be read is a failure
         # with its name, and its bytes are neither hashed nor searched.
         data_of = {}
-        for info in infos:
-            n = info.filename
+        for info, n in entries:
             if n not in names or n in data_of:
                 continue
+            # The spec does not state this limit yet. RobCo Studio refuses an
+            # sdk.json over it.
+            if n == MANIFEST and info.file_size > MANIFEST_MAX:
+                fail(f"sdk.json: states {info.file_size} bytes, over the limit of "
+                     f"{MANIFEST_MAX} bytes")
+                continue
+            # ZipFile.read reads the stated size and checks the CRC, so a
+            # stated size that lies fails here.
             try:
                 data_of[n] = z.read(info)
             except READ_ERRORS as e:
@@ -440,7 +514,9 @@ def check(args):
             for p in sorted(want - set(listed)):
                 fail(f"{p}: the pipos layout needs it and sdk.json does not list it")
             for p in sorted(set(listed) - want):
-                if not HEADER_RE.fullmatch(p):
+                if p == "include/pipos/pipos.h":
+                    fail(f"{p}: the pipos layout has no file of this name")
+                elif not HEADER_RE.fullmatch(p):
                     fail(f"{p}: not a file of the pipos layout")
         for n, data in data_of.items():
             for f in forbid:

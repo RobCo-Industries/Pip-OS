@@ -285,6 +285,134 @@ def test_bad_names(package, name, why):
     assert_fails(package, why)
 
 
+# The spec does not state the portable name rule yet. RobCo Studio refuses
+# each of these, so check does too.
+@pytest.mark.parametrize("name,why", [
+    ("include/pipos/a:b.h", 'holds one of < > : " / \\ | ? *'),
+    ("include/pipos/a<b.h", "holds one of"),
+    ("include/pipos/a>b.h", "holds one of"),
+    ('include/pipos/a"b.h', "holds one of"),
+    ("include/pipos/a|b.h", "holds one of"),
+    ("include/pipos/a?b.h", "holds one of"),
+    ("include/pipos/a*b.h", "holds one of"),
+    ("include/pipos/x.h.", "ends with a dot or a space"),
+    ("include/pipos/x.h ", "ends with a dot or a space"),
+    ("docs/x./API.md", "ends with a dot or a space"),
+    ("include/pipos/CON", "is a device name of Windows"),
+    ("include/pipos/nul.h", "is a device name of Windows"),
+    ("include/pipos/Com1.txt", "is a device name of Windows"),
+    ("lpt9/x.h", "is a device name of Windows"),
+    ("include/pipos/aux .h", "is a device name of Windows"),
+    ("include/pipos/a\x85b.h", "holds a control character"),
+])
+def test_names_that_are_not_portable(package, name, why):
+    rewrite(package, add(entries(package), name, b"x", listed=False))
+    assert_fails(package, why)
+
+
+@pytest.mark.parametrize("name", ["include/pipos/com0.h", "include/pipos/console.h",
+                                  "include/pipos/lpt10.h", "include/pipos/a.b.h"])
+def test_names_like_a_device_pass(package, name):
+    rewrite(package, add(entries(package), name, b"x"))
+    status, out = check(package)
+    assert status == 0, out
+
+
+def set_flag_bits(path, name, value):
+    """Sets the general purpose flags of entry `name` in both headers."""
+    patch_local_header(path, name, 6, value.to_bytes(2, "little"))
+    patch_central(path, name, 8, value.to_bytes(2, "little"))
+
+
+def replace_bytes(path, old, new):
+    with open(path, "rb") as f:
+        raw = f.read()
+    assert len(old) == len(new) and raw.count(old) == 2
+    with open(path, "wb") as f:
+        f.write(raw.replace(old, new))
+
+
+def test_name_that_is_not_utf8(package):
+    rewrite(package, add(entries(package), "include/pipos/aQ.h", b"x", listed=False))
+    replace_bytes(package, b"include/pipos/aQ.h", b"include/pipos/a\xff.h")
+    assert_fails(package, "the name is not UTF-8")
+
+
+def test_name_marked_utf8_that_is_not(package):
+    rewrite(package, add(entries(package), "include/pipos/aQ.h", b"x", listed=False))
+    set_flag_bits(package, "include/pipos/aQ.h", 0x800)
+    replace_bytes(package, b"include/pipos/aQ.h", b"include/pipos/a\xff.h")
+    assert_fails(package, "has a name that is not UTF-8")
+
+
+def test_unmarked_utf8_name_is_read_as_utf8(package):
+    # RobCo Studio reads the raw bytes as UTF-8 with or without the mark.
+    name = "include/pipos/\u00e9.h"
+    rewrite(package, add(entries(package), name, b"x"))
+    set_flag_bits(package, name, 0)
+    with zipfile.ZipFile(package) as z:
+        assert name not in z.namelist()
+    status, out = check(package)
+    assert status == 0, out
+
+
+@pytest.mark.parametrize("name", [".robco-archive", ".ROBCO-ARCHIVE"])
+def test_entry_named_like_the_install_record(package, name):
+    rewrite(package, add(entries(package), name, b"x", listed=False))
+    assert_fails(package, f"{name}: an entry named .robco-archive")
+
+
+def test_file_that_is_also_a_folder(package):
+    rewrite(package, add(entries(package), "DOCS/api.md/x.txt", b"x", listed=False))
+    assert_fails(package, "DOCS/api.md/x.txt: DOCS/api.md is a file of the archive")
+
+
+@pytest.mark.parametrize("extra,ok", [(0, True), (1, False)])
+def test_manifest_size_limit(package, extra, ok):
+    items = entries(package)
+    body = json.dumps(manifest(items)).encode()
+    body += b" " * ((4 << 20) - len(body) + extra)
+    rewrite(package, [(i, body if i.filename == "sdk.json" else d) for i, d in items])
+    status, out = check(package)
+    if ok:
+        assert status == 0, out
+    else:
+        assert status == 1 and f"sdk.json: states {(4 << 20) + 1} bytes" in out, out
+
+
+def test_listed_path_breaks_the_name_rules(package):
+    items = entries(package)
+    doc = manifest(items)
+    doc["files"].append({"path": "include/pipos/a:b.h", "size": 1, "sha256": "0" * 64})
+    doc["files"].sort(key=lambda e: e["path"].encode())
+    rewrite(package, set_manifest(items, doc))
+    assert_fails(package, "sdk.json: files: 'include/pipos/a:b.h': the path has the part")
+
+
+def test_listed_paths_that_differ_only_in_case(package):
+    items = entries(package)
+    doc = manifest(items)
+    doc["files"].append({"path": "include/pipos/PIP.h", "size": 1, "sha256": "0" * 64})
+    doc["files"].sort(key=lambda e: e["path"].encode())
+    rewrite(package, set_manifest(items, doc))
+    assert_fails(package, "sdk.json: files: include/pipos/pip.h differs only in case from "
+                 "include/pipos/PIP.h")
+
+
+def test_no_pipos_h(package):
+    rewrite(package, add(entries(package), "include/pipos/pipos.h", b"x"))
+    assert_fails(package, "include/pipos/pipos.h: the pipos layout has no file of this name")
+
+
+@pytest.mark.parametrize("spdx", ["GPL-2.0-only", "MIT OR GPL-3.0-or-later", "LGPL-2.1"])
+def test_licences_name_no_gpl(package, spdx):
+    items = entries(package)
+    doc = manifest(items)
+    doc["licences"].append({"paths": ["boot/"], "spdx": spdx})
+    rewrite(package, set_manifest(items, doc))
+    assert_fails(package, "sdk.json: licences names a GPL licence")
+
+
 def test_absolute_name(package):
     info = pkg.zip_info("x.h")
     info.filename = "/x.h"
