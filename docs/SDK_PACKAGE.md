@@ -78,7 +78,7 @@ What the check cannot decide from the archive alone: that each file comes from t
 The QEMU suite boots the kernel of the CI image's compiler. The package's kernel and firmware stub come from xPack 15.2.1. `make sdk-boot-test SDK_ZIP=<zip>` boots the package itself:
 
 1. It unpacks `boot/PIPOS.IMG`, `boot/config.txt`, `boot/fwstub.bin`, `boot/RUNNER.ROM` and `boot.json`.
-2. It builds the simulator card of RobCo-Core's `docs/spec/STUDIO_CLI.md` from them, with the test tape `run_exit0` as `PIPES.HTP`.
+2. It builds the simulator card of RobCo-Core's `docs/spec/STUDIO_CLI.md` from them, with the test tape `run_exit0` as `PIPES.HTP`. It writes `PIPBOY/PIPOS.CFG` and `PIPBOY/RUNNER.CFG` as the spec has the tool write them, so the package's own `boot/PIPOS.CFG` is not on the card. It reads each file back from the card and compares it with its source.
 3. It starts QEMU with the arguments `boot.json` gives each board, in its default mode.
 4. It needs the runner's done line with `result=exit rc=0` and the key of its run line.
 
