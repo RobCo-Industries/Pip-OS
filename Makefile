@@ -494,4 +494,5 @@ sdk-package-inputs-test:
 
 # The checker's own tests. They need no build.
 sdk-package-test: venv
-	$(VENV)/bin/pytest -q -p no:cacheprovider tests/tools/test_sdk_package.py
+	$(VENV)/bin/pytest -q -p no:cacheprovider tests/tools/test_sdk_package.py \
+	    tests/tools/test_sdk_package_templates.py
