@@ -269,3 +269,178 @@ TEST(refused_click_is_not_lost)
     CHECK_EQ(pipos_dsound_tick(&s, 1), 0);
     CHECK_EQ(s.owed, 1u);
 }
+
+/*
+ * The ROM pace, the debt held at 8 and the gate closed at the jump, as
+ * after the quiet second. The gate opens 700 ms after the jump.
+ */
+TEST(rom_pace_pinned_start_ticks)
+{
+    static const int want[] = { 71, 77, 83, 120, 124, 131, 136, 222, 227, 232, 238, 295 };
+    struct pipos_dsound s;
+    int t, n = 0, last = -1;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_rom(&s);
+    for (t = 0; t < 1000; t++) {
+        pipos_dsound_add(&s, PIPOS_CLICK_CAP);
+        CHECK(s.owed <= PIPOS_CLICK_CAP_ROM);
+        if (pipos_dsound_rom_tick(&s, 0, 0) >= 0) {
+            if (n < 12) {
+                CHECK_EQ(t, want[n]);
+            }
+            n++;
+            last = t;
+        }
+    }
+    CHECK_EQ(n, 35);
+    CHECK_EQ(last, 910);
+}
+
+/* Groups of 1 to 4, gaps of 3 to 8 ticks, pauses of 30 to 90 ticks more. */
+TEST(rom_pace_groups_and_pauses)
+{
+    struct pipos_dsound s;
+    int t, prev = -1, group = 0, groups = 0;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_open(&s);
+    pipos_dsound_rom(&s);
+    for (t = 0; t < 20000; t++) {
+        pipos_dsound_add(&s, PIPOS_CLICK_CAP);
+        if (pipos_dsound_rom_tick(&s, 0, 0) < 0) {
+            continue;
+        }
+        CHECK(t > (int)PIPOS_ROM_START_TICKS - 1);
+        if (prev >= 0) {
+            int gap = t - prev;
+
+            CHECK(gap >= 3);
+            if (gap > 8) {
+                CHECK(gap >= 3 + 30 && gap <= 8 + 90);
+                CHECK(group >= 1 && group <= 4);
+                groups++;
+                group = 0;
+            }
+        }
+        group++;
+        prev = t;
+    }
+    CHECK(groups > 100);
+}
+
+/* With the gate open at the jump, the old debt waits 700 ms too. */
+TEST(rom_waits_700_ms_after_the_jump)
+{
+    struct pipos_dsound s;
+    int t;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_open(&s);
+    pipos_dsound_add(&s, 30);
+    pipos_dsound_rom(&s);
+    CHECK_EQ(s.owed, 8u);
+    for (t = 0; t < (int)PIPOS_ROM_START_TICKS; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+    }
+    CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
+    CHECK_EQ(s.owed, 7u);
+}
+
+/* A click waits 300 ms after the ROM's last sound and while a click plays. */
+TEST(rom_sound_holds_a_click_300_ms)
+{
+    struct pipos_dsound s;
+    int t;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_rom(&s);
+    for (t = 0; t < 100; t++) {
+        pipos_dsound_rom_tick(&s, 0, 0);
+    }
+    pipos_dsound_add(&s, 1);
+    for (t = 0; t < 50; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
+    }
+    for (t = 0; t < (int)PIPOS_ROM_QUIET_TICKS; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+    }
+    CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 1), -1); /* a kernel click plays */
+    CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
+    CHECK_EQ(s.owed, 0u);
+}
+
+/* A debt that waits more than 3 s in a row for a ROM sound is dropped. */
+TEST(rom_drops_a_debt_after_3_s)
+{
+    struct pipos_dsound s;
+    int t;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_rom(&s);
+    for (t = 0; t < 100; t++) {
+        pipos_dsound_rom_tick(&s, 0, 0);
+    }
+    pipos_dsound_add(&s, 30);
+    for (t = 0; t < (int)PIPOS_ROM_DROP_TICKS; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
+    }
+    CHECK_EQ(s.owed, 8u);
+    CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
+    CHECK_EQ(s.owed, 0u);
+    /* A break in the wait starts the count again. */
+    pipos_dsound_add(&s, 3);
+    for (t = 0; t < 200; t++) {
+        pipos_dsound_rom_tick(&s, 1, 0);
+    }
+    /* 310 ms of a kernel click: the ROM is quiet, the wait for it ends. */
+    for (t = 0; t <= (int)PIPOS_ROM_QUIET_TICKS; t++) {
+        pipos_dsound_rom_tick(&s, 0, 1);
+    }
+    CHECK_EQ(s.held, 0u);
+    for (t = 0; t < 200; t++) {
+        pipos_dsound_rom_tick(&s, 1, 0);
+    }
+    CHECK_EQ(s.owed, 3u);
+}
+
+/* The yield: a playing click stops; a sound call counts as a ROM sound. */
+TEST(rom_yield)
+{
+    struct pipos_dsound s;
+    int t;
+
+    pipos_dsound_init(&s);
+    CHECK_EQ(pipos_dsound_yields(&s, 1, 1, 0), 1);
+    CHECK_EQ(pipos_dsound_yields(&s, 1, 0, 1), 0); /* the click ended */
+    CHECK_EQ(pipos_dsound_yields(&s, 0, 1, 1), 0); /* the ROM's own sound */
+    pipos_dsound_rom(&s);
+    for (t = 0; t < 100; t++) {
+        pipos_dsound_rom_tick(&s, 0, 0);
+    }
+    pipos_dsound_add(&s, 1);
+    CHECK_EQ(pipos_dsound_yields(&s, 0, 0, 0), 0); /* audio_status, volume */
+    CHECK(s.quiet > PIPOS_ROM_QUIET_TICKS);
+    CHECK_EQ(pipos_dsound_yields(&s, 1, 1, 1), 1); /* tone, sample, stop */
+    CHECK_EQ(s.quiet, 0u);
+    for (t = 0; t < (int)PIPOS_ROM_QUIET_TICKS; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+    }
+    CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
+}
+
+/* The ROM's end: the boot pace, nothing owed, the gate open. */
+TEST(rom_end)
+{
+    struct pipos_dsound s;
+
+    pipos_dsound_init(&s);
+    pipos_dsound_rom(&s);
+    pipos_dsound_add(&s, 3);
+    pipos_dsound_rom_end(&s);
+    CHECK_EQ(s.rom, 0);
+    CHECK_EQ(s.owed, 0u);
+    CHECK_EQ(s.open, 1);
+    pipos_dsound_add(&s, 30);
+    CHECK_EQ(s.owed, 30u);
+}

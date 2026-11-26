@@ -414,6 +414,7 @@ void robco_main(void)
     if (rom) {
         pipos_dsound_jump();
         pipos_rom_run(&res);
+        pipos_dsound_rom_ended();
     }
     ready_flag = 1;
     pipos_dsound_poll();

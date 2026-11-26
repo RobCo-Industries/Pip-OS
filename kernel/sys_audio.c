@@ -6,6 +6,11 @@
  * tick interrupt; a new sound replaces the one that plays. The library
  * takes requests under irq_save(), so the handlers only add the image's
  * own state on top.
+ *
+ * With the system sound on, the kernel's disk click shares the voice.
+ * Every handler first calls pipos_dsound_yield(): a click that plays
+ * stops, so the image's sound starts a new play, sample_queue never
+ * queues behind a click, and audio_status never reports one.
  */
 #include <robco/audio.h>
 #include <robco/irq.h>
@@ -18,8 +23,11 @@
 static unsigned level;
 /* 1 when audio_init() left a backend that plays sounds. Set once by main.c. */
 static int driver_ok;
-/* 1 after the image started a tone or a sequence, until it stops or ends. */
-static int owned;
+/*
+ * 1 after the image started a sound, until it stops or ends. The disk
+ * click's tick clears it when it finds the driver idle.
+ */
+static volatile int owned;
 /* The notes the tick plays. Rewritten only with IRQs masked. */
 static audio_note_t seq_buf[PIP_SEQ_MAX];
 /*
@@ -44,6 +52,7 @@ static void stop_owned(void)
 static int32_t sys_tone(const pipos_sys_ctx_t *ctx, uint32_t hz, uint32_t ms, uint32_t a2,
                         uint32_t a3)
 {
+    pipos_dsound_yield(1); /* a kernel click gives way */
     int32_t rc = pipos_audio_check_tone(hz, ms);
 
     (void)ctx, (void)a2, (void)a3;
@@ -88,6 +97,7 @@ static int32_t start_pcm(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len
 static int32_t sys_sample(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len, uint32_t a2,
                           uint32_t a3)
 {
+    pipos_dsound_yield(1); /* a kernel click gives way */
     int32_t rc = pipos_audio_check_sample(len);
 
     (void)a2, (void)a3;
@@ -111,6 +121,7 @@ static int32_t sys_sample(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t le
 static int32_t sys_sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len,
                                 uint32_t a2, uint32_t a3)
 {
+    pipos_dsound_yield(1); /* a kernel click gives way */
     int32_t rc = pipos_audio_check_sample(len);
     pipos_pcmq_plan_t plan;
     uint32_t s;
@@ -164,6 +175,7 @@ static int32_t sys_sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint3
 static int32_t sys_audio_stop(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1,
                               uint32_t a2, uint32_t a3)
 {
+    pipos_dsound_yield(1); /* a kernel click gives way */
     (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
     audio_stop();
     owned = 0;
@@ -174,6 +186,7 @@ static int32_t sys_audio_stop(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t 
 static int32_t sys_volume(const pipos_sys_ctx_t *ctx, uint32_t new_level, uint32_t a1,
                           uint32_t a2, uint32_t a3)
 {
+    pipos_dsound_yield(0); /* a kernel click gives way */
     int32_t prev = pipos_audio_volume_swap(&level, new_level);
 
     (void)ctx, (void)a1, (void)a2, (void)a3;
@@ -186,6 +199,7 @@ static int32_t sys_volume(const pipos_sys_ctx_t *ctx, uint32_t new_level, uint32
 static int32_t sys_audio_status(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1,
                                 uint32_t a2, uint32_t a3)
 {
+    pipos_dsound_yield(0); /* a kernel click gives way */
     (void)ctx, (void)a0, (void)a1, (void)a2, (void)a3;
     if (owned && !audio_busy()) {
         owned = 0;
@@ -201,6 +215,7 @@ static int32_t sys_audio_status(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_
 static int32_t sys_play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t count,
                             uint32_t a2, uint32_t a3)
 {
+    pipos_dsound_yield(1); /* a kernel click gives way */
     int32_t rc = pipos_audio_check_count(count);
     uint32_t s;
     int played = 0;
@@ -276,6 +291,11 @@ void pipos_audio_image_end(int kind)
 {
     (void)kind;
     stop_owned();
+}
+
+void pipos_audio_idle(void)
+{
+    owned = 0;
 }
 
 void pipos_audio_poll(void)

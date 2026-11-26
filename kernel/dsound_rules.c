@@ -17,6 +17,9 @@ void pipos_dsound_init(struct pipos_dsound *s)
     s->n = 0;
     s->rom = 0;
     s->open = 0;
+    s->since_jump = 0;
+    s->quiet = 0;
+    s->held = 0;
 }
 
 unsigned pipos_dsound_io_adds(uint32_t count)
@@ -125,6 +128,55 @@ void pipos_dsound_rom(struct pipos_dsound *s)
     if (s->owed > PIPOS_CLICK_CAP_ROM) {
         s->owed = PIPOS_CLICK_CAP_ROM;
     }
+    s->since_jump = 0;
+    s->quiet = PIPOS_ROM_QUIET_TICKS + 1u; /* no ROM sound yet */
+    s->held = 0;
+}
+
+void pipos_dsound_rom_end(struct pipos_dsound *s)
+{
+    s->rom = 0;
+    s->owed = 0;
+    s->left = 0;
+    s->held = 0;
+    s->open = 1;
+}
+
+int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
+{
+    int waits_for_rom;
+
+    if (s->since_jump <= PIPOS_ROM_START_TICKS) {
+        s->since_jump++;
+        if (s->since_jump > PIPOS_ROM_START_TICKS) {
+            s->open = 1; /* the gate reopens 700 ms after the jump */
+        }
+    }
+    if (rom_busy) {
+        s->quiet = 0;
+    } else if (s->quiet <= PIPOS_ROM_QUIET_TICKS) {
+        s->quiet++;
+    }
+    waits_for_rom = rom_busy || s->quiet <= PIPOS_ROM_QUIET_TICKS;
+    if (s->open && s->owed > 0 && waits_for_rom) {
+        if (++s->held > PIPOS_ROM_DROP_TICKS) {
+            s->owed = 0; /* a long tune is not followed by a stale burst */
+            s->left = 0;
+            s->held = 0;
+        }
+    } else {
+        s->held = 0;
+    }
+    return pipos_dsound_tick(s, s->since_jump > PIPOS_ROM_START_TICKS && !waits_for_rom &&
+                                    !click_busy);
+}
+
+int pipos_dsound_yields(struct pipos_dsound *s, int click_on, int busy, int sound)
+{
+    if (sound && s->rom) {
+        s->quiet = 0;
+    }
+    return click_on && busy;
 }
 
 int pipos_dsound_tick(struct pipos_dsound *s, int can_play)

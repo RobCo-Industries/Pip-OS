@@ -23,15 +23,24 @@
  * the gate again after the last line. The scroll's blips play from the
  * main context while the gate is closed.
  *
- * After the jump to a ROM the kernel plays no click, so a click never meets
- * a ROM's own sound. A click that still plays at the jump ends first.
+ * After the jump the clicks go on in the ROM pace: groups of 1 to 4, at most
+ * 8 owed, none in the first 700 ms. The ROM's card and slot calls owe them,
+ * a holotape's too: it runs inside the ROM's call. A click plays only when
+ * nothing plays and the ROM's last sound is 300 ms old. A debt that waits
+ * 3 s in a row for a ROM sound is dropped. Every audio call of an image
+ * first calls pipos_dsound_yield(), which stops a click that plays: the
+ * image's sound always wins. When the ROM ends the boot pace comes back
+ * with nothing owed and the gate open.
  *
  * Clicks start from the tick at any moment, and the trace backend queues
  * their records until the main context polls. So the kernel polls through
  * pipos_dsound_poll() wherever it waits or works long: each typed character,
- * the line delay in 100 ms steps, each card or slot call, and before each
- * of its own markers. The fastest pace is one click per 3 ticks, two
- * records per click, so 100 ms adds at most 8 of the queue's 64 records.
+ * the line delay in 100 ms steps, each card or slot call, each audio call
+ * of an image, and before each of its own markers. The fastest boot pace is
+ * one click per 3 ticks, two records per click, so 100 ms adds at most 8 of
+ * the queue's 64 records. Under a ROM only a card or slot call adds to the
+ * debt, and it polls after the add, so at most 8 clicks, 17 records with
+ * the end of one that plays, wait for the next poll.
  */
 #include <robco/audio.h>
 #include <robco/blk.h>
@@ -73,15 +82,17 @@ static volatile int jumped;
 static struct wrap card_wrap, slot_wrap;
 static volatile int note_on;      /* the note plays or waits for its tick */
 static volatile uint32_t note_end_ms;
+static volatile int click_on;     /* the last play the kernel started is a click */
 
 /*
  * Prints the queued audio records, so they come before the next marker and
- * the queue never fills. Main context only. With the sound off, or after the
- * jump, it returns at once: on a board the PWM backend has no queue anyway.
+ * the queue never fills. Main context, a system call's included. With the
+ * sound off it returns at once: on a board the PWM backend has no queue
+ * anyway.
  */
 void pipos_dsound_poll(void)
 {
-    if (on && !jumped) {
+    if (on) {
         audio_poll();
     }
 }
@@ -217,16 +228,21 @@ static void dsound_tick(void)
     struct pipos_dsound before;
     int busy, way, k, rc;
 
-    if (jumped) {
-        return;
-    }
     busy = audio_busy();
     if (!busy) {
         note_on = 0;
+        click_on = 0;
+        pipos_audio_idle(); /* audio_status never reports a click */
     }
-    way = pipos_dsound_way(busy, note_on, note_on ? note_left_ms() : 0u, audio_pcm_mix_busy());
     before = rules;
-    k = pipos_dsound_tick(&rules, way != PIPOS_CLICK_WAIT);
+    if (rules.rom) {
+        way = PIPOS_CLICK_PLAY;
+        k = pipos_dsound_rom_tick(&rules, busy && !click_on, busy && click_on);
+    } else {
+        way = pipos_dsound_way(busy, note_on, note_on ? note_left_ms() : 0u,
+                               audio_pcm_mix_busy());
+        k = pipos_dsound_tick(&rules, way != PIPOS_CLICK_WAIT);
+    }
     if (k < 0) {
         return;
     }
@@ -234,6 +250,9 @@ static void dsound_tick(void)
         rc = audio_pcm_mix(sound_click[k], SOUND_CLICK_LEN);
     } else {
         rc = audio_play_pcm(sound_click[k], SOUND_CLICK_LEN, SOUND_RATE_HZ, 0);
+        if (rc == 0) {
+            click_on = 1;
+        }
     }
     if (rc != 0) {
         rules = before; /* refused, the note's end for one: try again next tick */
@@ -379,8 +398,37 @@ void pipos_dsound_jump(void)
     jumped = 1;
     irq_restore(irq);
     /*
-     * Let a click that plays end, then print every queued record, so none
-     * comes after ev=jump. A click lasts 21 ms, so the wait is short.
+     * Let a click that plays end, then print every queued record, so the
+     * boot's records come before ev=jump. A click lasts 21 ms, so the wait
+     * is short. The next click comes 700 ms or more after the jump.
      */
     audio_wait();
+}
+
+void pipos_dsound_rom_ended(void)
+{
+    uint32_t irq;
+
+    if (!on || !jumped) {
+        return;
+    }
+    irq = irq_save();
+    pipos_dsound_rom_end(&rules);
+    irq_restore(irq);
+}
+
+void pipos_dsound_yield(int sound)
+{
+    uint32_t irq;
+
+    if (!on) {
+        return;
+    }
+    irq = irq_save();
+    if (pipos_dsound_yields(&rules, click_on, audio_busy(), sound)) {
+        audio_stop();
+    }
+    click_on = 0;
+    irq_restore(irq);
+    pipos_dsound_poll();
 }

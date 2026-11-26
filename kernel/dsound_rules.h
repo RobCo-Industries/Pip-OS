@@ -17,6 +17,11 @@
 #define PIPOS_NOTE_TAIL_MS  30u /* no click joins the note this close to its end */
 #define PIPOS_QUIET_MS    1000u /* the gate stays closed this long before the scroll */
 
+/* Under a ROM, in 10 ms ticks. A click needs more than each count. */
+#define PIPOS_ROM_START_TICKS  70u /* since the jump: 700 ms */
+#define PIPOS_ROM_QUIET_TICKS  30u /* since the ROM's last sound: 300 ms */
+#define PIPOS_ROM_DROP_TICKS  300u /* a debt that waits this long in a row is dropped: 3 s */
+
 /* What a due click does now. */
 #define PIPOS_CLICK_WAIT 0 /* it waits a tick */
 #define PIPOS_CLICK_PLAY 1 /* it is its own play */
@@ -26,6 +31,9 @@ struct pipos_dsound {
     uint32_t rnd;
     unsigned owed, wait, left, n;
     int rom, open;
+    unsigned since_jump; /* ticks since the jump, up to PIPOS_ROM_START_TICKS + 1 */
+    unsigned quiet;      /* ticks since a ROM sound, up to PIPOS_ROM_QUIET_TICKS + 1 */
+    unsigned held;       /* ticks in a row the debt waited for a ROM sound */
 };
 
 /* Seed 1, nothing owed, the gate closed, the boot pace. */
@@ -75,8 +83,35 @@ void pipos_dsound_open(struct pipos_dsound *s);
 /* Closes the gate and drops what is owed. */
 void pipos_dsound_close(struct pipos_dsound *s);
 
-/* The jump to a ROM: the ROM pace, and the debt cut to its cap. */
+/*
+ * The jump to a ROM: the ROM pace, and the debt cut to its cap. Nothing
+ * plays for PIPOS_ROM_START_TICKS. A closed gate opens after them.
+ */
 void pipos_dsound_rom(struct pipos_dsound *s);
+
+/*
+ * The ROM ended: the boot pace again, nothing owed, the gate open, as on a
+ * boot with no ROM after its last line.
+ */
+void pipos_dsound_rom_end(struct pipos_dsound *s);
+
+/*
+ * One 10 ms tick under a ROM. rom_busy is 1 while a sound the ROM started
+ * plays, click_busy while a kernel click plays. A click is due only more
+ * than PIPOS_ROM_START_TICKS after the jump and more than
+ * PIPOS_ROM_QUIET_TICKS after the ROM's last sound, with nothing playing.
+ * A debt that waits for a ROM sound more than PIPOS_ROM_DROP_TICKS in a
+ * row is dropped. Returns as pipos_dsound_tick().
+ */
+int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy);
+
+/*
+ * A ROM's audio call, IRQs masked. sound is 1 for a call that starts or
+ * stops a sound: it counts as a ROM sound for the 300 ms rule. Returns 1
+ * when a kernel click plays and must stop: click_on says the last play the
+ * kernel started was a click, busy is audio_busy().
+ */
+int pipos_dsound_yields(struct pipos_dsound *s, int click_on, int busy, int sound);
 
 /*
  * What is left to wait, in ms at now, before the scroll starts. It starts

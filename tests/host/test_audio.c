@@ -152,6 +152,24 @@ TEST(pcmq_idle_starts)
     PLAY_WAIT(q, 0, -1);
 }
 
+/*
+ * The image's sample ended and a kernel click took the voice. The state
+ * still says buffer 0 plays, and the click makes can_queue 1, so without
+ * the yield the plan would queue behind the click. The yield stops the
+ * click first: can_queue 0 with a stop pending, and the data starts anew.
+ */
+TEST(pcmq_click_yield_starts)
+{
+    pipos_pcmq_t q = PIPOS_PCMQ_IDLE;
+
+    pipos_pcmq_started(&q, 0);
+    pipos_pcmq_sync(&q, 1, 1);
+    CHECK_EQ(pipos_pcmq_plan(&q, 1).action, PIPOS_PCMQ_QUEUE); /* why the yield exists */
+    pipos_pcmq_sync(&q, 0, 1);
+    CHECK_EQ(pipos_pcmq_plan(&q, 0).action, PIPOS_PCMQ_START);
+    CHECK_EQ(pipos_pcmq_plan(&q, 0).buf, 0);
+}
+
 TEST(pcmq_queue_while_playing)
 {
     pipos_pcmq_t q;

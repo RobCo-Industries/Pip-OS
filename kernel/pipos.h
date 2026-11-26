@@ -42,6 +42,8 @@ void pipos_audio_start_volume(unsigned level);
 /* sys_audio.c: main.c reports whether a backend plays sounds after boot; PIP_HW_AUDIO reads it. */
 void pipos_audio_driver_result(int started);
 int pipos_audio_driver_ok(void);
+/* Tick context: the driver is idle, so no image sound is owned. */
+void pipos_audio_idle(void);
 
 /* sys_input.c: every RobCo-Core event main.c takes; empties the image's event queue. */
 void pipos_input_event(const input_event_t *ev);
@@ -109,6 +111,13 @@ int pipos_dsound_blip(void);
 void pipos_dsound_note_wait(void);
 /* Before the jump to a ROM: no click plays from here on. */
 void pipos_dsound_jump(void);
+/* The ROM ended: the boot pace, nothing owed, the gate open. */
+void pipos_dsound_rom_ended(void);
+/*
+ * First in every audio call of an image. Stops a kernel click that plays,
+ * and polls the trace. sound is 1 for a call that starts or stops a sound.
+ */
+void pipos_dsound_yield(int sound);
 /* Prints queued audio records with the sound on, before the jump. */
 void pipos_dsound_poll(void);
 /* Waits ms in steps of at most 100 ms, with a pipos_dsound_poll() after each. */
