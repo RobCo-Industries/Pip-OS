@@ -156,8 +156,12 @@ BOOT_SOUND_BOARD = $(if $(filter all,$(BOARD)),raspi0,$(BOARD))
 .PHONY: boot-sound boot-sound-test
 boot-sound: kernel venv
 	@mkdir -p $(BUILD)/boot_sound
+	@rm -f $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav
 	$(VENV)/bin/pytest tests/test_boot_sound_log.py -q --tb=short --board $(BOOT_SOUND_BOARD) \
 		--build-dir $(BUILD) --boot-sound-log $(BUILD)/boot_sound/serial.log
+	@test -s $(BUILD)/boot_sound/serial.log || { \
+		echo "boot-sound: the boot did not run, so there is no log. Check that QEMU and mtools are installed." >&2; \
+		exit 1; }
 	$(PYTHON) -I tools/sound_table.py --dump $(BUILD)/boot_sound/pcm
 	$(PYTHON) -I tools/boot_sound.py $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav \
 		--pcm $(BUILD)/boot_sound/pcm

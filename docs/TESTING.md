@@ -81,6 +81,8 @@ QEMU has no PWM model, so nobody hears a QEMU boot. `make boot-sound` rebuilds w
 
 Today the kernel plays its tone per character and no sample of the table, so the file holds that sound.
 
+The target removes the old log and the old file first. If the boot is skipped, for example because QEMU or mtools is missing, it stops with an error and writes no file.
+
 `tools/boot_sound.py LOG OUT.wav --pcm DIR...` uses the standard library only. It finds each sample play's bytes by the CRC the trace prints, among the `.u8` files of the `--pcm` folders. An unknown CRC plays as a buffer of 128, with one warning per CRC. It applies the driver's volume and overlay rules, places each buffer at its `t_ms`, renders a tone as the pulse the pin carries and keeps the rest level: duty 0, or duty 128 after the library's rest ramp. It writes 16-bit mono at 37500 Hz, one frame per carrier period, after a one-pole 20 Hz high-pass that stands for the coupling capacitor. So a jump of the pin is heard as a thump. It reads the lines the pinned RobCo-Core prints and also `op=pcm_mix` and the rest ramp of a newer one. `--help` lists both, the rounding rule of each and the limits on what it reads. A bad line stops it with one message that names the line.
 
 How the file differs from the device:
