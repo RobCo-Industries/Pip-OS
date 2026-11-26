@@ -20,7 +20,7 @@ def test_served_numbers_are_in_the_abi(board, kernel_image):
     # The system group, served since 0.7.1.
     assert {0x42, 0x43, 0x44, 0x45, 0x46, 0x48, 0x49} <= served, served
     # The audio group, with sample_queue since ABI 1.1.
-    assert set(range(0x20, 0x27)) <= served, served
+    assert set(range(0x20, 0x28)) <= served, served
 
 
 def test_unserved_numbers_return_enosys(board, kernel_image, test_rom, tmp_path, need_mtools):
