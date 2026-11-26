@@ -540,7 +540,7 @@ sdk-package:
 	    --forbid "$$HOME" --user "$(PKG_USER)" --forbid "$(PKG_HOST)" --skip-short
 
 # Boots the kernel a package ships, with only what is in it, on BOARD:
-# make sdk-boot-test SDK_ZIP=build/pipos-1.4.0.zip [BOARD=raspi0]
+# make sdk-boot-test SDK_ZIP=build/pipos-1.5.0.zip [BOARD=raspi0]
 # tests/test_sdk_boot.py builds the simulator card with the run_exit0 tape.
 .PHONY: sdk-boot-test
 sdk-boot-test: holo-run_exit0 venv

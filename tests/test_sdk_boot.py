@@ -11,7 +11,7 @@ with result=exit rc=0.
 
 It runs only when given a package:
 
-    pytest tests/test_sdk_boot.py --sdk-zip build/pipos-1.4.0.zip \
+    pytest tests/test_sdk_boot.py --sdk-zip build/pipos-1.5.0.zip \
         --sdk-tape build/holotapes/run_exit0/run_exit0.htp --board all
 
 `make sdk-boot-test SDK_ZIP=<zip>` builds the tape and runs it. Nothing

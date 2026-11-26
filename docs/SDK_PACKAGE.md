@@ -1,6 +1,6 @@
 # The SDK package
 
-`make sdk-package` writes `build/pipos-<version>.zip`, the `pipos` package that RobCo Studio installs. RobCo-Core's `docs/spec/SDK_PACKAGE.md` fixes its layout and its manifest, `sdk.json`. The version is the ABI of `sdk/include/pipos/abi.h` and `PACKAGE_BUILD`, so `1.4.0` today.
+`make sdk-package` writes `build/pipos-<version>.zip`, the `pipos` package that RobCo Studio installs. RobCo-Core's `docs/spec/SDK_PACKAGE.md` fixes its layout and its manifest, `sdk.json`. The version is the ABI of `sdk/include/pipos/abi.h` and `PACKAGE_BUILD`, so `1.5.0` today.
 
 No package is published yet. A release needs the owner's agreement first.
 
@@ -98,7 +98,7 @@ What the check cannot decide from the archive alone: that each file comes from t
 `.github/workflows/sdk-package.yml` runs on every pull request, on `master` and on a tag `pipos-*`:
 
 - `package` runs the checker's tests, downloads the xPack compiler, builds the package twice and compares the SHA-256, shows that the check refuses a copy with the host name planted in it, boots the package on the four boards in the CI image, and uploads the package as the `pipos-package` artifact. It holds `packages: read` to pull the CI image.
-- `publish` runs only for a pushed tag `pipos-<version>`. It alone holds `contents: write`. It attaches the package of the `package` job to a release of that tag. The tag must name the package that was built: `pipos-1.4.0` builds with `PACKAGE_BUILD=0` and must give `pipos-1.4.0.zip`. The check has already compared that file name with `sdk.json`, so the tag, the file name and the version inside are one text. The tag name reaches a script only through `env:`, never as `${{ github.ref_name }}` inside `run:`. `make workflow-exprs-test` judges every workflow line that holds `${{`. A line passes only as `KEY: value` with the whole expression on it and a key that is not `run`, `script`, `shell`, `args` or `entrypoint`. The value must not be a flow collection, must hold no quotes outside the expression and must not continue a value from the line above. Any `${{` inside a block scalar fails. An anchor, alias or merge key at the start of a value on a structure line fails the file; a `*` or `&` in script text does not.
+- `publish` runs only for a pushed tag `pipos-<version>`. It alone holds `contents: write`. It attaches the package of the `package` job to a release of that tag. The tag must name the package that was built: `pipos-1.5.0` builds with `PACKAGE_BUILD=0` and must give `pipos-1.5.0.zip`. The check has already compared that file name with `sdk.json`, so the tag, the file name and the version inside are one text. The tag name reaches a script only through `env:`, never as `${{ github.ref_name }}` inside `run:`. `make workflow-exprs-test` judges every workflow line that holds `${{`. A line passes only as `KEY: value` with the whole expression on it and a key that is not `run`, `script`, `shell`, `args` or `entrypoint`. The value must not be a flow collection, must hold no quotes outside the expression and must not continue a value from the line above. Any `${{` inside a block scalar fails. An anchor, alias or merge key at the start of a value on a structure line fails the file; a `*` or `&` in script text does not.
 
 ## The boot check
 
