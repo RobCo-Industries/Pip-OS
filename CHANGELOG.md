@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Boot text that writes itself. `[display] char_delay_ms`, 0 to 100, writes each boot line on the screen one character at a time behind a block cursor. `[audio] key_click` plays a short click for each character but a space. Both are off by default. The UART still gets each line whole. The `ev=config` summary ends with `char_delay_ms=` and `key_click=`. The clicks were not heard on a real speaker yet.
 - `ABI := MAJOR.MINOR` in `pipos-app.mk`, the lowest ABI an image needs. It passes `-DPIPOS_ABI_TARGET` to `crt0.S` and every source, `crt0.S` writes it into `abi_version`, and the headers hide calls added after it: below 1.1, `sample_queue`. A target above 1.4 or a bad value fails. Without `ABI` the image bytes do not change. `tests/host/sdk_abi_target_test.sh` checks it.
 - `make flags-json` in `pipos-app.mk` writes `flags.json`, the build flags of a project, from the variables the build rules use. `tests/host/flags_json_test.sh` builds the example tape and ROM from it and from `make` and compares their SHA-256.
 - `libpip.a` is archived with `ar rcsD`, so two builds give the same archive.
