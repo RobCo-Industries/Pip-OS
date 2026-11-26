@@ -98,18 +98,19 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 
 ## System sound tables
 
-`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a rising note and a line blip. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`, tables of unsigned 8-bit samples at 22050 Hz, where 128 is silence. Both files are committed, so a build runs no Python for them. The kernel does not play them yet, and `--gc-sections` leaves them out of the image.
+`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a line blip and a soft beep. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`, tables of unsigned 8-bit samples at 37500 Hz, the PWM carrier rate, where 128 is silence. The file also holds a `note` block that the tool ignores for now: a later change plays the rising note live from a small table of spans. Both files are committed, so a build runs no Python for them. The kernel does not play them yet, and `--gc-sections` leaves them out of the image.
 
 | Table | Bytes |
 |---|---|
-| `sound_click` | 12 clicks of 464 samples, 21 ms each |
-| `sound_blip` | 353: 176 samples at 3469 Hz, then 177 at 2625 Hz |
-| `sound_note` | 65 516: the note's rise up to 9900 Hz, 2.97 s |
+| `sound_click` | 12 clicks of 789 samples, 21 ms each, peak 88 steps |
+| `sound_blip` | 600: 300 samples at 3469 Hz and 48 steps, then 300 at 2625 Hz and 40 steps |
+| `sound_beep` | 2250: a 1000 Hz sine at 24 steps, 60 ms, with 10 ms linear edges |
+
+The three tables take 12 318 bytes.
 
 After a change to the parameters, run `make sound-table` and commit the three files. `tools/sound_table.py --check` fails when the committed files differ from what the tool writes, and says to run `make sound-table`. It runs before anything compiles the table: `build/obj/kernel/sound_table.o` and the host tests take it as an order-only prerequisite. So `make`, `make kernel`, `make sdimage`, `make bootdir`, `make run`, `make sdk-package` and the test goals that build stop on a stale table before they write an image. The build never writes the table itself, so a forgotten commit fails instead of hiding. `make test-host` runs `tests/tools/test_sound_table.py` and `tests/host/sound_table_make_test.sh`.
 
-- Each table holds its sound at its level for `[audio] volume = 100`. The tool refuses a click sample more than `ceiling_steps`, 12 steps, from 128.
-- The note's segments climb to 15700 Hz, but the device stops at `device_top_hz`, 9900 Hz. At 22050 samples a second nothing above 11025 Hz plays. The table ends there with a 50 ms fade.
+- Each table holds its sound at its level for `[audio] volume = 100`. The tool refuses a click sample more than `ceiling_steps`, 90 steps, from 128. That leaves 37 steps under 127 for a sound mixed under a click.
 - The same parameters give the same bytes on every system and every Python 3. The tool uses only add, subtract, multiply, divide and comparisons, which IEEE 754 fixes. It builds its own logarithm, exponential and sine from them, and its noise is a 32-bit xorshift from `seed`. It calls no `math` function and no `random`.
 - `--wav DIR` writes each sound as an 8-bit WAV file, to listen to. `--dump DIR` writes each buffer as a raw `.u8` file.
 
