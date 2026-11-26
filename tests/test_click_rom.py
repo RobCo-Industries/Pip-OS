@@ -1,0 +1,163 @@
+"""The disk click under a ROM.
+
+With [audio] system_sound on, the kernel keeps clicking while a ROM runs,
+in the ROM pace: at most 8 clicks owed, none in the first 700 ms after the
+jump, none while a ROM sound plays or in the 300 ms after it. The debt
+comes from the card and slot calls the ROM makes. A ROM's audio call stops
+a click that plays, so the ROM's sound always wins, and audio_status and
+sample_queue act as if the click were silence.
+
+The jump marker has no t_ms. The test ROMs print their own "t0" mark with
+the kernel's time first thing, after the jump, so a click 700 ms after t0
+is 700 ms after the jump too. t0 is on the kernel's tick clock and a click
+on the audio clock: see AUDIO_CLOCK_LAG_MS.
+"""
+
+import time
+
+from pipos_helpers import (AUDIO_CLOCK_LAG_MS, assert_rom_checks, booted, make_card, no_exception,
+                           one, rom_one, wait_markers)
+
+import test_audio_queue as queue
+
+ROM = "PIPBOY/ROM1.ROM"
+CFG = "PIPBOY/PIPOS.CFG"
+CLICK_LEN = "789"
+
+
+def cfg(delay=0, beep="no", volume=70):
+    """Typing at delay ms per character, 0 for off, and the system sound on."""
+    return (f"[display]\nchar_delay_ms = {delay}\nline_delay_ms = 0\n"
+            f"[audio]\nvolume = {volume}\nbeep = {beep}\nsystem_sound = yes\n").encode()
+
+
+def is_click(m):
+    return m["op"] == "pcm" and m.get("len") == CLICK_LEN and m.get("rate") == "37500"
+
+
+def after_jump(vm):
+    """The pipos audio records that come after ev=jump in the serial log."""
+    out, seen = [], False
+    for m in vm.markers():
+        if m.get("stage") != "pipos":
+            continue
+        if m.get("ev") == "jump":
+            seen = True
+        elif seen and m.get("ev") == "audio":
+            out.append(m)
+    assert seen, vm.serial
+    return out
+
+
+def check_cuts(tr):
+    """A click ends by itself with pcm_end, or one op=stop cuts it and the
+    ROM's own start comes next. Returns the number of cut clicks."""
+    cuts = 0
+    for i, m in enumerate(tr):
+        if not is_click(m):
+            continue
+        assert i + 1 < len(tr), tr[i:]
+        nxt = tr[i + 1]
+        if nxt["op"] == "pcm_end":
+            continue
+        assert nxt["op"] == "stop", tr[i:i + 3]
+        assert i + 2 < len(tr), tr[i:]
+        rom = tr[i + 2]
+        assert rom["op"] in ("tone", "pcm", "voice") and not is_click(rom), tr[i:i + 3]
+        cuts += 1
+    return cuts
+
+
+def without_clicks(tr):
+    """The trace with every click and the record that ends it taken out."""
+    out, skip = [], False
+    for m in tr:
+        if skip:
+            skip = False
+            assert m["op"] in ("pcm_end", "stop"), m
+            continue
+        if is_click(m):
+            skip = True
+            continue
+        out.append(m)
+    return out
+
+
+def boot_rom(kernel_image, board, tmp_path, rom, delay=0, **kw):
+    sd = make_card(tmp_path / "sd.img", {ROM: rom, CFG: cfg(delay=delay, **kw)})
+    return booted(kernel_image, board, sd=sd)
+
+
+def test_a_reading_rom_gets_at_most_8_clicks(board, kernel_image, test_rom, tmp_path,
+                                             need_mtools):
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_read")) as vm:
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)
+    t0 = int(rom_one(vm, "t0")["t_ms"])
+    tr = after_jump(vm)
+    clicks = [m for m in tr if is_click(m)]
+    assert 1 <= len(clicks) <= 8, tr
+    assert int(clicks[0]["t_ms"]) - t0 >= 700 - AUDIO_CLOCK_LAG_MS, (t0, clicks[0])
+    # Nothing else plays: every click ends by itself.
+    assert check_cuts(tr) == 0, tr
+    assert not [m for m in vm.markers() if m.get("ev") == "audio_drop"], vm.serial
+
+
+def test_a_rom_that_reads_nothing_gets_no_click(board, kernel_image, test_rom, tmp_path,
+                                                need_mtools):
+    """The sleep ROM makes no card call. Typing is on, so the quiet second
+    dropped the boot's debt and the ROM load is not owed. pip_sleep_ms polls
+    the trace, so a click would show."""
+    sd = make_card(tmp_path / "sd.img", {ROM: test_rom("sleep"), CFG: cfg(delay=1)})
+    with booted(kernel_image, board, sd=sd, wait="jump") as vm:
+        time.sleep(3.0)
+        no_exception(vm)
+    assert not [m for m in after_jump(vm) if is_click(m)], vm.serial
+
+
+def test_a_rom_sound_always_wins(board, kernel_image, test_rom, tmp_path, need_mtools):
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_tone")) as vm:
+        assert_rom_checks(vm, ["long_tone", "status_quiet"])
+        assert one(vm, "rom_exit")["status"] == "0"
+        no_exception(vm)
+    tr = after_jump(vm)
+    assert not [m for m in vm.markers() if m.get("ev") == "audio_drop"], vm.serial
+    # No click starts while the long tone sounds.
+    i = next(i for i, m in enumerate(tr) if m["op"] == "tone" and m["hz"] == "500")
+    start = int(tr[i]["t_ms"])
+    end = next(int(m["t_ms"]) for m in tr[i + 1:] if m["op"] in ("stop", "tone", "pcm"))
+    assert end - start >= 2000 - AUDIO_CLOCK_LAG_MS, tr[i:i + 2]
+    assert not [m for m in tr if is_click(m) and start <= int(m["t_ms"]) <= end], tr
+    # The reads under the tone owed clicks, and they came after it.
+    clicks = [m for m in tr if is_click(m)]
+    assert clicks, tr
+    # One op=stop cuts a click that plays when the ROM starts a sound.
+    cuts = check_cuts(tr)
+    print(f"clicks={len(clicks)} cut={cuts}")
+    assert cuts >= 1, tr
+    # Without the clicks the ROM's own trace is whole: 41 tones, each with its end.
+    rest = without_clicks(tr)
+    assert [m["op"] for m in rest] == ["tone", "stop"] * 41, rest
+
+
+def test_sample_queue_with_clicks(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """test_audio_queue's ROM with the system sound on and typing off: the
+    ROM load's debt, cut to 8, pays out while the ROM plays. Without the
+    clicks the trace is the strict one, and every check of the ROM passes."""
+    def attempt():
+        with boot_rom(kernel_image, board, tmp_path, test_rom("audio_queue")) as vm:
+            assert_rom_checks(vm, queue.CHECKS)
+            assert one(vm, "rom_exit")["status"] == "0"
+            gap = int(rom_one(vm, "l_gap")["max_ms"])
+            wait_markers(vm, "audio", count=len(queue.TRACE))
+            time.sleep(0.5)
+            tr = after_jump(vm)
+            no_exception(vm)
+        clicks = [m for m in tr if is_click(m)]
+        check_cuts(tr)
+        rest = [(queue.key(m), int(m["t_ms"])) for m in without_clicks(tr)]
+        print(f"clicks={len(clicks)}")
+        assert [t[0] for t in rest[:queue.LONG]] == queue.TRACE[:queue.LONG], rest
+        queue.judge_long_chain(rest[queue.LONG:], gap)
+
+    queue.judged(attempt)

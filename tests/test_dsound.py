@@ -141,7 +141,9 @@ def test_a_big_rom_owes_at_most_the_cap(board, kernel_image, tmp_path, need_mtoo
     # the kernel's poll and its print of the marker shows up after it.
     after = serial[serial.index("ev=disk at=rom"):]
     assert after.count(f" len={CLICK_LEN} ") <= 40 + 1, after
-    # No click starts once the kernel has jumped to the ROM.
+    # The quiet second dropped the debt, and this ROM exits at once with no
+    # card call: no click starts after the jump. tests/test_click_rom.py
+    # covers a ROM that reads.
     assert f" len={CLICK_LEN} " not in serial[serial.index("ev=jump"):], serial
 
 
@@ -182,10 +184,11 @@ def test_slow_typing_with_a_big_rom_drops_no_record(board, kernel_image, tmp_pat
     assert len(ends) == len([m for m in trace if m["op"] in ("pcm", "voice")]), trace
 
 
-def test_no_click_record_after_the_jump(board, kernel_image, tmp_path, need_mtools):
+def test_no_boot_click_record_after_the_jump(board, kernel_image, tmp_path, need_mtools):
     """Every record of a click that started before ev=jump prints before it.
     At 100 ms per character the limiter pays the debt faster than the text adds
-    to it, so the last click of the last line often ends well before the jump."""
+    to it, so the last click of the last line often ends well before the jump.
+    The ROM exits at once with no card call, so it owes no click of its own."""
     rom = make_rom(name="JUMP")
     sd = make_card(tmp_path / "sd.img", {CFG: cfg(delay=100), ROM: rom})
     with booted(kernel_image, board, sd=sd) as vm:

@@ -111,6 +111,8 @@ def scroll_run(board, kernel_image, test_rom, tmp_path, blip):
     assert not [m for m in marks[q:j] if is_click(m)], marks[q:j]
     late = [m for m in marks if is_click(m) and int(m["t_ms"]) > quiet_ms + TICK_MS]
     assert not late, (quiet_ms, late)
+    # The sleep ROM makes no card call, so it owes no click: the kernel's
+    # clicks under a ROM come from the ROM's own reads.
     assert not [m for m in marks[j:] if m.get("ev") == "audio"], marks[j:]
 
     blips = [m for m in marks[q:j] if m.get("ev") == "audio" and m.get("op") == "pcm"
