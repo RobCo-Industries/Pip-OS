@@ -92,7 +92,7 @@ The clicks are square waves from the audio driver, made live at boot from the nu
 
 A PWM pin driven as a square wave can only switch between two levels at one pitch. It has no attack or decay, so a click is a short burst of tone that ends sharply, not a noise burst. The odd harmonics of the square put some energy above the pitch, up to the filter of the jack. Nobody has listened to these clicks on a real speaker yet. How bright and how loud they sound, and whether the sharp edges pop, is still to check on hardware.
 
-In QEMU each click is an `ev=audio op=tone` marker and an `op=stop` marker. They come before the line they belong to on the UART.
+In QEMU each click is an `ev=audio op=tone` marker and an `op=stop` marker. They come before the line they belong to on the UART. The trace prints the `op=stop` marker at the asked end, so its `t_ms` is 4 ms after the `op=tone` marker. The device stops the click only at the next tick, about 10 ms after it began. Read the gap in a trace as the asked length, not the heard one.
 
 ```
 *************** PIP-OS(R) V7.1.0.8 ***************

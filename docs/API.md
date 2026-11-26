@@ -154,7 +154,7 @@ A sample prints two lines. `crc` is the CRC-32 of the copied data. `op=pcm_end` 
 @RC stage=pipos ev=audio op=pcm_end n=78 last=795 t_ms=280
 ```
 
-`t_ms` is the audio driver's millisecond clock. A rest in a sequence prints `op=stop`. So does every sound cut by another one, once. On some hosts QEMU delivers far fewer timer interrupts than samples, so `n` can be much smaller than `len`.
+`t_ms` is the audio driver's millisecond clock. When a note ends on its own, `op=stop` carries the asked end, not the tick that stopped it. The sound itself changes only on the 100 Hz tick, so a 4 ms note shows a 4 ms gap in the trace but sounds about 10 ms. A rest in a sequence prints `op=stop`. So does every sound cut by another one, once. On some hosts QEMU delivers far fewer timer interrupts than samples, so `n` can be much smaller than `len`.
 
 ## Time, sensors and power
 
