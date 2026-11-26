@@ -128,11 +128,31 @@ Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After e
 @RC stage=pipos ev=disk at=rom calls=4 blocks=4 owed=8
 ```
 
-`at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`.
+`at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks before the jump never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`. Card calls a ROM makes print no `ev=disk` line.
 
-With typing on, the gate closes for good when the last boot line starts, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll). At the jump to a ROM the debt drops to 8 and the kernel plays no more clicks. A click that still plays at the jump ends first. So a click never meets a sound of the ROM.
+With typing on, the gate closes when the last boot line starts, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll). At the jump to a ROM the debt drops to 8. A click that still plays at the jump ends first.
 
-A click starts from the tick at any moment. On the trace backend its two records, `op=pcm` and `op=pcm_end`, wait in RobCo-Core's queue of 64 until the main context polls. So until the jump the kernel polls wherever it waits or works long: after each typed character, every 100 ms of the line delay, after each card or slot call, and before each `ev=disk`, `ev=jump` and `ev=ready` marker. At the jump it waits for a click that still plays, then prints the queue. The fastest pace is one click per 30 ms, so 100 ms adds at most 8 records and the queue never fills. Order rules. Every audio record carries `t_ms`, the time it happened, so read times there and not from a record's place in the log. Audio records print in the order they happened. No audio record of the kernel comes after `ev=jump`: the jump stops new clicks first, with interrupts masked, then waits and prints. Against `ev=disk` and `ev=ready` there is no such promise: the kernel polls just before it prints them, but a click that starts or ends between that poll and the print shows up after the marker.
+### Clicks under a ROM
+
+The kernel keeps clicking while a ROM runs, in the ROM pace. The ROM's card and slot calls add to the debt as at boot, and a holotape's do too: the holotape runs inside the ROM's call. The cap is 8. Clicks come in groups of 1 to 4, 30 to 80 ms apart, with a pause of 300 to 900 ms more after each group. No click plays in the first 700 ms after the jump. If the gate closed for the quiet second, it opens again then. So a ROM that makes no card call gets no click with typing on. With typing off the boot's debt, cut to 8, still plays after those 700 ms.
+
+| When a click is due | What happens |
+|---|---|
+| Nothing plays and the ROM's last sound ended 300 ms or more ago | The click is its own play. |
+| A sound the ROM started plays | The click waits. The debt holds up to 8. After 3 s of waiting in a row the kernel drops it. |
+| A kernel click plays | The click waits a tick. |
+
+A click never mixes over a ROM's sound. Every audio call of the ROM or a holotape first stops a kernel click that plays. So the ROM's sound always wins: a click it cuts ends with one `op=stop`, then the ROM's own `op=` line follows. `sample_queue` then starts a new play and never queues behind a click. `audio_status` never reports a click, because the tick clears the image's sound when it finds the voice idle, before it starts one. A call that starts or stops a sound also counts as a ROM sound for the 300 ms rule. `audio_status` and `volume` do not.
+
+When the ROM ends, the kernel drops the debt, goes back to the boot pace and opens the gate, as on a boot with no ROM after its last line. Card work after `ev=ready` still clicks. A holotape the test shell runs with no ROM gets the boot pace and the same yield.
+
+With the system sound off nothing of this exists: no click, no marker, and the audio calls behave as before.
+
+A click starts from the tick at any moment. On the trace backend its two records, `op=pcm` and `op=pcm_end`, wait in RobCo-Core's queue of 64 until the main context polls. So the kernel polls wherever it waits or works long: after each typed character, every 100 ms of the line delay, after each card or slot call, and before each `ev=disk`, `ev=jump` and `ev=ready` marker. At the jump it waits for a click that still plays, then prints the queue. The fastest boot pace is one click per 30 ms, so 100 ms adds at most 8 records and the queue never fills.
+
+Under a ROM the kernel polls after each card or slot call, at the start of each audio call, in `sleep_ms`, in the input calls, in `file_read` and when the ROM ends. Only a card or slot call adds to the debt, and it polls after the add. So at most 8 clicks, 17 records with the end of one that plays, wait for the next poll, far under 64. A record prints at the next of those calls. A ROM that calls none of them holds the records until it ends.
+
+Order rules. Every audio record carries `t_ms`, the time it happened, so read times there and not from a record's place in the log. Audio records, the kernel's and the ROM's, print in the order they happened, from one queue. Every record of a click that started before the jump prints before `ev=jump`. Records of clicks under the ROM come after it, the first one 700 ms or more after the jump by `t_ms`. A click the ROM cuts prints `op=stop` right before the ROM's own start line. Against `ev=disk` and `ev=ready` there is no such promise: the kernel polls just before it prints them, but a click that starts or ends between that poll and the print shows up after the marker.
 
 Two waits do not poll. A frame sent to the SPI panel after each boot line takes 128 ms at the default rate, but up to 1.23 s at the 1 MHz minimum: in theory about 37 clicks, 74 records, more than the queue holds. A panic halts with its queued records unprinted. On a board the PWM backend has no queue, and the poll returns at once.
 
@@ -182,7 +202,7 @@ After the last line the kernel first waits for the note, if it still plays. Then
 @RC stage=pipos ev=scroll lines=15 blips=13
 ```
 
-The SPI panel gets no frame per step, only the clear. With the system sound off and typing on, the scroll runs the same, in silence, with `blips=0` and no `ev=quiet`. The gate stays closed through the scroll and the jump, and no click plays under the ROM.
+The SPI panel gets no frame per step, only the clear. With the system sound off and typing on, the scroll runs the same, in silence, with `blips=0` and no `ev=quiet`. With the sound on, the gate stays closed through the scroll and the jump, and opens again 700 ms after the jump, see [Clicks under a ROM](#clicks-under-a-rom).
 
 A boot with no ROM never scrolls. Its gate opens again after the last line, so card work after `ev=ready` still clicks.
 

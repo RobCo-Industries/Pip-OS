@@ -138,6 +138,7 @@ The queue, the event layout, the time stamps and the repeat schedule are in the 
 - When several errors apply, a call returns the first in this order: a number out of its limits, a bad pointer, a bad note, a waiting sample for `sample_queue`, then the driver's `EIO`.
 - `sample_queue` checks the length, then the pointer, then whether a sample waits. When a sample plays, it copies the data and queues it behind, with no gap. When none plays, it acts as `sample`. `sample_queue` is new in ABI 1.1. [ROM_DEVELOPMENT.md](ROM_DEVELOPMENT.md#playing-long-audio) has a streaming loop.
 - `tone`, `sample`, `play_seq` and `audio_stop` drop the waiting sample with the one that plays. Image start and end stop both.
+- With `[audio] system_sound` on, the kernel may play a short disk click between the ROM's sounds, owed by the ROM's card and slot calls. See [BOOT.md](BOOT.md#clicks-under-a-rom). A ROM's sound always wins: every audio call first stops a click that plays. `audio_status` never reports a click, and `sample_queue` never queues behind one. Each click prints its own `op=pcm len=789` record on the trace backend. A ROM cannot switch the clicks off in this version. The owner turns them off with `system_sound = no` in `PIPOS.CFG`, the default.
 - On PWM the sound goes out on the audio pins in [HARDWARE.md](HARDWARE.md). Samples are not tried on real hardware yet.
 
 QEMU has no PWM model. There Pip-OS uses RobCo-Core's trace backend: each change of sound prints one line on the UART instead of playing it.

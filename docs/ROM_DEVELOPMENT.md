@@ -222,6 +222,8 @@ void play_file(const char *path)
 
 A 4096-byte chunk lasts 512 ms, so a 20 ms sleep leaves plenty of margin. If the ROM comes back too late, the sound ends and the next call starts it again, with a gap. `sample_queue` is new in ABI 1.1: on a 1.0 Pip-OS it returns `-PIP_ENOSYS`. Read `startup->abi_version` to check.
 
+With the system sound on, the kernel may click between your sounds while the ROM reads files. Your sound always wins and the queue behaves as if the click were silence. See [API.md](API.md#audio).
+
 ## Library functions
 
 | Header | Functions |
