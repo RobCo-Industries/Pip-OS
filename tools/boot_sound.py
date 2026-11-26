@@ -27,7 +27,7 @@ Rules it applies, from the library's driver:
   CRC-32 of their bytes. An unknown CRC plays as silence, a buffer of 128,
   with one warning per CRC. The pin still moves to the midpoint for it.
 - Mix: play + overlay - 128, clamped to 0 to 255, then the volume.
-- Volume: 128 + (s - 128) * vol / 100, vol capped at 100. --scale cut
+- Volume: 128 + (s - 128) * vol / 100. --scale cut
   rounds toward 128, as the pinned library does. --scale nearest rounds to
   the nearest step, a half step away from 128, as the newer library does.
   --scale auto, the default, picks nearest when the log has an op=pcm_mix
@@ -44,6 +44,12 @@ Rules it applies, from the library's driver:
 
 Limits: a line of at most 4096 bytes, at most 1000000 lines, at most
 300 s of output plus a 0.3 s tail, at most 4096 .u8 files of at most 4 MiB each.
+Each number is checked when its line is read, before anything is built
+from it. From the library: rate= 4000 to 22050, hz= 20 to 20000, vol= 0
+to 100, as the driver caps it before the trace prints it. len= is 1 to
+6615000, 300 s at 22050 Hz, and so is a play with its queued buffers.
+n= of op=pcm_end is at most 6615000 and last= below it. t_ms= is at most
+300000. n= of ev=audio_drop is 0 to 4294967295.
 
 Exit status: 0 on success, 2 on a bad log, a bad option or a file error,
 with one line that says what and where.
@@ -71,6 +77,18 @@ TAIL_MS = 300
 
 RAMP_LEN = 882
 RAMP_RATE = 22050
+
+# The library's bounds: AUDIO_PCM_RATE_MIN and _MAX, AUDIO_HZ_MIN and _MAX,
+# and a volume of 0 to 100, as audio_set_volume() caps it before the trace
+# records it. Its AUDIO_PCM_LEN_MAX is 2^31 - 1 bytes, more than the output
+# can hold: a play is at most 300 s at the highest rate.
+RATE_MIN = 4000
+RATE_MAX = 22050
+HZ_MIN = 20
+HZ_MAX = 20000
+VOL_MAX = 100
+MAX_PCM_LEN = MAX_SECONDS * RATE_MAX
+MAX_DROP = 0xffffffff
 
 FIELDS = {
     "pcm": ("rate", "len", "vol", "crc", "t_ms"),
@@ -133,7 +151,10 @@ def parse_marker(text, where):
         kv[k] = v
     ev = kv.get("ev")
     if ev == "audio_drop":
-        return ("drop", kv)
+        n = kv.get("n")
+        if n is None or not NUM.match(n) or int(n) > MAX_DROP:
+            raise LogError("%s: ev=audio_drop needs n= from 0 to %d" % (where, MAX_DROP))
+        return ("drop", int(n))
     if ev != "audio":
         return None
     op = kv.get("op")
@@ -152,12 +173,19 @@ def parse_marker(text, where):
             if not NUM.match(v):
                 raise LogError("%s: %s=%s is not a whole number" % (where, f, v))
             out[f] = int(v)
-    if op in ("pcm", "pcm_next", "pcm_mix") and out["len"] == 0:
-        raise LogError("%s: op=%s with len=0" % (where, op))
-    if op == "pcm" and not 1000 <= out["rate"] <= 48000:
-        raise LogError("%s: rate=%d is outside 1000 to 48000" % (where, out["rate"]))
-    if op == "tone" and not 20 <= out["hz"] <= 20000:
-        raise LogError("%s: hz=%d is outside 20 to 20000" % (where, out["hz"]))
+    if op in ("pcm", "pcm_next", "pcm_mix") and not 1 <= out["len"] <= MAX_PCM_LEN:
+        raise LogError("%s: len=%d is outside 1 to %d" % (where, out["len"], MAX_PCM_LEN))
+    if op == "pcm_end" and out["n"] > MAX_PCM_LEN:
+        raise LogError("%s: n=%d is past %d" % (where, out["n"], MAX_PCM_LEN))
+    if op == "pcm_end" and out["last"] >= MAX_PCM_LEN:
+        raise LogError("%s: last=%d is past %d" % (where, out["last"], MAX_PCM_LEN - 1))
+    if op == "pcm" and not RATE_MIN <= out["rate"] <= RATE_MAX:
+        raise LogError("%s: rate=%d is outside %d to %d"
+                       % (where, out["rate"], RATE_MIN, RATE_MAX))
+    if "vol" in out and out["vol"] > VOL_MAX:
+        raise LogError("%s: vol=%d is past %d" % (where, out["vol"], VOL_MAX))
+    if op == "tone" and not HZ_MIN <= out["hz"] <= HZ_MAX:
+        raise LogError("%s: hz=%d is outside %d to %d" % (where, out["hz"], HZ_MIN, HZ_MAX))
     if op == "stop" and out["hz"] != 0:
         raise LogError("%s: op=stop with hz=%d, not 0" % (where, out["hz"]))
     if out["t_ms"] > MAX_SECONDS * 1000:
@@ -182,8 +210,7 @@ def read_log(path):
             if m is None:
                 continue
             if m[0] == "drop":
-                n = m[1].get("n", "")
-                dropped += int(n) if NUM.match(n) else 1
+                dropped += m[1]
                 continue
             events.append((where, m[0], m[1]))
     return events, dropped
@@ -226,7 +253,7 @@ class Play:
     def __init__(self, t0, rate, vol, data, ramp):
         self.t0 = t0
         self.rate = rate
-        self.vol = 100 if ramp else min(vol, 100)
+        self.vol = 100 if ramp else vol
         self.data = bytearray(data)
         self.ramp = ramp
         self.mix = None         # (first sample index, bytes)
@@ -242,7 +269,6 @@ class Play:
 
 class Tone:
     def __init__(self, t0, hz, vol):
-        vol = min(vol, 100)
         self.t0 = t0
         self.rng = max(2, (PWM_CLOCK + hz // 2) // hz)
         self.duty = ((self.rng // 2) * vol + 50) // 100 / self.rng
@@ -356,6 +382,8 @@ class Renderer:
             elif op == "pcm_next":
                 if not isinstance(cur, Play) or cur.ended:
                     raise LogError("%s: op=pcm_next with no sample play" % where)
+                if len(cur.data) + f["len"] > MAX_PCM_LEN:
+                    raise LogError("%s: the play's buffers pass %d bytes" % (where, MAX_PCM_LEN))
                 cur.data += self.lookup(f["crc"], f["len"])
             elif op == "pcm_mix":
                 if not isinstance(cur, Play) or cur.ended:
