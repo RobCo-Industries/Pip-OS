@@ -15,7 +15,8 @@
 # LIBPIP_DIR (where libpip.a is built, default $(BUILD)/libpip), CROSS,
 # PYTHON, CI=1 (warnings are errors).
 #
-# Targets: all, clean. The guide is docs/ROM_DEVELOPMENT.md.
+# Targets: all, clean, flags-json (writes FLAGS_JSON, default
+# $(BUILD)/flags.json, the flags of SDK_PACKAGE.md "flags.json"). The guide is docs/ROM_DEVELOPMENT.md.
 
 PIP_SDK := $(patsubst %/,%,$(strip $(PIPOS_SDK)))
 ifeq ($(PIP_SDK),)
@@ -48,21 +49,32 @@ endif
 # SUBTYPE: the header subtype. A ROM has only 0. A holotape takes 0 or
 # game, 1 or utility. Data holotapes, subtype 2, have no slot: seal refuses them.
 PIP_SUBTYPE_IN := $(strip $(SUBTYPE))
+PIP_LDS_rom      := $(PIP_SDK)/rom.ld
+PIP_LDS_holotape := $(PIP_SDK)/holotape.ld
+# The startup code's defines per kind and subtype, the keys of
+# flags.json crt0_defines. Each word is passed as -D and the word.
+PIP_CRT0_DEFS_rom              := PIP_IMG_MAGIC="ROM1" PIP_IMG_SUBTYPE=0
+PIP_CRT0_DEFS_holotape-game    := PIP_IMG_MAGIC="ROBCO78" PIP_IMG_SUBTYPE=0
+PIP_CRT0_DEFS_holotape-utility := PIP_IMG_MAGIC="ROBCO78" PIP_IMG_SUBTYPE=1
+PIP_CRT0_KEYS := rom holotape-game holotape-utility
 ifeq ($(strip $(KIND)),rom)
-PIP_LDS     := $(PIP_SDK)/rom.ld
+PIP_LDS     := $(PIP_LDS_rom)
 PIP_MAGIC   := ROM1
 ifeq ($(filter-out 0,$(PIP_SUBTYPE_IN)),)
 PIP_SUBTYPE := 0
+PIP_CRT0_KEY := rom
 else
 $(error SUBTYPE=$(PIP_SUBTYPE_IN) is not valid for KIND=rom: a ROM has only subtype 0)
 endif
 else ifeq ($(strip $(KIND)),holotape)
-PIP_LDS     := $(PIP_SDK)/holotape.ld
+PIP_LDS     := $(PIP_LDS_holotape)
 PIP_MAGIC   := ROBCO78
 ifeq ($(filter-out 0 game,$(PIP_SUBTYPE_IN)),)
 PIP_SUBTYPE := 0
+PIP_CRT0_KEY := holotape-game
 else ifeq ($(filter-out 1 utility,$(PIP_SUBTYPE_IN)),)
 PIP_SUBTYPE := 1
+PIP_CRT0_KEY := holotape-utility
 else ifeq ($(filter-out 2 data,$(PIP_SUBTYPE_IN)),)
 $(error SUBTYPE=$(PIP_SUBTYPE_IN) is a data holotape: it has no slot and cannot run, so the SDK does not build it)
 else
@@ -77,6 +89,7 @@ endif
 # it into abi_version and the headers hide calls added after it. Not set,
 # no define is passed and the headers use their own ABI. libpip.a never
 # sees it.
+PIP_ABI_MACRO := PIPOS_ABI_TARGET
 PIP_ABI_IN := $(strip $(ABI))
 ifneq ($(PIP_ABI_IN),)
 pip_nodigits = $(subst 0,,$(subst 1,,$(subst 2,,$(subst 3,,$(subst 4,,$(subst 5,,$(subst 6,,$(subst 7,,$(subst 8,,$(subst 9,,$(1)))))))))))
@@ -91,7 +104,7 @@ endif
 ifeq ($(PIP_ABI_HEX),)
 $(error ABI=$(PIP_ABI_IN) is not valid: use MAJOR.MINOR in decimal with no leading zero, MAJOR 1, MINOR 0 to 65535, such as 1.3)
 endif
-PIP_ABI_DEF := -DPIPOS_ABI_TARGET=$(PIP_ABI_HEX)
+PIP_ABI_DEF := -D$(PIP_ABI_MACRO)=$(PIP_ABI_HEX)
 endif
 
 PIP_CC      := $(CROSS)gcc
@@ -103,9 +116,14 @@ PIP_RIMG    := $(ROBCO_CORE)/tools/rimg.py
 # The kernel's CPU flags, from RobCo-Core's mk/robco.mk: ARMv6, ARM
 # state, soft float, so no movw/movt and no FPU registers.
 PIP_ARCHFLAGS := -mcpu=arm1176jzf-s -marm -mfloat-abi=soft -mgeneral-regs-only -mno-unaligned-access
-PIP_BASEFLAGS := $(PIP_ARCHFLAGS) -std=gnu11 -ffreestanding -nostdlib \
+# PIP_CODEFLAGS and PIP_INCDIRS are flags.json cflags and include_dirs.
+# -MMD -MP only track headers for make, and -Werror is CI's choice, so
+# flags.json leaves them out.
+PIP_CODEFLAGS := $(PIP_ARCHFLAGS) -std=gnu11 -ffreestanding -nostdlib \
                  -ffunction-sections -fdata-sections -fno-tree-loop-distribute-patterns \
-                 -O2 -g -Wall -Wextra -MMD -MP -I$(PIP_SDK)/include
+                 -O2 -g -Wall -Wextra
+PIP_INCDIRS   := $(PIP_SDK)/include
+PIP_BASEFLAGS := $(PIP_CODEFLAGS) -MMD -MP $(addprefix -I,$(PIP_INCDIRS))
 ifeq ($(CI),1)
 PIP_BASEFLAGS += -Werror
 endif
@@ -118,6 +136,10 @@ PIP_LIBFLAGS := $(PIP_BASEFLAGS) -I$(ROBCO_CORE)/include $(PIP_RENAMES)
 
 # --no-warn-rwx-segments needs binutils 2.39 or later.
 PIP_LD_RWX := $(shell $(PIP_LD) --help 2>/dev/null | grep -q no-warn-rwx-segments && echo -Wl,--no-warn-rwx-segments)
+# flags.json ldflags and system_libs. The map file's flag holds a path,
+# so it stays out of PIP_LDFLAGS.
+PIP_LDFLAGS  := $(PIP_ARCHFLAGS) -nostdlib -Wl,--gc-sections $(PIP_LD_RWX)
+PIP_SYSLIBS  := -lgcc
 
 # libpip.a: sdk/lib/*.c and RobCo-Core's pure string, printf, heap, INI
 # and CRC code.
@@ -164,7 +186,7 @@ ifeq ($(.DEFAULT_GOAL),)
 .DEFAULT_GOAL := all
 endif
 
-.PHONY: all clean
+.PHONY: all clean flags-json
 all: $(PIP_OUT)
 
 # Sealed and verified under a temporary name, so a failure leaves no image.
@@ -179,12 +201,12 @@ $(PIP_OUT): $(PIP_ELF) $(PIP_RIMG) $(PIP_CFG) $(ICON)
 	mv $@.tmp $@
 
 $(PIP_ELF): $(PIP_CRT0) $(PIP_OBJS) $(LIBPIP) $(PIP_LDS) $(PIP_LCFG)
-	$(PIP_CC) $(PIP_ARCHFLAGS) -nostdlib -T $(PIP_LDS) -Wl,--gc-sections $(PIP_LD_RWX) \
-	    -Wl,-Map,$(@:.elf=.map) -o $@ $(PIP_CRT0) $(PIP_OBJS) $(LIBPIP) -lgcc
+	$(PIP_CC) $(PIP_LDFLAGS) -T $(PIP_LDS) -Wl,-Map,$(@:.elf=.map) \
+	    $(PIP_CRT0) $(PIP_OBJS) $(LIBPIP) $(PIP_SYSLIBS) -o $@
 
 $(PIP_CRT0): $(PIP_SDK)/crt0.S $(PIP_CFG)
 	@mkdir -p $(dir $@)
-	$(PIP_CC) $(PIP_CFLAGS) '-DPIP_IMG_MAGIC="$(PIP_MAGIC)"' -DPIP_IMG_SUBTYPE=$(PIP_SUBTYPE) -c -o $@ $<
+	$(PIP_CC) $(PIP_CFLAGS) $(foreach d,$(PIP_CRT0_DEFS_$(PIP_CRT0_KEY)),'-D$(d)') -c -o $@ $<
 
 # ar D: zero dates and ids, so two builds give the same archive.
 $(LIBPIP): $(PIP_LIB_OBJS) $(PIP_LIBCFG)
@@ -218,6 +240,30 @@ $(call pip_cfg,$(PIP_CFG),$(PIP_CFG_TEXT),$(PIP_CRT0) $(PIP_OBJS) $(PIP_OUT))
 $(call pip_cfg,$(PIP_LCFG),$(PIP_LCFG_TEXT),$(PIP_ELF))
 $(call pip_cfg,$(PIP_LIBCFG),$(PIP_LIBCFG_TEXT),$(PIP_LIB_OBJS) $(LIBPIP))
 endif
+
+# flags.json: the flags above, with paths relative to the package root
+# of SDK_PACKAGE.md "Layout of pipos": include/, lib/. No flag holds a
+# path; the test fails if one does.
+FLAGS_JSON ?= $(BUILD)/flags.json
+pip_jstr  = "$(subst ",\",$(1))"
+pip_jlist = [$(subst $(pip_sp),$(pip_comma) ,$(strip $(foreach w,$(1),$(call pip_jstr,$(w)))))]
+pip_comma := ,
+pip_jdefs = "$(1)": $(call pip_jlist,$(PIP_CRT0_DEFS_$(1)))
+PIP_FLAGS_JSON_TEXT := { \
+  "format": 1, \
+  "cflags": $(call pip_jlist,$(PIP_CODEFLAGS)), \
+  "include_dirs": $(call pip_jlist,$(patsubst $(PIP_SDK)/%,%,$(PIP_INCDIRS))), \
+  "ldflags": $(call pip_jlist,$(PIP_LDFLAGS)), \
+  "linker_scripts": {"holotape": "lib/$(notdir $(PIP_LDS_holotape))", "rom": "lib/$(notdir $(PIP_LDS_rom))"}, \
+  "crt0": "lib/crt0.S", \
+  "crt0_defines": {$(call pip_jdefs,$(firstword $(PIP_CRT0_KEYS)))$(foreach k,$(wordlist 2,9,$(PIP_CRT0_KEYS)),$(pip_comma) $(call pip_jdefs,$(k)))}, \
+  "libs": ["lib/$(notdir $(LIBPIP))"], \
+  "system_libs": $(call pip_jlist,$(PIP_SYSLIBS)), \
+  "abi_define": "$(PIP_ABI_MACRO)" \
+}
+flags-json:
+	@mkdir -p $(dir $(FLAGS_JSON))
+	printf '%s\n' '$(subst ','"'"',$(PIP_FLAGS_JSON_TEXT))' > $(FLAGS_JSON)
 
 clean:
 	rm -rf $(BUILD) $(LIBPIP_DIR)
