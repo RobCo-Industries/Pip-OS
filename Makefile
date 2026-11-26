@@ -44,6 +44,7 @@ PURE_SRCS  := \
               kernel/gfx_draw.c \
               kernel/holo_rules.c \
               kernel/input_events.c \
+              kernel/keyclick.c \
               kernel/settings.c \
               kernel/slot_rules.c \
               kernel/storage_rules.c \

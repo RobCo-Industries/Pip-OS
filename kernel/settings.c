@@ -4,6 +4,7 @@
 #include <robco/ini.h>
 #include <robco/klibc.h>
 
+#include "keyclick.h"
 #include "robco_config.h"
 
 static const char *const scheme_names[] = { "green", "amber", "blue", "white" };
@@ -148,6 +149,8 @@ void pipos_settings_default(pipos_settings_t *s)
     s->line_delay_ms = 0;
     s->volume = PIPOS_VOLUME_MAX;
     s->beep = 1;
+    s->char_delay_ms = 0;
+    s->key_click = 0;
     s->backend = PIPOS_BACKEND_HDMI;
     s->tft.cs = 0;
     s->tft.dc = 25;
@@ -291,6 +294,18 @@ static int on_key(const char *section, const char *key, const char *value, unsig
     } else if (k_strcmp(section, "display") == 0 && k_strcmp(key, "line_delay_ms") == 0) {
         if (parse_uint(value, PIPOS_DELAY_MAX_MS, &n) == 0) {
             p->s.line_delay_ms = n;
+        } else {
+            ok = 0;
+        }
+    } else if (k_strcmp(section, "display") == 0 && k_strcmp(key, "char_delay_ms") == 0) {
+        if (parse_uint(value, PIPOS_CHAR_DELAY_MAX_MS, &n) == 0) {
+            p->s.char_delay_ms = n;
+        } else {
+            ok = 0;
+        }
+    } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "key_click") == 0) {
+        if (parse_bool(value, &v) == 0) {
+            p->s.key_click = v;
         } else {
             ok = 0;
         }
