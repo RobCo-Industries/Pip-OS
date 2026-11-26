@@ -443,6 +443,15 @@ sdk-package:
 	$(PKG_TOOL) check "$$(cat $(PKG_BUILD)/zip.txt)" --forbid "$(CURDIR)" --forbid "$(PKG_BUILD)" \
 	    --forbid "$$HOME" --user "$$(id -un)" --forbid "$$(hostname)"
 
+# Boots the kernel a package ships, with only what is in it, on BOARD:
+# make sdk-boot-test SDK_ZIP=build/pipos-1.4.0.zip [BOARD=raspi0]
+# tests/test_sdk_boot.py builds the simulator card with the run_exit0 tape.
+.PHONY: sdk-boot-test
+sdk-boot-test: holo-run_exit0 venv
+	@test -n "$(SDK_ZIP)" || { echo "sdk-boot-test: give SDK_ZIP=<package zip>" >&2; exit 1; }
+	$(VENV)/bin/pytest tests/test_sdk_boot.py -v -rs -p no:cacheprovider --board $(BOARD) \
+	    --sdk-zip "$(abspath $(SDK_ZIP))" --sdk-tape $(abspath $(HOLO_BUILD))/run_exit0/run_exit0.htp
+
 # An untracked file never gets into a package. Builds nothing.
 sdk-package-inputs-test:
 	tests/host/sdk_package_inputs_test.sh

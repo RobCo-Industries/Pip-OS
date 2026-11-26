@@ -1,0 +1,145 @@
+"""Boots the kernel that an SDK package ships, with only what is in it.
+
+The QEMU suite boots the kernel of this checkout's compiler. The package's
+kernel comes from the compiler `make sdk-package` was given, the pinned
+xPack one in CI. This file unpacks a package, builds the simulator card of
+RobCo-Core's docs/spec/STUDIO_CLI.md from the package's kernel, config.txt
+and runner ROM, with one tape, starts QEMU with the arguments the package's
+boot.json gives each board, and waits for the runner's signed done line
+with result=exit rc=0.
+
+It runs only when given a package:
+
+    pytest tests/test_sdk_boot.py --sdk-zip build/pipos-1.4.0.zip \
+        --sdk-tape build/holotapes/run_exit0/run_exit0.htp --board all
+
+`make sdk-boot-test SDK_ZIP=<zip>` builds the tape and runs it. Nothing
+here skips: a board QEMU lacks is a failure.
+"""
+
+import contextlib
+import json
+import os
+import shutil
+import zipfile
+
+import pytest
+
+from harness.boot import Vm, _connect_unix
+from harness.plugin import have_mtools, selected_boards
+from harness.qemu import COMMON_ARGS, Qemu
+
+from pipos_helpers import READY, TIMEOUT, no_exception, one
+from test_runner import RUN_LINE, TAPE, read_run, runner_cfg, runner_lines, sim_card
+
+# The boards boot.json must list, by RobCo-Core's docs/spec/TESTING.md.
+BOARDS = ["raspi0", "raspi1ap", "raspi2b", "raspi3b"]
+# What the card takes from the package.
+NEEDED = ("boot.json", "boot/PIPOS.IMG", "boot/config.txt", "boot/fwstub.bin",
+          "boot/RUNNER.ROM")
+
+
+@pytest.fixture(scope="module")
+def package(request, tmp_path_factory):
+    """The package unpacked: a dict of its files' paths, and boot.json."""
+    zpath = request.config.getoption("--sdk-zip")
+    out = tmp_path_factory.mktemp("sdkpkg")
+    with zipfile.ZipFile(zpath) as z:
+        names = z.namelist()
+        for n in NEEDED:
+            assert n in names, f"{zpath} has no {n}"
+            dest = out / n
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(z.read(n))
+    with open(out / "boot.json", encoding="utf-8") as f:
+        doc = json.load(f)
+    return {n: str(out / n) for n in NEEDED}, doc
+
+
+@pytest.fixture(scope="module")
+def tape(request):
+    path = request.config.getoption("--sdk-tape")
+    assert path, "--sdk-tape names the holotape the runner launches"
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def pytest_generate_tests(metafunc):
+    if "sdk_board" in metafunc.fixturenames:
+        metafunc.parametrize("sdk_board", selected_boards(metafunc.config))
+
+
+def qemu_path(s):
+    """A path as it enters a QEMU option: a comma doubled."""
+    return s.replace(",", ",,")
+
+
+def fill(args, values):
+    out = []
+    for a in args:
+        for k, v in values.items():
+            a = a.replace("{" + k + "}", qemu_path(v))
+        out.append(a)
+    return out
+
+
+@contextlib.contextmanager
+def boot_from_json(doc, board, stub, image, sd):
+    """Starts QEMU as boot.json says for `board`, in its default mode, with
+    the serial ports of the harness's boot(), and yields a Vm. QEMU starts
+    stopped and runs once the ports are connected, so no line is lost."""
+    b = doc["boards"][board]
+    # harness.qemu.Qemu adds -M and COMMON_ARGS itself.
+    assert doc["common"] == COMMON_ARGS, doc["common"]
+    args = fill(b["modes"][b["default_mode"]], {"stub": stub, "image": image})
+    args += fill(doc["sd"], {"sd": sd})
+    assert shutil.which(b["qemu"]), f"{b['qemu']} is not on the path"
+    q = Qemu(b["qemu"], b["machine"], timeout=TIMEOUT, null_serial=False)
+    paths = [q._sock(f"serial{i}") for i in range(2)]
+    serial = []
+    for i, p in enumerate(paths):
+        serial += ["-chardev", f"socket,id=ser{i},path={p},server=on,wait=off",
+                   "-serial", f"chardev:ser{i}"]
+    q.extra = serial + ["-S"] + args
+    vm = None
+    try:
+        q.start()
+        socks = [_connect_unix(p, q, TIMEOUT) for p in paths]
+        vm = Vm(q, socks)
+        q.execute("cont")
+        yield vm
+    finally:
+        if vm is not None:
+            vm.close()
+        else:
+            q.close()
+
+
+def test_boot_json_lists_the_four_boards(package, request):
+    _, doc = package
+    assert sorted(doc["boards"]) == BOARDS
+    if "all" in request.config.getoption("--board"):
+        assert sorted(selected_boards(request.config)) == BOARDS
+
+
+def test_package_kernel_runs_a_tape(package, tape, sdk_board, tmp_path):
+    assert have_mtools(), "mtools (mformat, mcopy, mmd) are not installed"
+    files, doc = package
+    assert sdk_board in doc["boards"], f"boot.json has no {sdk_board}"
+    with open(files["boot/config.txt"], "rb") as f:
+        config_txt = f.read()
+    with open(files["boot/RUNNER.ROM"], "rb") as f:
+        runner = f.read()
+    sd = sim_card(tmp_path / "sd.img", files["boot/PIPOS.IMG"], runner_cfg(TAPE), tape,
+                  config_txt=config_txt, runner=runner)
+    with boot_from_json(doc, sdk_board, files["boot/fwstub.bin"], files["boot/PIPOS.IMG"],
+                        os.fspath(sd)) as vm:
+        vm.wait_for(READY, timeout=TIMEOUT)
+        lines = vm.lines()
+        no_exception(vm)
+        rom_exit = one(vm, "rom_exit")
+    end, key = read_run(lines)
+    assert key is not None, lines
+    assert RUN_LINE.fullmatch(runner_lines(lines)[0])["tape"] == TAPE, lines
+    assert end == ("done", f"@RC stage=runner ev=done result=exit rc=0 key={key}"), lines
+    assert rom_exit["status"] == "0", lines
