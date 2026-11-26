@@ -25,13 +25,18 @@ shell comment inside a script is still filled in.
 A line that ends in | or > after a key and a colon opens a block scalar,
 whatever stands between the colon and the indicator. Every following line
 indented deeper than that key, blank lines included, is block text, and
-any ${{ there fails. An anchor, an alias or a merge key anywhere fails the
-whole file with one line: anchors and aliases are not read.
+any ${{ there fails. An anchor, an alias or a merge key on a structure
+line fails the whole file with one line: anchors and aliases are not read.
+A structure line is any line that is not block text. The token counts only
+where YAML reads one: at the start of a value, right after "KEY: " or "- ",
+as in "run: &script |", "uses: *step" or "<<: *base". A * or & further
+inside a value, as in "run: ls *.zip", or in block text is not a token.
 
 What stays unseen: a value that reaches a script through env: and is then
 used unquoted or in eval; a reusable workflow or an action in another
-repository; values relayed through outputs and used by a later script; and
-any YAML form made to look like the safe shape on purpose.
+repository; values relayed through outputs and used by a later script; a
+multi-line quoted value whose inner lines look like a mapping, which is read
+as structure; and any YAML form made to look like the safe shape on purpose.
 
 Usage: check_workflow_exprs.py FILE...
 Exit 0 when clean, 1 with one line per hit, 2 on a usage error.
@@ -42,7 +47,10 @@ import sys
 
 SAFE = re.compile(r"^[ \t]*(?:- )?([A-Za-z0-9_-]+): (.*)$")
 BLOCK = re.compile(r"^([ \t]*(?:- )?)[A-Za-z0-9_\"'-][^:]*:(?:[ \t]+\S+)*?[ \t]*[|>][-+0-9]*[ \t]*(?:#.*)?$")
-ANCHOR = re.compile(r"(?:^|[\s\[{,:-])[&*][A-Za-z0-9_-]|<<[ \t]*:")
+ANCHOR = re.compile(
+    r"^[ \t]*(?:- )*(?:(?:[^\s#:][^:#]*)?:[ \t]+)?(?:![^\s]*[ \t]+)?[&*][A-Za-z0-9_-]"
+    r"|^[ \t]*(?:- )*<<[ \t]*:"
+)
 EXPR = re.compile(r"\$\{\{.*?\}\}")
 LEAD = re.compile(r"^[ \t]*(?:- )*")
 OPENER = re.compile(r"^[^#]*:[ \t]*(?:#.*)?$")
@@ -78,11 +86,29 @@ def under_opener(lines, index):
     return True
 
 
+def block_text_lines(all_lines):
+    """Line numbers of block scalar text."""
+    found = set()
+    block_indent = None
+    for num, line in enumerate(all_lines, 1):
+        indent = len(line) - len(line.lstrip(" \t"))
+        if block_indent is not None:
+            if not line.strip() or indent > block_indent:
+                found.add(num)
+                continue
+            block_indent = None
+        block = BLOCK.match(line)
+        if block:
+            block_indent = len(block.group(1))
+    return found
+
+
 def findings(text):
     """Yield (line number, reason) for each unsafe line."""
     all_lines = text.splitlines()
+    text_lines = block_text_lines(all_lines)
     for num, line in enumerate(all_lines, 1):
-        if ANCHOR.search(line):
+        if num not in text_lines and ANCHOR.match(line):
             yield num, "anchors and aliases are not read"
             return
     block_indent = None

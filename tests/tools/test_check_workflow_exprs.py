@@ -53,6 +53,9 @@ MUST_FAIL = {
         "        run: !!str |\n          env:\n            X: ${{ x }}\n"
     ),
     "plain continuation": "        run: echo a\n          X: ${{ x }}\n",
+    "alias uses": "        uses: *step\n",
+    "merge alias": "        <<: *base\n",
+    "anchor env": "        env: &e\n          A: b\n",
 }
 
 MUST_PASS = {
@@ -70,6 +73,18 @@ MUST_PASS = {
     "quotes inside expr": "          TAG: ${{ a && b || '' }}\n",
     "sibling if": "      - name: x\n        if: ${{ x }}\n",
     "concurrency group": "concurrency:\n  group: g-${{ github.ref }}\n",
+    "shell globs in block": (
+        "      - run: |\n"
+        "          case \"$out\" in\n"
+        "            *error*) exit 1 ;;\n"
+        "          esac\n"
+        "          rm *foo\n"
+        "          a && b\n"
+        "          cmd &\n"
+        "          make 2>&1\n"
+        "          echo $* \"$@\"\n"
+    ),
+    "glob in single-line run": "      - run: ls *.zip\n",
 }
 
 
