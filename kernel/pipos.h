@@ -71,6 +71,10 @@ unsigned pipos_dsound_line(const char *text);
 void pipos_dsound_line_done(unsigned owed);
 /* Before the jump to a ROM: no click plays from here on. */
 void pipos_dsound_jump(void);
+/* Prints queued audio records with the sound on, before the jump. */
+void pipos_dsound_poll(void);
+/* Waits ms in steps of at most 100 ms, with a pipos_dsound_poll() after each. */
+void pipos_dsound_delay(uint32_t ms);
 
 /*
  * sys_gfx.c: on, the display shows black and present only updates the

@@ -14,12 +14,20 @@
  *
  * After the jump to a ROM the kernel plays no click, so a click never meets
  * a ROM's own sound. A click that still plays at the jump ends first.
+ *
+ * Clicks start from the tick at any moment, and the trace backend queues
+ * their records until the main context polls. So the kernel polls through
+ * pipos_dsound_poll() wherever it waits or works long: each typed character,
+ * the line delay in 100 ms steps, each card or slot call, and before each
+ * of its own markers. The fastest pace is one click per 3 ticks, two
+ * records per click, so 100 ms adds at most 8 of the queue's 64 records.
  */
 #include <robco/audio.h>
 #include <robco/blk.h>
 #include <robco/irq.h>
 #include <robco/klibc.h>
 #include <robco/tick.h>
+#include <robco/timer.h>
 
 #include "dsound_rules.h"
 #include "pipos.h"
@@ -45,9 +53,31 @@ static int known;                 /* the setting is read */
 static int counting = 1;          /* 0 once the setting is off */
 static int on;                    /* the setting is on and the tick runs */
 static volatile int jumped;
-static volatile uint32_t click_tick;
-static volatile int clicked;
 static struct wrap card_wrap, slot_wrap;
+
+/*
+ * Prints the queued audio records, so they come before the next marker and
+ * the queue never fills. Main context only. With the sound off, or after the
+ * jump, it returns at once: on a board the PWM backend has no queue anyway.
+ */
+void pipos_dsound_poll(void)
+{
+    if (on && !jumped) {
+        audio_poll();
+    }
+}
+
+/* timer_delay_ms() in steps of at most 100 ms, with a poll after each. */
+void pipos_dsound_delay(uint32_t ms)
+{
+    while (ms > 0) {
+        uint32_t step = ms > 100u ? 100u : ms;
+
+        timer_delay_ms(step);
+        ms -= step;
+        pipos_dsound_poll();
+    }
+}
 
 static void count_io(uint32_t count)
 {
@@ -74,6 +104,7 @@ static int wrap_read(blk_dev_t *dev, uint64_t lba, uint32_t count, void *buf)
     int rc = inner->read(inner, lba, count, buf);
 
     count_io(count);
+    pipos_dsound_poll();
     return rc;
 }
 
@@ -83,6 +114,7 @@ static int wrap_write(blk_dev_t *dev, uint64_t lba, uint32_t count, const void *
     int rc = inner->write(inner, lba, count, buf);
 
     count_io(count);
+    pipos_dsound_poll();
     return rc;
 }
 
@@ -118,6 +150,7 @@ blk_dev_t *pipos_dsound_slot(blk_dev_t *dev)
 
 static void print_stage(const struct stage *st)
 {
+    pipos_dsound_poll();
     k_printf("@RC stage=" PIPOS_STAGE " ev=disk at=%s calls=%u blocks=%u owed=%u\n", st->at,
              st->calls, st->blocks, st->owed);
 }
@@ -159,10 +192,7 @@ static int can_play(void)
 
 static void start_click(int k)
 {
-    if (audio_play_pcm(sound_click[k], SOUND_CLICK_LEN, SOUND_RATE_HZ, 0) == 0) {
-        click_tick = tick_count();
-        clicked = 1;
-    }
+    (void)audio_play_pcm(sound_click[k], SOUND_CLICK_LEN, SOUND_RATE_HZ, 0);
 }
 
 /* IRQ context, every tick. */
@@ -228,6 +258,7 @@ void pipos_dsound_line_done(unsigned owed)
     if (!on || jumped) {
         return;
     }
+    pipos_dsound_poll();
     k_printf("@RC stage=" PIPOS_STAGE " ev=disk at=text calls=0 blocks=0 owed=%u\n", owed);
 }
 
@@ -242,8 +273,9 @@ void pipos_dsound_jump(void)
     pipos_dsound_rom(&rules);
     jumped = 1;
     irq_restore(irq);
-    /* A click lasts 21 ms, under 3 ticks: let one that plays end. */
-    if (clicked && tick_count() - click_tick < 4u) {
-        audio_wait();
-    }
+    /*
+     * Let a click that plays end, then print every queued record, so none
+     * comes after ev=jump. A click lasts 21 ms, so the wait is short.
+     */
+    audio_wait();
 }

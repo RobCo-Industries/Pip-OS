@@ -4,7 +4,6 @@
  */
 #include <robco/audio.h>
 #include <robco/console.h>
-#include <robco/timer.h>
 #include <robco/uart.h>
 
 #include "display.h"
@@ -29,7 +28,7 @@ void pipos_screen_typing(uint32_t delay)
 
 /* Writes text on the screen console one character at a time, in silence. */
 static const struct pipos_type_ops type_ops = {
-    console_putc, timer_delay_ms,
+    console_putc, pipos_dsound_delay,
 };
 
 static void type_line(const char *text)
@@ -46,7 +45,7 @@ void pipos_screen_line(const char *text)
     unsigned owed = 0;
 
     if (lines_shown++ > 0 && line_delay_ms > 0) {
-        timer_delay_ms(line_delay_ms);
+        pipos_dsound_delay(line_delay_ms);
     }
     audio_poll(); /* prints audio trace records queued so far */
     if (char_delay_ms > 0) {

@@ -409,6 +409,7 @@ void robco_main(void)
         pipos_rom_run(&res);
     }
     ready_flag = 1;
+    pipos_dsound_poll();
     k_printf("@RC stage=" PIPOS_STAGE " ev=ready rom=%d\n", rom);
     main_loop();
 }
