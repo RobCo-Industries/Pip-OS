@@ -56,13 +56,14 @@ So a local build with another compiler fails until it names that compiler, such 
 - The layout: every file of the spec's table and the ten headers, and nothing else but more headers in `include/pipos/`. No `include/pipos/pipos.h`.
 - `licences` names no GPL licence. The check reads what `sdk.json` declares, not the licence of a file's bytes.
 - No Pi firmware file.
+- Every string in `sdk.json`, keys included, is text: one that holds an unpaired surrogate, such as the escape `"\ud800"`, is a `FAIL` line, and the fields are not checked further.
 - Every file entry can be read. An entry with an unknown method, a wrong CRC or encryption is a `FAIL` line with its name, and its bytes are neither hashed nor searched.
 - No `--forbid` text in any file, `sdk.json` included.
 - No `--user` name in the forms a tool writes it: `/home/NAME`, `/Users/NAME`, `\Users\NAME` and `NAME@`. The bare name is not searched. On a GitHub runner the user is `runner`, and `sdk.json` holds the format key `runner` and the path `boot/RUNNER.ROM`.
 
 A hit names the file, the offset and the run of printable bytes around it, at most 80 on each side, so a log shows the whole path that got in. A text given twice, such as `$HOME` and the home folder of `--user`, is reported once.
 
-A forbidden text under 4 characters is an error, not a pass: it would match by chance. The search compares bytes. It finds a Windows path only as written with single `\`, not with `/` or with the `\\` of a JSON string. The package is built on Linux only, so this is enough today.
+A forbidden text under 4 characters is an error, not a pass: it would match by chance. With `--skip-short` the check leaves such a text out and says so in one `note:` line. `make sdk-package` passes it, so a host or user name such as `pi` does not stop the build. The long forms of a short user name, such as `/home/pi`, are still searched. `PKG_HOST` and `PKG_USER` set the names, so a test can give a short one. The search compares bytes. It finds a Windows path only as written with single `\`, not with `/` or with the `\\` of a JSON string. The package is built on Linux only, so this is enough today.
 
 What the check cannot decide from the archive alone: that each file comes from the source the spec names, that the headers equal `sdk/include/pipos/` byte for byte, that `tools` names the compiler that built `libpip.a`, and that `firmware` holds the pins of RobCo-Core's `tools/fetch_firmware.sh`. `make sdk-package` holds those when it builds.
 
