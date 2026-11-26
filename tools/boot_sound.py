@@ -2,6 +2,7 @@
 """Rebuild what the audio pin would play from the audio trace of a serial log.
 
     boot_sound.py LOG OUT.wav --pcm DIR [--pcm DIR ...] [--scale MODE]
+                  [--tone-peak N]
 
 QEMU has no PWM model, so the kernel's audio runs on RobCo-Core's trace
 backend and prints one marker per change. This tool reads those markers
@@ -58,10 +59,25 @@ Rules it applies, from the library's driver:
   A play keeps the volume its line prints. The driver applies a volume
   change to the samples that follow, but prints no line for it, so the
   file is wrong for a play whose volume changes on the way.
-- A sample play holds duty s / 256 of the 37.5 kHz carrier. A tone is the
-  pin's pulse: period round(9600000 / hz) counts, high for
-  (period / 2 * vol + 50) / 100 of them. Silence is duty 0, or duty 128
-  once the rest ramp has reached its last sample.
+- A sample play holds duty s / 256 of the 37.5 kHz carrier. Silence is
+  duty 0, or duty 128 once the rest ramp has reached its last sample.
+- A tone before the rest ramp, or after a ramp cut early, is the pin's
+  pulse: period round(9600000 / hz) counts, high for
+  (period / 2 * vol + 50) / 100 of them.
+- A tone that starts after the rest ramp reached its end is the
+  library's centred square, from tools/tone_square.py, one sample per
+  carrier period from the first frame at or after its t_ms:
+    half = max(256, (37500 * 128 + hz / 2) / hz), so a pitch above
+      18750 Hz plays at 18750 Hz
+    amp = (peak * vol + 50) / 100 steps each side of 128
+    a note starts at an edge going up; a sample that holds an edge takes
+      the mean of the two levels by the edge's place in it
+  Each op=tone is a new note, so a volume change takes effect at the next
+  note. The gap between op=stop and the next op=tone holds 128. The
+  library restarts a note after a late IRQ skips over 64 samples. The
+  tool has no late IRQ, so that rule never applies here. The trace does
+  not print the peak or the grid: the tool assumes the kernel's peak,
+  127 unless --tone-peak says else, and a grid of 37500 Hz.
 - Output: 16-bit mono at 37500 Hz, one frame per carrier period. A frame
   holds the sample due at its start, or the pulse's mean over the frame
   for a tone. Then a one-pole 20 Hz high-pass stands for the coupling
@@ -94,12 +110,11 @@ import sys
 import zlib
 
 
-def _load_engine():
-    """tools/voice_engine.py, found beside this file. python -I leaves the
-    script's folder off sys.path, so it is loaded by its path."""
-    name = "pipos_voice_engine"
+def _load(name, file):
+    """A module found beside this file. python -I leaves the script's
+    folder off sys.path, so it is loaded by its path."""
     if name not in sys.modules:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_engine.py")
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file)
         spec = importlib.util.spec_from_file_location(name, path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -107,7 +122,8 @@ def _load_engine():
     return sys.modules[name]
 
 
-voice = _load_engine()
+voice = _load("pipos_voice_engine", "voice_engine.py")
+square = _load("pipos_tone_square", "tone_square.py")
 
 OUT_RATE = 37500            # 9.6 MHz PWM clock / range 256
 PWM_CLOCK = 9600000
@@ -366,15 +382,21 @@ class VoicePlay(Play):
 
 
 class Tone:
-    def __init__(self, t0, hz, vol):
+    """A tone. Centred once the rest ramp has reached its end, else the pulse."""
+
+    def __init__(self, t0, hz, vol, centred=False, peak=square.TONE_PEAK):
         self.t0 = t0
+        self.centred = centred
+        self.hz = hz
+        self.amp = square.amp(peak, vol)
         self.rng = max(2, (PWM_CLOCK + hz // 2) // hz)
         self.duty = ((self.rng // 2) * vol + 50) // 100 / self.rng
 
 
 class Renderer:
-    def __init__(self, pcm, scale, warn):
+    def __init__(self, pcm, scale, warn, peak=square.TONE_PEAK):
         self.pcm = pcm
+        self.peak = peak
         self.scale = scale
         self.warn = warn
         self.unknown = set()
@@ -436,6 +458,9 @@ class Renderer:
             self.render_play(cur, start, end)
 
     def render_tone(self, tone, start, end):
+        if tone.centred:
+            self.render_square(tone, start, end)
+            return
         d = tone.duty
         per = PWM_CLOCK / tone.rng          # pulse periods per second
         out = self.duty
@@ -456,6 +481,19 @@ class Renderer:
             else:
                 a = max(a, 0.0)
                 out.append((high(b) - high(a)) / (b - a))
+
+    def render_square(self, tone, start, end):
+        """The library's centred square: grid sample 0 is the first frame
+        at or after the tone's start. The tool has no late IRQ, so no
+        sample is ever skipped."""
+        out = self.duty
+        first = frame_of(tone.t0)
+        q = square.Square(tone.hz, tone.amp, OUT_RATE)
+        for f in range(start, end):
+            if f < first:
+                out.append(self.rest)
+            else:
+                out.append(q.next() / 256.0)
 
     def render_play(self, p, start, end):
         out = self.duty
@@ -573,7 +611,8 @@ class Renderer:
                 cur.ended = True
             elif op == "tone":
                 self.close(t)
-                self.cur = Tone(t, f["hz"], f["vol"])
+                # A tone is centred when the rest ramp reached its end before it.
+                self.cur = Tone(t, f["hz"], f["vol"], self.rest == 0.5, self.peak)
             else:  # stop
                 self.close(t)
         cur = self.cur
@@ -624,9 +663,15 @@ def main(argv=None):
     ap.add_argument("out", metavar="OUT.wav")
     ap.add_argument("--pcm", metavar="DIR", action="append", default=[], required=True,
                     help="a folder of .u8 and .voice files, such as from sound_table.py --dump")
+    ap.add_argument("--tone-peak", metavar="N", type=int, default=square.TONE_PEAK,
+                    help="ROBCO_AUDIO_TONE_PEAK of the kernel that made the log, 0 to %d "
+                         "(default %d); the trace does not print it"
+                    % (square.PEAK_MAX, square.TONE_PEAK))
     ap.add_argument("--scale", choices=("auto", "cut", "nearest"), default="auto",
                     help="how the volume rounds, see above")
     a = ap.parse_args(argv)
+    if not 0 <= a.tone_peak <= square.PEAK_MAX:
+        ap.error("--tone-peak must be 0 to %d" % square.PEAK_MAX)
 
     def warn(msg):
         print("boot_sound.py: warning: %s" % msg, file=sys.stderr)
@@ -642,7 +687,8 @@ def main(argv=None):
             warn("the trace lost %d records: the file misses sounds" % dropped)
         if not events:
             warn("the log has no ev=audio marker: the file is silent")
-        r = Renderer(pcm, scale_nearest if scale == "nearest" else scale_cut, warn)
+        r = Renderer(pcm, scale_nearest if scale == "nearest" else scale_cut, warn,
+                     a.tone_peak)
         r.run(events)
         samples, clipped = high_pass(r.duty)
         if clipped:
