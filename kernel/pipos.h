@@ -113,6 +113,8 @@ void pipos_dsound_delay(uint32_t ms);
  * back buffer; off, the last presented frame (or the console) comes back.
  */
 void pipos_gfx_blank(int on);
+/* Redraws the console on the screen and the panel. A blanked screen wakes first. */
+void pipos_gfx_show_console(void);
 
 /* sys_input.c: queues PIP_EV_TAPE with `bits` for the ROM, never for a holotape. */
 void pipos_input_tape(uint32_t bits);
