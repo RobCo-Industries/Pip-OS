@@ -98,9 +98,13 @@ jobs:
       - name: The check refuses a planted host name
         run: |
           zip=$(ls build/pipos-*.zip)
-          python3 tools/sdk_package.py plant "$zip" "$RUNNER_TEMP/planted.zip" docs/API.md "$(hostname)"
+          # The copy keeps the file name, which check compares with sdk.json.
+          planted="$RUNNER_TEMP/planted/$(basename "$zip")"
+          mkdir -p "$RUNNER_TEMP/planted"
+          python3 tools/sdk_package.py plant "$zip" "$planted" docs/API.md "$(hostname)"
+          python3 tools/sdk_package.py check "$planted"
           set +e
-          python3 tools/sdk_package.py check "$RUNNER_TEMP/planted.zip" --forbid "$(hostname)" > planted.log 2>&1
+          python3 tools/sdk_package.py check "$planted" --forbid "$(hostname)" > planted.log 2>&1
           code=$?
           set -e
           cat planted.log

@@ -337,6 +337,19 @@ def check_manifest(doc, fail):
     return out
 
 
+def check_file_name(path, doc, fail):
+    """SDK_PACKAGE.md "The archive": the file is named <name>-<version>.zip,
+    with the name and the version of its sdk.json."""
+    if not is_dict(doc):
+        return
+    name, version = doc.get("name"), doc.get("version")
+    want = f"{name}-{version}.zip" if is_str(name) and is_str(version) else None
+    got = os.path.basename(path)
+    if got != want:
+        fail(f"{got}: the file name is not <name>-<version>.zip of its sdk.json"
+             + (f", {want}" if want else ""))
+
+
 def forbidden_texts(args):
     """The texts the search looks for: each --forbid, and each --user in the
     forms of USER_FORMS. Raises Error on a text shorter than FORBID_MIN."""
@@ -405,6 +418,7 @@ def check(args):
                 fail(f"sdk.json: not UTF-8 JSON: {e}")
             else:
                 listed = check_manifest(doc, fail)
+                check_file_name(args.zip, doc, fail)
         if listed is not None:
             for n in names:
                 if n == MANIFEST:

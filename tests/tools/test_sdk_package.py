@@ -306,6 +306,25 @@ def test_firmware_file(package):
     assert_fails(package, "boot/start.elf: a Pi firmware file is never part of a package")
 
 
+@pytest.mark.parametrize("name", ["pipos-9.9.9.zip", "pipos-1.4.0.ZIP", "pipos.zip",
+                                  "Pipos-1.4.0.zip", "pipos-1.4.0.zip.zip"])
+def test_file_name_is_not_name_and_version(package, tmp_path, name):
+    other = tmp_path / "renamed"
+    other.mkdir()
+    os.rename(package, other / name)
+    assert_fails(str(other / name), f"{name}: the file name is not <name>-<version>.zip"
+                 " of its sdk.json, pipos-1.4.0.zip")
+
+
+def test_file_name_follows_the_manifest(package):
+    items = entries(package)
+    doc = manifest(items)
+    doc["version"], doc["abi"] = "1.5.0", "1.5"
+    rewrite(package, set_manifest(items, doc))
+    assert_fails(package, "pipos-1.4.0.zip: the file name is not <name>-<version>.zip"
+                 " of its sdk.json, pipos-1.5.0.zip")
+
+
 def test_no_manifest(package):
     rewrite(package, [(i, d) for i, d in entries(package) if i.filename != "sdk.json"])
     assert_fails(package, "sdk.json: not at the archive root")
@@ -484,7 +503,8 @@ def test_not_a_zip(tmp_path, data):
 
 
 def test_plant_makes_a_copy_only_the_search_refuses(package, tmp_path):
-    out = tmp_path / "planted.zip"
+    (tmp_path / "planted").mkdir()
+    out = tmp_path / "planted" / "pipos-1.4.0.zip"
     assert run("plant", package, out, "docs/API.md", "pkghost-42")[0] == 0
     assert check(str(out))[0] == 0
     assert_fails(str(out), "docs/API.md: holds 'pkghost-42'", "pkghost-42")
