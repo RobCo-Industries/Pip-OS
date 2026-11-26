@@ -149,7 +149,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 ### gfx
 
-`sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
+`sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. After a scroll, `rom.c` has the kernel write the boot text back before the image end hooks run, so this redraw is the one frame with the text. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
 
 ### Display path
 
