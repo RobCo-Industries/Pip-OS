@@ -80,7 +80,7 @@ The kernel prints these lines on the screen and on the UART. With `line_delay_ms
 
 With `[display] char_delay_ms` above 0, the kernel writes each boot line on the HDMI console one character at a time and waits that long after each one. A block cursor shows the writing place while the boot text writes, and goes away after the last boot line. The SPI panel gets each line whole, when it is done. The UART gets each line whole too, in every case, so the serial log keeps its bytes. With `char_delay_ms = 0`, the default, each line appears at once and no cursor shows.
 
-With `[audio] key_click = yes` as well, each character makes one short click. A space makes none. A click starts only after the sound before it has ended, the power-on beep or the last click, and the next character waits for the click to end. So the text never runs ahead of its sound and nothing queues. With `char_delay_ms = 0` no click plays, whatever `key_click` says.
+With `[audio] key_click = yes` as well, each character makes one short click. A space makes none. Before a character with a click, the kernel waits for the sound before it to end, the power-on beep or the last click. The block cursor stands at the writing place during that wait. Then the character and its click appear together. A space waits for no sound. Each line waits for its last click to end. So the text never runs ahead of its sound and nothing queues. With `char_delay_ms = 0` no click plays, whatever `key_click` says.
 
 The clicks are square waves from the audio driver, made live at boot from the numbers in `kernel/keyclick.h`. No recording is used.
 
