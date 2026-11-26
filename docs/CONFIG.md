@@ -4,7 +4,7 @@ Pip-OS reads `/PIPBOY/PIPOS.CFG` from the SD card at boot. The file is optional.
 
 ## Format
 
-The file is INI text, parsed by RobCo-Core's `ini.h`. The syntax rules are in the [configuration files reference](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/guide/api/buses.md#configuration-files-inih). Section and key names are case-sensitive. The file may hold at most 4096 bytes.
+The file is INI text, parsed by RobCo-Core's `ini.h`. The syntax rules are in the [configuration files reference](https://github.com/RobCo-Industries/RobCo-Core/blob/815afabebf6baa728f69e2c2b016a188c5fd1119/docs/guide/api/buses.md#configuration-files-inih). Section and key names are case-sensitive. The file may hold at most 4096 bytes.
 
 ```
 [display]
