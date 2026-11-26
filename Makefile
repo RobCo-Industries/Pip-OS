@@ -269,7 +269,7 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
-           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test
+           sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test
 
 .PHONY: flags-json-test sdk-example-test sdk-abi-target-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
@@ -392,6 +392,12 @@ PACKAGE_BUILD    ?= 0
 PKG_BUILD         = $(abspath $(BUILD))/sdk-package
 PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)=build
 PKG_TOOL         := $(PYTHON) tools/sdk_package.py
+# The headers come from git, so a file git does not track never gets in.
+PKG_HEADERS       = $(sort $(shell git ls-files -- 'sdk/include/pipos/*.h'))
+# Every folder the build of the package reads, wildcards included. An
+# untracked file there stops the build: built_from would not hold it.
+PKG_INPUTS       := Makefile LICENSE boot docs/API.md kernel sdk tools
+PKG_CORE_INPUTS  := Makefile ld mk include src third_party tests/fwstub tests/harness tools
 PKG_FILES         = LICENSES/MIT.txt=LICENSE \
                     boot.json=$(PKG_BUILD)/boot.json \
                     boot/PIPOS.CFG=boot/PIPOS.CFG \
@@ -402,7 +408,7 @@ PKG_FILES         = LICENSES/MIT.txt=LICENSE \
                     boot/pipos.elf=$(PKG_BUILD)/kernel/$(IMAGE).elf \
                     docs/API.md=docs/API.md \
                     flags.json=$(PKG_BUILD)/flags.json \
-                    $(foreach h,$(sort $(wildcard sdk/include/pipos/*.h)),include/pipos/$(notdir $(h))=$(h)) \
+                    $(foreach h,$(PKG_HEADERS),include/pipos/$(notdir $(h))=$(h)) \
                     lib/crt0.S=sdk/crt0.S \
                     lib/holotape.ld=sdk/holotape.ld \
                     lib/libpip.a=$(PKG_BUILD)/runner/libpip/libpip.a \
@@ -410,8 +416,14 @@ PKG_FILES         = LICENSES/MIT.txt=LICENSE \
 PKG_RUNNER        = $(MAKE) --no-print-directory -C sdk/examples/runner \
                     BUILD=$(PKG_BUILD)/runner PATH_MAPS="$(PKG_MAPS)"
 
-.PHONY: sdk-package sdk-package-test
+.PHONY: sdk-package sdk-package-test sdk-package-inputs-test
 sdk-package:
+	@u="$$( { git status --porcelain --untracked-files=all -- $(PKG_INPUTS); \
+	    git -C $(ROBCO_CORE) status --porcelain --untracked-files=all -- $(PKG_CORE_INPUTS) \
+	    | sed 's|^?? |?? $(ROBCO_CORE)/|'; } | grep '^??')"; \
+	if [ -n "$$u" ]; then \
+	    echo "sdk-package: untracked files in the inputs of the build, so built_from would not hold them:" >&2; \
+	    echo "$$u" >&2; exit 1; fi
 	@if [ -n "$$(git status --porcelain --untracked-files=no)" ]; then \
 	    echo "sdk-package: the work tree has changes, so built_from would not name its sources" >&2; \
 	    git status --short --untracked-files=no >&2; exit 1; fi
@@ -429,7 +441,11 @@ sdk-package:
 	    --built-from RobCo-Core=$$(git -C $(ROBCO_CORE) rev-parse HEAD) \
 	    $(addprefix --file ,$(PKG_FILES)) > $(PKG_BUILD)/zip.txt
 	$(PKG_TOOL) check "$$(cat $(PKG_BUILD)/zip.txt)" --forbid "$(CURDIR)" --forbid "$(PKG_BUILD)" \
-	    --forbid "$$HOME" --forbid "$$(id -un)" --forbid "$$(hostname)"
+	    --forbid "$$HOME" --user "$$(id -un)" --forbid "$$(hostname)"
+
+# An untracked file never gets into a package. Builds nothing.
+sdk-package-inputs-test:
+	tests/host/sdk_package_inputs_test.sh
 
 # The checker's own tests. They need no build.
 sdk-package-test: venv
