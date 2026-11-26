@@ -68,14 +68,13 @@ class Rule(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(lines(text), [], name)
 
-    def test_old_workflow_fails_on_line_95(self):
-        old = subprocess.run(
-            ["git", "show", "origin/master:.github/workflows/sdk-package.yml"],
-            cwd=ROOT, capture_output=True, text=True,
+    def test_old_tag_step_fails_on_its_run_line(self):
+        old = (
+            "      - name: The tag names the package\n"
+            "        if: startsWith(github.ref, 'refs/tags/pipos-')\n"
+            '        run: test -f "build/${{ github.ref_name }}.zip"\n'
         )
-        if old.returncode != 0:
-            self.skipTest("origin/master is not available")
-        self.assertEqual(lines(old.stdout), [95])
+        self.assertEqual(lines(old), [3])
 
     def test_repo_workflows_pass(self):
         folder = os.path.join(ROOT, ".github", "workflows")
