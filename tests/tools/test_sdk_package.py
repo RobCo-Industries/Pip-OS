@@ -96,16 +96,28 @@ def add(items, name, data, mode=0o100644, listed=True):
     return items
 
 
-def check(path, *forbid):
+def check(path, *forbid, users=()):
     args = ["check", path]
     for f in forbid:
         args += ["--forbid", f]
+    for u in users:
+        args += ["--user", u]
     status, out, _ = run(*args)
     return status, out
 
 
-def assert_fails(path, text, *forbid):
-    status, out = check(path, *forbid)
+def replace_file(items, name, data):
+    """items with entry `name` set to `data` and its sdk.json entry updated."""
+    items = [(i, data if i.filename == name else d) for i, d in items]
+    doc = manifest(items)
+    for f in doc["files"]:
+        if f["path"] == name:
+            f["size"], f["sha256"] = len(data), hashlib.sha256(data).hexdigest()
+    return set_manifest(items, doc)
+
+
+def assert_fails(path, text, *forbid, users=()):
+    status, out = check(path, *forbid, users=users)
     assert status == 1, out
     assert text in out, out
 
@@ -373,14 +385,102 @@ def test_host_name_in_the_manifest(package):
     assert_fails(package, "sdk.json: holds 'pkghost-42'", "pkghost-42")
 
 
-def test_empty_forbid_text_is_refused(package):
-    assert_fails(package, "an empty text matches everything", "")
+@pytest.mark.parametrize("forbid,users", [([""], []), (["abc"], []), ([], ["ab"])])
+def test_short_forbid_text_is_an_error(package, forbid, users):
+    args = ["check", package] + [a for f in forbid for a in ("--forbid", f)] \
+        + [a for u in users for a in ("--user", u)]
+    status, out, err = run(*args)
+    assert status == 1 and "shorter than 4 characters" in err, (out, err)
+    assert "ok:" not in out
 
 
-def test_not_a_zip(tmp_path):
+# A runner on GitHub is named runner, and sdk.json holds the format key
+# "runner" and the path boot/RUNNER.ROM. Only the forms that name the
+# machine are refused.
+def test_user_named_like_the_content_passes(package):
+    items = entries(package)
+    assert b'"runner": 1' in dict((i.filename, d) for i, d in items)["sdk.json"]
+    status, out = check(package, "/home/runner", users=["runner"])
+    assert status == 0, out
+
+
+@pytest.mark.parametrize("planted", [
+    "/home/runner/x", "/Users/runner/x", "C:\\Users\\runner\\x", "runner@fv-az1",
+])
+def test_user_in_a_machine_form_fails(package, planted):
+    rewrite(package, replace_file(entries(package), "docs/API.md",
+                                  b"built in " + planted.encode() + b"\n"))
+    assert check(package)[0] == 0
+    assert_fails(package, "docs/API.md: holds", users=["runner"])
+
+
+# ---- check: an entry that cannot be read ----------------------------------------------
+
+def patch_local_header(path, name, offset, value):
+    """Writes `value` into the local header of entry `name` at `offset`."""
+    with zipfile.ZipFile(path) as z:
+        at = z.getinfo(name).header_offset
+    with open(path, "r+b") as f:
+        f.seek(at + offset)
+        f.write(value)
+
+
+def patch_central(path, name, offset, value):
+    """Writes `value` into the central directory record of `name` at `offset`."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    rec = raw.rfind(b"PK\x01\x02", 0, raw.rfind(name.encode()))
+    raw = raw[:rec + offset] + value + raw[rec + offset + len(value):]
+    with open(path, "wb") as f:
+        f.write(raw)
+
+
+def assert_unreadable(path, name, *forbid):
+    status, out = check(path, *forbid)
+    assert status == 1, out
+    assert f"FAIL: {name}: cannot be read:" in out, out
+
+
+def test_unsupported_method(package):
+    # Method 99 in both headers: ZipFile.read raises NotImplementedError.
+    patch_local_header(package, "docs/API.md", 8, (99).to_bytes(2, "little"))
+    patch_central(package, "docs/API.md", 10, (99).to_bytes(2, "little"))
+    assert_unreadable(package, "docs/API.md", FORBID)
+    assert "docs/API.md: compression 99" in check(package)[1]
+
+
+def test_wrong_crc(package):
+    patch_local_header(package, "lib/rom.ld", 14, b"\0\0\0\0")
+    patch_central(package, "lib/rom.ld", 16, b"\0\0\0\0")
+    assert_unreadable(package, "lib/rom.ld", FORBID)
+
+
+def test_encrypted_entry(package):
+    flags = (1).to_bytes(2, "little")
+    patch_local_header(package, "lib/crt0.S", 6, flags)
+    patch_central(package, "lib/crt0.S", 8, flags)
+    assert_unreadable(package, "lib/crt0.S", FORBID)
+
+
+def test_unreadable_manifest(package):
+    patch_local_header(package, "sdk.json", 14, b"\0\0\0\0")
+    patch_central(package, "sdk.json", 16, b"\0\0\0\0")
+    assert_unreadable(package, "sdk.json")
+
+
+def test_every_unreadable_entry_is_named(package):
+    for n in ("lib/rom.ld", "docs/API.md"):
+        patch_local_header(package, n, 14, b"\0\0\0\0")
+        patch_central(package, n, 16, b"\0\0\0\0")
+    out = check(package)[1]
+    assert "FAIL: lib/rom.ld: cannot be read" in out and "FAIL: docs/API.md: cannot be read" in out
+
+
+@pytest.mark.parametrize("data", [b"no", b"", b"PK\x03\x04" + bytes(40)])
+def test_not_a_zip(tmp_path, data):
     p = tmp_path / "x.zip"
-    p.write_bytes(b"no")
-    assert_fails(str(p), "not a zip archive")
+    p.write_bytes(data)
+    assert_fails(str(p), "not a zip archive", FORBID)
 
 
 def test_plant_makes_a_copy_only_the_search_refuses(package, tmp_path):

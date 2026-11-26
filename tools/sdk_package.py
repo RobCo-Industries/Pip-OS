@@ -4,7 +4,7 @@
     sdk_package.py build --out DIR --abi-header H --build N --gcc RELEASE
         --gcc-printed VERSION --qemu VERSION --firmware-script SCRIPT
         --built-from REPO=COMMIT... --file PATH=SOURCE...
-    sdk_package.py check ZIP [--forbid TEXT]...
+    sdk_package.py check ZIP [--forbid TEXT]... [--user NAME]...
     sdk_package.py plant ZIP OUT PATH TEXT
 
 `build` writes sdk.json and the archive. The archive bytes depend only on
@@ -13,8 +13,11 @@ sdk.json first, stored, dated 1980-01-01 00:00, mode 0644, no extra fields.
 
 `check` applies the archive rules of RobCo-Core docs/spec/SDK_PACKAGE.md
 and the pipos layout, and searches every file, sdk.json included, for each
---forbid text: the build folder, the user name and the host name. It prints
-one FAIL line per broken rule and exits 1 when there is one.
+--forbid text, such as the build folder or the host name, and for each
+--user name in the forms a tool writes it: /home/NAME, /Users/NAME,
+\\Users\\NAME and NAME@. It refuses a text under 4 characters. It prints
+one FAIL line per broken rule, an unreadable entry included, and exits 1
+when there is one.
 
 `plant` writes a copy of ZIP with TEXT added to the end of one file and its
 sdk.json entry updated, so CI can show that the search fails.
@@ -30,6 +33,7 @@ import re
 import stat
 import sys
 import zipfile
+import zlib
 
 NAME = "pipos"
 MANIFEST = "sdk.json"
@@ -60,6 +64,17 @@ HEADER_RE = re.compile(r"include/pipos/[^/]+\.h")
 LICENCES = [{"paths": [""], "spdx": "MIT"}]
 ZIP_DATE = (1980, 1, 1, 0, 0, 0)
 ZIP_MODE = 0o100644
+
+# A forbidden text shorter than this would match by chance, so check refuses it.
+FORBID_MIN = 4
+# The forms a tool writes a user name in: a home folder on Linux, macOS and
+# Windows, and user@host. The bare name is not searched: a common word such
+# as runner is also a name of the package's own content.
+USER_FORMS = ("/home/{}", "/Users/{}", "\\Users\\{}", "{}@")
+# What ZipFile.read raises on an entry it cannot read: an unknown method,
+# a bad CRC, encryption, a cut or corrupt stream.
+READ_ERRORS = (zipfile.BadZipFile, NotImplementedError, RuntimeError, zlib.error,
+               EOFError, OSError, ValueError)
 
 HEX40 = re.compile(r"[0-9a-f]{40}")
 HEX64 = re.compile(r"[0-9a-f]{64}")
@@ -302,12 +317,23 @@ def check_manifest(doc, fail):
     return out
 
 
+def forbidden_texts(args):
+    """The texts the search looks for: each --forbid, and each --user in the
+    forms of USER_FORMS. Raises Error on a text shorter than FORBID_MIN."""
+    texts = list(args.forbid)
+    for user in args.user:
+        texts += [form.format(user) for form in USER_FORMS]
+    for t in texts:
+        if len(t) < FORBID_MIN:
+            raise Error(f"forbidden text {t!r} is shorter than {FORBID_MIN} characters, "
+                        "so the search would not mean anything")
+    return texts
+
+
 def check(args):
+    forbid = forbidden_texts(args)
     problems = []
     fail = problems.append
-    for f in args.forbid:
-        if not f:
-            fail("--forbid: an empty text matches everything")
     try:
         z = zipfile.ZipFile(args.zip)
     except (OSError, zipfile.BadZipFile) as e:
@@ -338,12 +364,23 @@ def check(args):
             base = key.rsplit("/", 1)[-1]
             if base in FIRMWARE_FILES:
                 fail(f"{n}: a Pi firmware file is never part of a package")
+        # Each file entry is read once. One that cannot be read is a failure
+        # with its name, and its bytes are neither hashed nor searched.
+        data_of = {}
+        for info in infos:
+            n = info.filename
+            if n not in names or n in data_of:
+                continue
+            try:
+                data_of[n] = z.read(info)
+            except READ_ERRORS as e:
+                fail(f"{n}: cannot be read: {type(e).__name__}: {e}")
         listed = None
         if MANIFEST not in names:
             fail("sdk.json: not at the archive root")
-        else:
+        elif MANIFEST in data_of:
             try:
-                doc = json.loads(z.read(MANIFEST).decode("utf-8"))
+                doc = json.loads(data_of[MANIFEST].decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as e:
                 fail(f"sdk.json: not UTF-8 JSON: {e}")
             else:
@@ -355,7 +392,9 @@ def check(args):
                 if n not in listed:
                     fail(f"{n}: in the archive and not listed in sdk.json files")
                     continue
-                data = z.read(n)
+                if n not in data_of:
+                    continue
+                data = data_of[n]
                 if len(data) != listed[n]["size"]:
                     fail(f"{n}: size {len(data)}, sdk.json says {listed[n]['size']}")
                 if sha256(data) != listed[n]["sha256"]:
@@ -369,11 +408,10 @@ def check(args):
             for p in sorted(set(listed) - want):
                 if not HEADER_RE.fullmatch(p):
                     fail(f"{p}: not a file of the pipos layout")
-        for n in names:
-            data = z.read(n)
-            for f in args.forbid:
-                if f and f.encode("utf-8") in data:
-                    at = data.index(f.encode("utf-8"))
+        for n, data in data_of.items():
+            for f in forbid:
+                at = data.find(f.encode("utf-8"))
+                if at >= 0:
                     fail(f"{n}: holds {f!r} of the build machine at offset {at}")
     for p in problems:
         print(f"FAIL: {p}")
@@ -415,7 +453,10 @@ def main(argv=None):
     b.add_argument("--file", action="append", default=[])
     c = sub.add_parser("check")
     c.add_argument("zip")
-    c.add_argument("--forbid", action="append", default=[])
+    c.add_argument("--forbid", action="append", default=[],
+                   help="a text no file may hold, such as a folder or the host name")
+    c.add_argument("--user", action="append", default=[],
+                   help="a user name, searched as a home folder and as name@")
     p = sub.add_parser("plant")
     p.add_argument("zip")
     p.add_argument("out")
