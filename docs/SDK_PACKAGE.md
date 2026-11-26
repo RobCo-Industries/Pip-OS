@@ -46,17 +46,23 @@ So a local build with another compiler fails until it names that compiler, such 
 
 `python3 tools/sdk_package.py check <zip> --forbid <text>...` prints one `FAIL` line per broken rule and exits 1 when there is one. It checks:
 
-- Entry names: relative, `/` only, no empty, `.` or `..` part, no drive letter, no two names equal or equal but for case.
+- The file name: `<name>-<version>.zip`, with the name and the version of its `sdk.json`. A copy renamed to another version fails.
+- Entry names: UTF-8 as raw bytes, relative, `/` only, no empty, `.` or `..` part, no drive letter, no two names equal or equal but for case by their lower or upper case forms.
+- Each part of a name is a plain name on Linux, macOS and Windows: no `< > : " \ | ? *`, no control character, no ending dot or space, no Windows device name such as `CON` or `com1.txt`. The spec does not state this rule yet. RobCo Studio refuses such a package, so the check does too.
+- No entry named `.robco-archive`, the file RobCo Studio adds to an installed package, and no file that is also the folder of another entry. RobCo Studio refuses both; the spec does not state them yet.
 - Entries: regular files and folders only, stored or deflate.
-- `sdk.json` at the root, with the fields a `pipos` package carries.
-- `files`: sorted by path in byte order with no repeat, each with its size and a lower case SHA-256 that match the entry. No entry unlisted and no listed path missing.
-- The layout: every file of the spec's table and the ten headers, and nothing else but more headers in `include/pipos/`.
+- `sdk.json` at the root, at most 4 MiB as RobCo Studio reads it, with the fields a `pipos` package carries, each of its JSON type and form.
+- `files`: sorted by path in byte order with no repeat, each path by the name rules above, each with its size and a lower case SHA-256 that match the entry. No entry unlisted and no listed path missing.
+- The layout: every file of the spec's table and the ten headers, and nothing else but more headers in `include/pipos/`. No `include/pipos/pipos.h`.
+- `licences` names no GPL licence. The check reads what `sdk.json` declares, not the licence of a file's bytes.
 - No Pi firmware file.
 - Every file entry can be read. An entry with an unknown method, a wrong CRC or encryption is a `FAIL` line with its name, and its bytes are neither hashed nor searched.
 - No `--forbid` text in any file, `sdk.json` included.
 - No `--user` name in the forms a tool writes it: `/home/NAME`, `/Users/NAME`, `\Users\NAME` and `NAME@`. The bare name is not searched. On a GitHub runner the user is `runner`, and `sdk.json` holds the format key `runner` and the path `boot/RUNNER.ROM`.
 
 A forbidden text under 4 characters is an error, not a pass: it would match by chance. The search compares bytes. It finds a Windows path only as written with single `\`, not with `/` or with the `\\` of a JSON string. The package is built on Linux only, so this is enough today.
+
+What the check cannot decide from the archive alone: that each file comes from the source the spec names, that the headers equal `sdk/include/pipos/` byte for byte, that `tools` names the compiler that built `libpip.a`, and that `firmware` holds the pins of RobCo-Core's `tools/fetch_firmware.sh`. `make sdk-package` holds those when it builds.
 
 `tests/tools/test_sdk_package.py` builds small packages in a temp folder and breaks each rule once. It needs no build. `make sdk-package-test` runs it.
 
@@ -65,7 +71,7 @@ A forbidden text under 4 characters is an error, not a pass: it would match by c
 `.github/workflows/sdk-package.yml` runs on every pull request, on `master` and on a tag `pipos-*`:
 
 - `package` runs the checker's tests, downloads the xPack compiler, builds the package twice and compares the SHA-256, shows that the check refuses a copy with the host name planted in it, boots the package on the four boards in the CI image, and uploads the package as the `pipos-package` artifact. It holds `packages: read` to pull the CI image.
-- `publish` runs only for a pushed tag `pipos-<version>`. It alone holds `contents: write`. It attaches the package of the `package` job to a release of that tag. The tag must name the package that was built: `pipos-1.4.0` builds with `PACKAGE_BUILD=0` and must give `pipos-1.4.0.zip`.
+- `publish` runs only for a pushed tag `pipos-<version>`. It alone holds `contents: write`. It attaches the package of the `package` job to a release of that tag. The tag must name the package that was built: `pipos-1.4.0` builds with `PACKAGE_BUILD=0` and must give `pipos-1.4.0.zip`. The check has already compared that file name with `sdk.json`, so the tag, the file name and the version inside are one text.
 
 ## The boot check
 
