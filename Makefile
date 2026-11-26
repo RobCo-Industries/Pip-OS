@@ -401,6 +401,10 @@ PKG_TOOLCHAINS    = $(sort $(PKG_TOOLCHAIN) $(abspath $(PKG_TOOLCHAIN)))
 PKG_MAPS          = -ffile-prefix-map=$(CURDIR)=. -ffile-prefix-map=$(PKG_BUILD)=build \
                     $(foreach t,$(PKG_TOOLCHAINS),-ffile-prefix-map=$(t)=toolchain)
 PKG_TOOL         := $(PYTHON) tools/sdk_package.py
+# The user and host names the check searches for. A test can set them.
+# One under 4 characters, such as pi, is not searched, and the check says so.
+PKG_USER         ?= $(shell id -un)
+PKG_HOST         ?= $(shell hostname)
 # The headers come from git, so a file git does not track never gets in.
 # A git that fails, such as in a container that does not own the checkout,
 # would give an empty list and a package with no header: the build stops
@@ -473,7 +477,7 @@ sdk-package:
 	    $$(cat $(PKG_BUILD)/built_from.txt) \
 	    $(addprefix --file ,$(PKG_FILES)) > $(PKG_BUILD)/zip.txt
 	$(PKG_TOOL) check "$$(cat $(PKG_BUILD)/zip.txt)" --forbid "$(CURDIR)" --forbid "$(PKG_BUILD)" \
-	    --forbid "$$HOME" --user "$$(id -un)" --forbid "$$(hostname)"
+	    --forbid "$$HOME" --user "$(PKG_USER)" --forbid "$(PKG_HOST)" --skip-short
 
 # Boots the kernel a package ships, with only what is in it, on BOARD:
 # make sdk-boot-test SDK_ZIP=build/pipos-1.4.0.zip [BOARD=raspi0]

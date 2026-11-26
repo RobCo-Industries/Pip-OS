@@ -4,7 +4,7 @@
     sdk_package.py build --out DIR --abi-header H --build N --gcc RELEASE
         --gcc-printed VERSION --qemu VERSION --firmware-script SCRIPT
         --built-from REPO=COMMIT... --file PATH=SOURCE...
-    sdk_package.py check ZIP [--forbid TEXT]... [--user NAME]...
+    sdk_package.py check ZIP [--forbid TEXT]... [--user NAME]... [--skip-short]
     sdk_package.py plant ZIP OUT PATH TEXT
 
 `build` writes sdk.json and the archive. The archive bytes depend only on
@@ -15,7 +15,10 @@ sdk.json first, stored, dated 1980-01-01 00:00, mode 0644, no extra fields.
 and the pipos layout, and searches every file, sdk.json included, for each
 --forbid text, such as the build folder or the host name, and for each
 --user name in the forms a tool writes it: /home/NAME, /Users/NAME,
-\\Users\\NAME and NAME@. It refuses a text under 4 characters. It prints
+\\Users\\NAME and NAME@. It refuses a text under 4 characters, unless
+--skip-short is given: then it says in one line that it does not search for
+that text and goes on. make sdk-package passes --skip-short, as a host
+or user name such as pi is fine and too short to search for. It prints
 one FAIL line per broken rule, an unreadable entry included, and exits 1
 when there is one.
 
@@ -414,14 +417,22 @@ def check_file_name(path, doc, fail):
 
 def forbidden_texts(args):
     """The texts the search looks for: each --forbid, and each --user in the
-    forms of USER_FORMS. Raises Error on a text shorter than FORBID_MIN."""
+    forms of USER_FORMS. A text shorter than FORBID_MIN raises Error, or with
+    --skip-short is left out with one line that says so."""
     texts = list(args.forbid)
     for user in args.user:
         texts += [form.format(user) for form in USER_FORMS]
+    long_enough = []
     for t in texts:
-        if len(t) < FORBID_MIN:
+        if len(t) >= FORBID_MIN:
+            long_enough.append(t)
+        elif args.skip_short:
+            print(f"note: not searching for {t!r}: shorter than {FORBID_MIN} characters, "
+                  "it would match by chance")
+        else:
             raise Error(f"forbidden text {t!r} is shorter than {FORBID_MIN} characters, "
                         "so the search would not mean anything")
+    texts = long_enough
     # The same text twice, such as --forbid $HOME and the home folder of
     # --user, would report each hit twice.
     return list(dict.fromkeys(texts))
@@ -617,6 +628,8 @@ def main(argv=None):
                    help="a text no file may hold, such as a folder or the host name")
     c.add_argument("--user", action="append", default=[],
                    help="a user name, searched as a home folder and as name@")
+    c.add_argument("--skip-short", action="store_true",
+                   help="leave out a text under 4 characters with a note, not an error")
     p = sub.add_parser("plant")
     p.add_argument("zip")
     p.add_argument("out")

@@ -840,3 +840,41 @@ def test_unpaired_surrogate_in_manifest(package, where):
     assert status == 1, out
     assert "Traceback" not in out, out
     assert "FAIL: sdk.json: the string" in out and "unpaired surrogate" in out, out
+
+
+# ---- short host and user names -----------------------------------------------------
+
+def test_short_texts_stay_an_error_by_hand(package):
+    status, _, err = run("check", package, "--forbid", "pi")
+    assert status == 1
+    assert "shorter than 4 characters" in err
+
+
+@pytest.mark.parametrize("args, skipped", [
+    (["--forbid", "pi"], ["'pi'"]),
+    (["--user", "me"], ["'me@'"]),
+])
+def test_skip_short_notes_and_passes(package, args, skipped):
+    status, out, err = run("check", package, *args, "--skip-short")
+    assert status == 0, out + err
+    for s in skipped:
+        assert f"note: not searching for {s}: shorter than 4 characters" in out, out
+
+
+def test_skip_short_still_searches_the_long_forms(package, tmp_path):
+    # /home/pi is long enough, so --user pi still finds it.
+    planted = tmp_path / "planted" / os.path.basename(package)
+    planted.parent.mkdir()
+    assert run("plant", package, planted, "lib/libpip.a", "/home/pi/x")[0] == 0
+    status, out, _ = run("check", planted, "--user", "pi", "--skip-short")
+    assert status == 1, out
+    assert "holds '/home/pi'" in out, out
+
+
+def test_makefile_skips_short_host_and_user_names():
+    with open(os.path.join(ROOT, "Makefile")) as f:
+        text = f.read()
+    rule = text[text.index("--forbid \"$(PKG_BUILD)\""):]
+    rule = rule[:rule.index("\n\n")]
+    assert '--user "$(PKG_USER)"' in rule and '--forbid "$(PKG_HOST)"' in rule
+    assert "--skip-short" in rule
