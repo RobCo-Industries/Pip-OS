@@ -546,6 +546,22 @@ class Note(unittest.TestCase):
         p["note"]["segments"][-1]["end_hz"] = 18750
         self.assertRaises(st.ParamError, st.check_params, p)
 
+    def test_falling_pitch_refused(self):
+        p = copy.deepcopy(P)
+        p["note"]["segments"][0]["end_hz"] = 10000
+        p["note"]["segments"][1]["end_hz"] = 1000
+        self.assertRaisesRegex(st.ParamError, "never fall", st.check_params, p)
+        p = copy.deepcopy(P)
+        p["note"]["start_hz"] = p["note"]["segments"][0]["end_hz"] + 1
+        self.assertRaisesRegex(st.ParamError, "never fall", st.check_params, p)
+
+    def test_inc_checked_at_both_ends_of_a_span(self):
+        ok = (2, 0, 0, 1, 0, 0, 0)
+        self.assertIsNone(V.check([ok]))
+        self.assertIn("inc leaves", V.check([(2, 0, 0, -1, 0, 0, 0)]))
+        self.assertIn("inc leaves", V.check([(2, 0, V.INC_MAX, 1, 0, 0, 0)]))
+        self.assertIsNone(V.check([(1, 0, V.INC_MAX, 1, 0, 0, 0)]))
+
 
 ENGINE_C = os.path.join(ROOT, "external", "robco-core", "src", "lib", "audio_voice.c")
 CROSS_MAIN = r"""

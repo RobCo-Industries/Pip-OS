@@ -109,6 +109,10 @@ def check(spans):
             return "span %d: dinc or damp is not a signed 32-bit word" % k
         if not 0 <= p2 <= P2_MAX:
             return "span %d: p2=%d is past %d" % (k, p2, P2_MAX)
+        # inc moves by dinc each sample, so its two ends bound the span.
+        # The library checks the first sample only: this check is stricter.
+        if not 0 <= inc + (n - 1) * dinc <= INC_MAX:
+            return "span %d: inc leaves 0 to %d inside the span" % (k, INC_MAX)
         end = amp + (n - 1) * damp
         if not 0 <= amp <= AMP_MAX or not 0 <= end <= AMP_MAX:
             return "span %d: amp leaves 0 to %d" % (k, AMP_MAX)

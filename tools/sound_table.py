@@ -387,6 +387,13 @@ def check_params(p):
             raise ParamError("note pitches must be under half of rate_hz")
     if not 0 < nt["start_hz"] < rate / 2:
         raise ParamError("note.start_hz must be under half of rate_hz")
+    # The note only climbs or holds. The search for where the second
+    # partial stops relies on it, and a fall would bring the partial back.
+    hz = nt["start_hz"]
+    for seg in nt["segments"]:
+        if seg["end_hz"] < hz:
+            raise ParamError("note pitches must never fall: %s Hz comes after %s Hz" % (seg["end_hz"], hz))
+        hz = seg["end_hz"]
     if not 2 * nt["second_partial_below_hz"] <= rate / 2:
         raise ParamError("note.second_partial_below_hz: the second partial passes half of rate_hz")
     if not 0 < nt["level_steps"] <= 100:
