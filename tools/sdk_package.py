@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Writes and checks the pipos SDK package, pipos-<version>.zip.
+"""Writes the pipos SDK package, pipos-<version>.zip, and checks a package.
 
     sdk_package.py build --out DIR --abi-header H --build N --gcc RELEASE
         --gcc-printed VERSION --qemu VERSION --firmware-script SCRIPT
         --built-from REPO=COMMIT... --file PATH=SOURCE...
-    sdk_package.py check ZIP [--forbid TEXT]... [--user NAME]... [--skip-short]
+    sdk_package.py check ZIP [--kind KIND] [--forbid TEXT]... [--user NAME]...
+        [--skip-short]
     sdk_package.py plant ZIP OUT PATH TEXT
 
 `build` writes sdk.json and the archive. The archive bytes depend only on
 the files and the arguments: entries in byte order of their names with
 sdk.json first, stored, dated 1980-01-01 00:00, mode 0644, no extra fields.
 
-`check` applies the archive rules of RobCo-Core docs/spec/SDK_PACKAGE.md
-and the pipos layout, and searches every file, sdk.json included, for each
+`check` applies the rules of every package of RobCo-Core
+docs/spec/SDK_PACKAGE.md, then the rules of the package's kind: pipos or
+templates, chosen by the name in sdk.json or forced with --kind. It searches every file, sdk.json included, for each
 --forbid text, such as the build folder or the host name, and for each
 --user name in the forms a tool writes it: /home/NAME, /Users/NAME,
 \\Users\\NAME and NAME@. It refuses a text under 4 characters, unless
@@ -316,68 +318,138 @@ def entry_kind(info):
     return "file"
 
 
-def check_manifest(doc, fail):
-    """The fields of sdk.json a pipos package must carry. Returns files or None."""
+# SDK_PACKAGE.md "sdk.json" in table order. A kind adds required fields to
+# COMMON_REQUIRED and may forbid others, by "Which package carries which field".
+FIELDS = ("format", "name", "version", "abi", "built_from", "formats", "requires",
+          "tools", "firmware", "licences", "files")
+COMMON_REQUIRED = ("format", "name", "version", "built_from", "formats", "licences", "files")
+
+
+class Kind:
+    """The rules of one package kind, on top of the rules of every package.
+
+    required, forbidden: sdk.json fields. formats: the exact formats object.
+    requires_present: requires must be there, not only empty when it is.
+    built_from: the one repository it names, or None for any. licences: a
+    function (entries, listed paths) -> a failure text or None. layout: a
+    function (listed, data_of, fail) for the files of the archive."""
+
+    def __init__(self, name, required, forbidden, formats, requires_present,
+                 built_from, licences, layout):
+        self.name, self.required, self.forbidden = name, required, forbidden
+        self.formats, self.requires_present = formats, requires_present
+        self.built_from, self.licences, self.layout = built_from, licences, layout
+
+
+def pipos_licences(lic, paths):
+    # "What a package must never contain": no file under the GPL in pipos.
+    # The check reads what sdk.json declares; it cannot read the licence of
+    # a file's bytes.
+    if any("GPL" in e["spdx"].upper() for e in lic):
+        return "licences names a GPL licence, and pipos holds no file under the GPL"
+    return None
+
+
+def pipos_layout(listed, data_of, fail):
+    """SDK_PACKAGE.md "Layout of pipos"."""
+    want = set(LAYOUT) | {f"include/pipos/{h}" for h in HEADERS}
+    for p in sorted(want - set(listed)):
+        fail(f"{p}: the pipos layout needs it and sdk.json does not list it")
+    for p in sorted(set(listed) - want):
+        if p == "include/pipos/pipos.h":
+            fail(f"{p}: the pipos layout has no file of this name")
+        elif not HEADER_RE.fullmatch(p):
+            fail(f"{p}: not a file of the pipos layout")
+
+
+def check_manifest(doc, fail, forced=None):
+    """The fields of sdk.json: those of every package, then those of its kind.
+    The kind is `forced`, or the one named by name. Returns (files, kind),
+    each None when it cannot be read."""
     if not is_dict(doc):
         fail("sdk.json: the top value is not an object")
-        return None
-    want = ["format", "name", "version", "abi", "built_from", "formats", "requires",
-            "tools", "firmware", "licences", "files"]
-    for k in want:
-        if k not in doc:
+        return None, None
+    key = forced or (doc.get("name") if is_str(doc.get("name")) else None)
+    kind = KINDS.get(key)
+    required = COMMON_REQUIRED + (kind.required if kind else ())
+    for k in FIELDS:
+        if k in required and k not in doc:
             fail(f"sdk.json: {k} is missing")
+    if kind:
+        for k in FIELDS:
+            if k in kind.forbidden and k in doc:
+                fail(f"sdk.json: {k} must be absent in a {kind.name} package")
     if not is_int(doc.get("format")) or doc["format"] != 1:
         fail("sdk.json: format is not 1")
-    if not is_str(doc.get("name")) or doc["name"] != NAME:
-        fail(f"sdk.json: name is not {NAME}")
+    if kind is None:
+        fail(f"sdk.json: name is not {' or '.join(KINDS)}, the kinds this checker knows")
+    elif not is_str(doc.get("name")) or doc["name"] != kind.name:
+        fail(f"sdk.json: name is not {kind.name}")
     version = doc.get("version")
     if not is_str(version) or not VERSION_RE.fullmatch(version) \
             or not all(part_ok(p) for p in version.split(".")):
         fail("sdk.json: version is not X.Y.Z with no leading zero")
-    elif not is_str(doc.get("abi")) or doc["abi"] != ".".join(version.split(".")[:2]):
+    elif kind and "abi" in kind.required and (
+            not is_str(doc.get("abi")) or doc["abi"] != ".".join(version.split(".")[:2])):
         fail("sdk.json: abi is not the first two parts of version")
     bf = doc.get("built_from")
     if not is_list(bf) or not bf or not all(
             is_dict(e) and is_str(e.get("repo")) and e["repo"]
             and is_str(e.get("commit")) and HEX40.fullmatch(e["commit"]) for e in bf):
         fail("sdk.json: built_from is not a list of repo and 40-digit commit")
+    elif kind and kind.built_from and [e["repo"] for e in bf] != [kind.built_from]:
+        fail(f"sdk.json: built_from is not {kind.built_from} and its commit")
     formats = doc.get("formats")
-    if not is_dict(formats) or sorted(formats) != sorted(FORMATS) or not all(
-            is_int(formats[k]) and formats[k] == v for k, v in FORMATS.items()):
-        fail(f"sdk.json: formats is not {json.dumps(FORMATS)}")
-    if not is_list(doc.get("requires")) or doc["requires"]:
-        fail("sdk.json: requires is not empty")
-    tools = doc.get("tools")
-    if not is_list(tools) or [t.get("name") if is_dict(t) else None
-                              for t in tools] != ["gcc", "qemu"] or not all(
-            is_str(t.get("version")) and re.fullmatch(r"[\x21-\x7e]{1,64}", t["version"])
-            and '"' not in t["version"] and "\\" not in t["version"] for t in tools):
-        fail("sdk.json: tools is not gcc then qemu, each with a version")
-    fw = doc.get("firmware")
-    if not is_dict(fw) or not is_str(fw.get("repo")) or fw["repo"] != FIRMWARE_REPO \
-            or not is_str(fw.get("tag")) or not is_str(fw.get("base_url")) \
-            or not is_str(fw.get("commit")) or not HEX40.fullmatch(fw["commit"]) \
-            or not is_list(fw.get("files")) \
-            or sorted(f.get("name") if is_dict(f) and is_str(f.get("name")) else ""
-                      for f in fw["files"]) != sorted(FIRMWARE_FILES) \
-            or not all(is_str(f.get("sha256")) and HEX64.fullmatch(f["sha256"])
-                       for f in fw["files"]):
-        fail("sdk.json: firmware is not the pins of bootcode.bin, start.elf and fixup.dat")
+    if kind is None:
+        if not is_dict(formats):
+            fail("sdk.json: formats is not an object")
+    elif not is_dict(formats) or sorted(formats) != sorted(kind.formats) or not all(
+            is_int(formats[k]) and formats[k] == v for k, v in kind.formats.items()):
+        fail(f"sdk.json: formats is not {json.dumps(kind.formats)}")
+    req = doc.get("requires", None)
+    if kind and (kind.requires_present or "requires" in doc):
+        if not is_list(req) or req:
+            fail("sdk.json: requires is not empty")
+    elif "requires" in doc and not is_list(req):
+        fail("sdk.json: requires is not an array")
+    if kind and "tools" in kind.required:
+        tools = doc.get("tools")
+        if not is_list(tools) or [t.get("name") if is_dict(t) else None
+                                  for t in tools] != ["gcc", "qemu"] or not all(
+                is_str(t.get("version")) and re.fullmatch(r"[\x21-\x7e]{1,64}", t["version"])
+                and '"' not in t["version"] and "\\" not in t["version"] for t in tools):
+            fail("sdk.json: tools is not gcc then qemu, each with a version")
+    if kind and "firmware" in kind.required:
+        fw = doc.get("firmware")
+        if not is_dict(fw) or not is_str(fw.get("repo")) or fw["repo"] != FIRMWARE_REPO \
+                or not is_str(fw.get("tag")) or not is_str(fw.get("base_url")) \
+                or not is_str(fw.get("commit")) or not HEX40.fullmatch(fw["commit"]) \
+                or not is_list(fw.get("files")) \
+                or sorted(f.get("name") if is_dict(f) and is_str(f.get("name")) else ""
+                          for f in fw["files"]) != sorted(FIRMWARE_FILES) \
+                or not all(is_str(f.get("sha256")) and HEX64.fullmatch(f["sha256"])
+                           for f in fw["files"]):
+            fail("sdk.json: firmware is not the pins of bootcode.bin, start.elf and fixup.dat")
     lic = doc.get("licences")
-    if not is_list(lic) or not lic or not all(
-            is_dict(e) and is_str(e.get("spdx")) and e["spdx"]
-            and is_list(e.get("paths")) and all(is_str(p) for p in e["paths"])
-            for e in lic):
+    lic_ok = is_list(lic) and lic and all(
+        is_dict(e) and is_str(e.get("spdx")) and e["spdx"]
+        and is_list(e.get("paths")) and all(is_str(p) for p in e["paths"])
+        for e in lic)
+    if not lic_ok:
         fail("sdk.json: licences is not a list of paths and spdx")
-    elif any("GPL" in e["spdx"].upper() for e in lic):
-        # "What a package must never contain": no file under the GPL in
-        # pipos. The check reads what sdk.json declares; it cannot read the
-        # licence of a file's bytes.
-        fail("sdk.json: licences names a GPL licence, and pipos holds no file under the GPL")
     files = doc.get("files")
     if not is_list(files):
+        if lic_ok and kind:
+            why = kind.licences(lic, [])
+            if why:
+                fail(f"sdk.json: {why}")
         fail("sdk.json: files is not an array")
-        return None
+        return None, kind
+    if lic_ok and kind:
+        why = kind.licences(lic, [e["path"] for e in files
+                                  if is_dict(e) and is_str(e.get("path"))])
+        if why:
+            fail(f"sdk.json: {why}")
     out, prev = {}, None
     for i, e in enumerate(files):
         if not is_dict(e) or not is_str(e.get("path")) \
@@ -399,7 +471,209 @@ def check_manifest(doc, fail):
         if same_but_case(p, MANIFEST):
             fail(f"sdk.json: files lists {p}, the manifest")
         out[p] = e
+    return out, kind
+
+
+# ---- the templates kind ------------------------------------------------------------
+
+# SDK_PACKAGE.md "The templates package" and "Layout of templates".
+TEMPLATES_INDEX = "templates.json"
+TEMPLATES_LICENCE = "LICENSES/MIT.txt"
+TEMPLATES_FORMATS = {"templates": 1, "project": 1, "scenario": 1}
+TEMPLATE_ID_RE = re.compile(r"[a-z][a-z0-9-]{0,31}")
+TOKEN_RE = re.compile(rb"@[A-Z_]+@")
+# "The holotape-c template": its entry in templates.json and the two files
+# the spec gives byte for byte.
+HOLOTAPE_C = {
+    "id": "holotape-c",
+    "title": "Holotape in C",
+    "description": "A holotape in C that draws one screen and waits for SELECT.",
+    "kind": "holotape",
+    "files": [
+        {"path": "icon.pbm", "substitute": False},
+        {"path": "robco.toml", "substitute": True},
+        {"path": "src/main.c", "substitute": False},
+        {"path": "tests/golden/start/ready.png", "substitute": False},
+        {"path": "tests/start.toml", "substitute": False},
+    ],
+}
+HOLOTAPE_C_BYTES = {
+    "robco.toml": b'format = 1\n\n[project]\nname = "@NAME@"\ntitle = "@NAME@"\n'
+                  b'version = "0.1.0"\nkind = "holotape"\nsubtype = "utility"\n'
+                  b'icon = "icon.pbm"\n\n[target]\nplatform = "pipos"\nabi = "1.4"\n\n'
+                  b'[build]\nbackend = "robco"\nsources = ["src/*.c"]\n',
+    "tests/start.toml": b'format = 1\n\n[[step]]\nexpect = "tape: ready"\n\n[[step]]\n'
+                        b'screen = "ready"\n\n[[step]]\ntap = "select"\n\n[[step]]\nexit = 0\n',
+}
+
+
+def templates_licences(lic, paths):
+    """SDK_PACKAGE.md "The templates package": MIT for every path."""
+    if any(e["spdx"] != "MIT" for e in lic):
+        return "licences is not MIT for every path of a templates package"
+    for p in paths:
+        if not any(p.startswith(q) for e in lic for q in e["paths"]):
+            return f"licences covers no prefix of {p}, and templates is MIT for every path"
+    return None
+
+
+def template_path_problem(path):
+    """Why a template file path breaks the path rules of STUDIO_PROJECT.md
+    "Syntax" or holds a token, or None."""
+    if "\\" in path:
+        return "uses \\ as a separator"
+    if path.startswith("/"):
+        return "is absolute"
+    if len(path) >= 2 and path[0].isascii() and path[0].isalpha() and path[1] == ":":
+        return "starts with a drive letter"
+    if any(c in ("", ".", "..") for c in path.split("/")):
+        return "has an empty, . or .. component"
+    if TOKEN_RE.search(path.encode("utf-8", "replace")):
+        return "holds a token"
+    return None
+
+
+def ascii_len_ok(v, top):
+    return is_str(v) and v.isascii() and 1 <= len(v) <= top
+
+
+def check_template(i, t, fail):
+    """One entry of templates.json. Returns its files as {path: substitute},
+    or None when the entry cannot be used."""
+    where = f"templates.json: templates[{i}]"
+    if not is_dict(t):
+        fail(f"{where} is not an object")
+        return None
+    for k in t:
+        if k not in ("id", "title", "description", "kind", "files"):
+            fail(f"{where}: field {k!r} is not one the spec defines")
+    tid = t.get("id")
+    if not is_str(tid) or not TEMPLATE_ID_RE.fullmatch(tid):
+        fail(f"{where}: id is not 1 to 32 of a-z, 0-9 and -, starting with a letter")
+        return None
+    where = f"templates.json: {tid}"
+    if not ascii_len_ok(t.get("title"), 64):
+        fail(f"{where}: title is not ASCII of 1 to 64 bytes")
+    if not ascii_len_ok(t.get("description"), 200):
+        fail(f"{where}: description is not ASCII of 1 to 200 bytes")
+    if not is_str(t.get("kind")):
+        fail(f"{where}: kind is not a string")
+    files = t.get("files")
+    if not is_list(files):
+        fail(f"{where}: files is not an array")
+        return None
+    out, prev = {}, None
+    for j, f in enumerate(files):
+        if not is_dict(f) or not is_str(f.get("path")) \
+                or not isinstance(f.get("substitute"), bool):
+            fail(f"{where}: files[{j}] is not a path and a boolean substitute")
+            continue
+        for k in f:
+            if k not in ("path", "substitute"):
+                fail(f"{where}: files[{j}]: field {k!r} is not one the spec defines")
+        p = f["path"]
+        why = template_path_problem(p)
+        if why:
+            fail(f"{where}: files: {p!r}: the path {why}")
+        twin = next((q for q in out if q != p and same_but_case(q, p)), None)
+        if twin is not None:
+            fail(f"{where}: files: {p} differs only in case from {twin}")
+        if prev is not None and prev.encode("utf-8") >= p.encode("utf-8"):
+            fail(f"{where}: files: {p} is not after {prev} in byte order")
+        prev = p
+        out[p] = f["substitute"]
+    if tid == HOLOTAPE_C["id"] and t != HOLOTAPE_C:
+        fail(f"{where}: the entry is not the one SDK_PACKAGE.md gives for holotape-c")
     return out
+
+
+def check_templates_index(data, fail):
+    """templates.json. Returns {id: {path: substitute}} of the usable
+    templates, or None when the file cannot be read."""
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        fail(f"templates.json: not UTF-8 JSON: {e}")
+        return None
+    bad = surrogate_in(doc)
+    if bad is not None:
+        fail(f"templates.json: the string {ascii(bad)} holds an unpaired surrogate, "
+             "which is not UTF-8")
+        return None
+    if not is_dict(doc):
+        fail("templates.json: the top value is not an object")
+        return None
+    for k in doc:
+        if k not in ("format", "templates"):
+            fail(f"templates.json: field {k!r} is not one the spec defines")
+    if not is_int(doc.get("format")) or doc["format"] != 1:
+        fail("templates.json: format is not 1")
+    ts = doc.get("templates")
+    if not is_list(ts) or not ts:
+        fail("templates.json: templates is not an array of one or more templates")
+        return None
+    out, prev = {}, None
+    for i, t in enumerate(ts):
+        files = check_template(i, t, fail)
+        tid = t.get("id") if is_dict(t) else None
+        if not is_str(tid):
+            continue
+        if prev is not None and prev.encode("utf-8") >= tid.encode("utf-8"):
+            fail(f"templates.json: {tid} is not after {prev} in byte order of id")
+        prev = tid
+        if files is not None and tid not in out:
+            out[tid] = files
+    return out
+
+
+def templates_layout(listed, data_of, fail):
+    """SDK_PACKAGE.md "Layout of templates", "templates.json", "Tokens" and
+    "The holotape-c template"."""
+    for p in (TEMPLATES_LICENCE, TEMPLATES_INDEX):
+        if p not in listed:
+            fail(f"{p}: the templates layout needs it and sdk.json does not list it")
+    ids = None
+    if TEMPLATES_INDEX in data_of:
+        ids = check_templates_index(data_of[TEMPLATES_INDEX], fail)
+    for p in sorted(listed, key=lambda q: q.encode("utf-8")):
+        if p in (TEMPLATES_LICENCE, TEMPLATES_INDEX):
+            continue
+        top, slash, rest = p.partition("/")
+        if not slash or not TEMPLATE_ID_RE.fullmatch(top) \
+                or (ids is not None and top not in ids):
+            fail(f"{p}: not a file of the templates layout")
+        elif ids is not None and top in ids and rest not in ids[top]:
+            fail(f"{p}: under {top}/ and not listed in its files in templates.json")
+    if ids is None:
+        return
+    for tid, files in ids.items():
+        for path, substitute in files.items():
+            full = f"{tid}/{path}"
+            if full not in listed:
+                fail(f"templates.json: {full}: listed and the package does not hold it")
+                continue
+            data = data_of.get(full)
+            if data is None:
+                continue
+            if substitute:
+                for tok in dict.fromkeys(TOKEN_RE.findall(data)):
+                    if tok != b"@NAME@":
+                        fail(f"{full}: holds the token {tok.decode()}, and only @NAME@ "
+                             "is replaced")
+            if tid == HOLOTAPE_C["id"] and path in HOLOTAPE_C_BYTES \
+                    and data != HOLOTAPE_C_BYTES[path]:
+                fail(f"{full}: not the file SDK_PACKAGE.md gives byte for byte")
+
+
+KINDS = {
+    "pipos": Kind("pipos", required=("abi", "requires", "tools", "firmware"), forbidden=(),
+                  formats=FORMATS, requires_present=True, built_from=None,
+                  licences=pipos_licences, layout=pipos_layout),
+    "templates": Kind("templates", required=(), forbidden=("abi", "tools", "firmware"),
+                      formats=TEMPLATES_FORMATS, requires_present=False,
+                      built_from="RobCo-Reel", licences=templates_licences,
+                      layout=templates_layout),
+}
 
 
 def check_file_name(path, doc, fail):
@@ -537,7 +811,7 @@ def check(args):
                 data_of[n] = z.read(info)
             except READ_ERRORS as e:
                 fail(f"{n}: cannot be read: {type(e).__name__}: {e}")
-        listed = None
+        listed, kind = None, None
         if MANIFEST not in names:
             fail("sdk.json: not at the archive root")
         elif MANIFEST in data_of:
@@ -551,7 +825,7 @@ def check(args):
                     fail(f"sdk.json: the string {ascii(bad)} holds an unpaired surrogate, "
                          "which is not UTF-8")
                 else:
-                    listed = check_manifest(doc, fail)
+                    listed, kind = check_manifest(doc, fail, args.kind)
                     check_file_name(args.zip, doc, fail)
         if listed is not None:
             for n in names:
@@ -570,14 +844,8 @@ def check(args):
             for p in listed:
                 if p not in names:
                     fail(f"{p}: listed in sdk.json files and not in the archive")
-            want = set(LAYOUT) | {f"include/pipos/{h}" for h in HEADERS}
-            for p in sorted(want - set(listed)):
-                fail(f"{p}: the pipos layout needs it and sdk.json does not list it")
-            for p in sorted(set(listed) - want):
-                if p == "include/pipos/pipos.h":
-                    fail(f"{p}: the pipos layout has no file of this name")
-                elif not HEADER_RE.fullmatch(p):
-                    fail(f"{p}: not a file of the pipos layout")
+            if kind is not None:
+                kind.layout(listed, data_of, fail)
         for n, data in data_of.items():
             for f in forbid:
                 at = data.find(f.encode("utf-8"))
@@ -628,6 +896,8 @@ def main(argv=None):
                    help="a text no file may hold, such as a folder or the host name")
     c.add_argument("--user", action="append", default=[],
                    help="a user name, searched as a home folder and as name@")
+    c.add_argument("--kind", choices=sorted(KINDS),
+                   help="check as this kind of package, not the one sdk.json names")
     c.add_argument("--skip-short", action="store_true",
                    help="leave out a text under 4 characters with a note, not an error")
     p = sub.add_parser("plant")
