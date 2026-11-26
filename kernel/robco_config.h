@@ -67,4 +67,15 @@
 #define PIPOS_DIAL_PER_DETENT   4
 #endif
 
+/*
+ * Tone height for the library's audio driver. Once the pin rests at the
+ * midpoint, a tone at volume 100 swings this many steps each side of it,
+ * from 0 to 127. 127 is the library's default. A lower value makes every
+ * ROM tone softer against the system sounds. tools/boot_sound.py assumes
+ * 127.
+ */
+#ifndef ROBCO_AUDIO_TONE_PEAK
+#define ROBCO_AUDIO_TONE_PEAK   127
+#endif
+
 #endif
