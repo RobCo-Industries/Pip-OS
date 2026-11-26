@@ -23,9 +23,10 @@ Lines it reads, each an "@RC ... ev=audio op=..." marker of any stage:
                                          library computes from spans
     the rest ramp, a plain op=pcm rate=22050 len=882 vol=100 whose CRC is
     the library's ramp. The same bytes at another rate or volume are an
-    ordinary play. Once the ramp reaches its last sample, silence is
-    duty 128, not duty 0. A ramp cut early, by a stop or a new sound,
-    drops to duty 0 at once and leaves the rest level at duty 0.
+    ordinary play. Once the ramp has ended by itself, which prints its
+    op=pcm_end, silence is duty 128, not duty 0. A ramp cut before that
+    line, by a stop or a new sound, drops to duty 0 at once and leaves
+    the rest level at duty 0, even when its last sample had sounded.
   ev=audio_drop n=                       records lost: a warning
 
 Rules it applies, from the library's driver:
@@ -60,7 +61,7 @@ Rules it applies, from the library's driver:
   change to the samples that follow, but prints no line for it, so the
   file is wrong for a play whose volume changes on the way.
 - A sample play holds duty s / 256 of the 37.5 kHz carrier. Silence is
-  duty 0, or duty 128 once the rest ramp has reached its last sample.
+  duty 0, or duty 128 once the rest ramp has ended with its op=pcm_end.
 - A tone before the rest ramp, or after a ramp cut early, is the pin's
   pulse: period round(9600000 / hz) counts, high for
   (period / 2 * vol + 50) / 100 of them.
@@ -524,8 +525,10 @@ class Renderer:
             if v is None:
                 v = cache[s] = scale(s, p.vol) / 256.0
             out.append(v)
-        if p.ramp and p.index(end - 1) >= n - 1:
-            # The ramp reached its last sample. Cut before, it leaves duty 0.
+        if p.ramp and p.ended:
+            # The library sets the midpoint rest when the ramp ends by itself,
+            # which prints op=pcm_end. A cut before that line, even after the
+            # last sample, leaves duty 0.
             self.rest = 0.5
 
     def render_voice(self, p, start, end):
@@ -569,7 +572,7 @@ class Renderer:
                 ramp = is_ramp(op, f)
                 if ramp:
                     # The library starts a ramp from duty 0 only. Cut before
-                    # its last sample, it leaves duty 0, also after an
+                    # its op=pcm_end, it leaves duty 0, also after an
                     # earlier ramp that reached its end.
                     self.rest = 0.0
                 data = self.lookup(f["crc"], f["len"])

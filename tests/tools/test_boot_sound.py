@@ -304,9 +304,25 @@ class Rest(Case):
         self.assertEqual(duty[frame(160)], 0.0)
         self.assertEqual(duty[-1], 0.0)
 
-    def test_ramp_that_reaches_its_end_without_end_line(self):
+    def test_ramp_cut_after_its_last_sample_leaves_duty_0(self):
+        # The last sample sounded at 40 ms, but the stop came before the
+        # ramp's own end line: the library never set the midpoint rest.
         duty, _ = self.render([pcm(0, bs.RAMP), stop(100)])
+        self.assertEqual(duty[frame(60)], 0.5)      # the pin holds the last sample
+        self.assertEqual(duty[-1], 0.0)
+
+    def test_ramp_that_ends_by_itself_rests_at_the_midpoint(self):
+        duty, _ = self.render([pcm(0, bs.RAMP), end(40), stop(100)])
         self.assertEqual(duty[-1], 0.5)
+        # QEMU's sample interrupt is slow: the end line can come much later.
+        duty, _ = self.render([pcm(0, bs.RAMP), end(216), stop(300)])
+        self.assertEqual(duty[frame(100)], 0.5)
+        self.assertEqual(duty[-1], 0.5)
+
+    def test_tone_after_a_ramp_cut_after_its_last_sample_is_a_pulse(self):
+        cut, _ = self.render([pcm(0, bs.RAMP), stop(100), tone(200, 1000), stop(260)])
+        plain, _ = self.render([tone(200, 1000), stop(260)])
+        self.assertEqual(list(cut[frame(200):frame(260)]), list(plain[frame(200):frame(260)]))
 
     def test_mix_or_queue_on_the_ramp_is_a_bad_log(self):
         o = self.sound("o", bytes([200]) * 10)
