@@ -94,6 +94,24 @@ def part_ok(s):
     return int(s) <= 65535
 
 
+# JSON types as SDK_PACKAGE.md names them. In Python a JSON true is an int to
+# isinstance and 1.0 == 1, so an integer is an int that is not a bool.
+def is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def is_str(v):
+    return isinstance(v, str)
+
+
+def is_list(v):
+    return isinstance(v, list)
+
+
+def is_dict(v):
+    return isinstance(v, dict)
+
+
 # ---- build -------------------------------------------------------------------------
 
 def abi_of(header):
@@ -246,7 +264,7 @@ def entry_kind(info):
 
 def check_manifest(doc, fail):
     """The fields of sdk.json a pipos package must carry. Returns files or None."""
-    if not isinstance(doc, dict):
+    if not is_dict(doc):
         fail("sdk.json: the top value is not an object")
         return None
     want = ["format", "name", "version", "abi", "built_from", "formats", "requires",
@@ -254,56 +272,58 @@ def check_manifest(doc, fail):
     for k in want:
         if k not in doc:
             fail(f"sdk.json: {k} is missing")
-    if doc.get("format") != 1 or isinstance(doc.get("format"), bool):
+    if not is_int(doc.get("format")) or doc["format"] != 1:
         fail("sdk.json: format is not 1")
-    if doc.get("name") != NAME:
+    if not is_str(doc.get("name")) or doc["name"] != NAME:
         fail(f"sdk.json: name is not {NAME}")
     version = doc.get("version")
-    if not isinstance(version, str) or not VERSION_RE.fullmatch(version) \
+    if not is_str(version) or not VERSION_RE.fullmatch(version) \
             or not all(part_ok(p) for p in version.split(".")):
         fail("sdk.json: version is not X.Y.Z with no leading zero")
-    elif doc.get("abi") != ".".join(version.split(".")[:2]):
+    elif not is_str(doc.get("abi")) or doc["abi"] != ".".join(version.split(".")[:2]):
         fail("sdk.json: abi is not the first two parts of version")
     bf = doc.get("built_from")
-    if not isinstance(bf, list) or not bf or not all(
-            isinstance(e, dict) and isinstance(e.get("repo"), str) and e["repo"]
-            and isinstance(e.get("commit"), str) and HEX40.fullmatch(e["commit"]) for e in bf):
+    if not is_list(bf) or not bf or not all(
+            is_dict(e) and is_str(e.get("repo")) and e["repo"]
+            and is_str(e.get("commit")) and HEX40.fullmatch(e["commit"]) for e in bf):
         fail("sdk.json: built_from is not a list of repo and 40-digit commit")
-    if doc.get("formats") != FORMATS:
+    formats = doc.get("formats")
+    if not is_dict(formats) or sorted(formats) != sorted(FORMATS) or not all(
+            is_int(formats[k]) and formats[k] == v for k, v in FORMATS.items()):
         fail(f"sdk.json: formats is not {json.dumps(FORMATS)}")
-    if doc.get("requires") != []:
+    if not is_list(doc.get("requires")) or doc["requires"]:
         fail("sdk.json: requires is not empty")
     tools = doc.get("tools")
-    if not isinstance(tools, list) or [t.get("name") if isinstance(t, dict) else None
-                                       for t in tools] != ["gcc", "qemu"] or not all(
-            isinstance(t.get("version"), str) and re.fullmatch(r"[\x21-\x7e]{1,64}", t["version"])
+    if not is_list(tools) or [t.get("name") if is_dict(t) else None
+                              for t in tools] != ["gcc", "qemu"] or not all(
+            is_str(t["name"]) and is_str(t.get("version")) and re.fullmatch(r"[\x21-\x7e]{1,64}", t["version"])
             and '"' not in t["version"] and "\\" not in t["version"] for t in tools):
         fail("sdk.json: tools is not gcc then qemu, each with a version")
     fw = doc.get("firmware")
-    if not isinstance(fw, dict) or fw.get("repo") != FIRMWARE_REPO \
-            or not isinstance(fw.get("tag"), str) or not isinstance(fw.get("base_url"), str) \
-            or not isinstance(fw.get("commit"), str) or not HEX40.fullmatch(fw["commit"]) \
-            or not isinstance(fw.get("files"), list) \
-            or sorted(f.get("name", "") if isinstance(f, dict) else "" for f in fw["files"]) \
-            != sorted(FIRMWARE_FILES) \
-            or not all(isinstance(f.get("sha256"), str) and HEX64.fullmatch(f["sha256"])
+    if not is_dict(fw) or not is_str(fw.get("repo")) or fw["repo"] != FIRMWARE_REPO \
+            or not is_str(fw.get("tag")) or not is_str(fw.get("base_url")) \
+            or not is_str(fw.get("commit")) or not HEX40.fullmatch(fw["commit"]) \
+            or not is_list(fw.get("files")) \
+            or sorted(f.get("name") if is_dict(f) and is_str(f.get("name")) else ""
+                      for f in fw["files"]) != sorted(FIRMWARE_FILES) \
+            or not all(is_str(f.get("sha256")) and HEX64.fullmatch(f["sha256"])
                        for f in fw["files"]):
         fail("sdk.json: firmware is not the pins of bootcode.bin, start.elf and fixup.dat")
     lic = doc.get("licences")
-    if not isinstance(lic, list) or not lic or not all(
-            isinstance(e, dict) and isinstance(e.get("spdx"), str) and e["spdx"]
-            and isinstance(e.get("paths"), list) and all(isinstance(p, str) for p in e["paths"])
+    if not is_list(lic) or not lic or not all(
+            is_dict(e) and is_str(e.get("spdx")) and e["spdx"]
+            and is_list(e.get("paths")) and all(is_str(p) for p in e["paths"])
             for e in lic):
         fail("sdk.json: licences is not a list of paths and spdx")
     files = doc.get("files")
-    if not isinstance(files, list):
+    if not is_list(files):
         fail("sdk.json: files is not an array")
         return None
     out, prev = {}, None
     for i, e in enumerate(files):
-        if not isinstance(e, dict) or not isinstance(e.get("path"), str) \
-                or not isinstance(e.get("size"), int) or isinstance(e.get("size"), bool) \
-                or e["size"] < 0 or not isinstance(e.get("sha256"), str) \
+        if not is_dict(e) or not is_str(e.get("path")) \
+                or not is_int(e.get("size")) \
+                or e["size"] < 0 or not is_str(e.get("sha256")) \
                 or not HEX64.fullmatch(e["sha256"]):
             fail(f"sdk.json: files[{i}] is not a path, a size and a lower case SHA-256")
             continue
