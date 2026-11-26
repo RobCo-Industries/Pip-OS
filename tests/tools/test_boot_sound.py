@@ -189,6 +189,62 @@ class Mix(Case):
         self.assertEqual(duty[frame(14)], 200 / 256)
         self.assertEqual(duty[frame(16)], 0.0)
 
+    def overlays(self, times):
+        play = self.sound("p", bytes([128]) * (RATE * 2))      # 2 s
+        over = self.sound("o", bytes([200]) * 441)             # 20 ms
+        lines = [pcm(0, play)] + [mix(t, over) for t in times] + [end(2000)]
+        duty, w = self.render(lines)
+        self.assertEqual(w, [])
+        for t in times:
+            self.assertEqual(duty[frame(t + 1)], 200 / 256, t)
+            self.assertEqual(duty[frame(t + 19)], 200 / 256, t)
+            self.assertEqual(duty[frame(t + 21)], 0.5, t)
+        self.assertEqual(duty[frame(times[0] - 1)], 0.5)
+
+    def test_two_overlays(self):
+        self.overlays([100, 300])
+
+    def test_three_overlays(self):
+        self.overlays([100, 130, 500])
+
+    def test_nine_overlays(self):
+        self.overlays([100 + 60 * k for k in range(9)])
+
+    def test_overlay_while_one_plays_is_a_bad_log(self):
+        play = self.sound("p", bytes([128]) * RATE)
+        over = self.sound("o", bytes([200]) * 441)
+        self.assertFails([pcm(0, play), mix(100, over), mix(110, over)],
+                         "serial.log:3: op=pcm_mix while an overlay plays")
+
+    def test_overlay_right_after_the_last_one(self):
+        # 441 samples from 100 ms end at 120 ms. t_ms drops the fraction, so
+        # a line at 119 ms may be one that started at the end: it follows on.
+        play = self.sound("p", bytes([128]) * RATE)
+        a = self.sound("a", bytes([200]) * 441)
+        b = self.sound("b", bytes([100]) * 441)
+        duty, _ = self.render([pcm(0, play), mix(100, a), mix(119, b)])
+        self.assertEqual(duty[frame(119) + 10], 200 / 256)
+        self.assertEqual(duty[frame(121)], 100 / 256)
+        self.assertEqual(duty[frame(139)], 100 / 256)
+
+    def test_overlay_across_queued_buffer(self):
+        a = self.sound("a", bytes([128]) * 220)                # 10 ms
+        b = self.sound("b", bytes([140]) * 2205)
+        over = self.sound("o", bytes([200]) * 441)
+        duty, _ = self.render([pcm(0, a), mix(5, over), nxt(10, b), end(110)])
+        self.assertEqual(duty[frame(7)], 200 / 256)
+        self.assertEqual(duty[frame(15)], 212 / 256)           # 140 + 200 - 128
+        self.assertEqual(duty[frame(26)], 140 / 256)
+
+    def test_overlay_on_a_cut_play(self):
+        a = self.sound("a", bytes([128]) * RATE)
+        b = self.sound("b", bytes([128]) * RATE)
+        over = self.sound("o", bytes([200]) * 2205)            # 100 ms
+        duty, _ = self.render([pcm(0, a), mix(10, over), stop(30), pcm(40, b), end(1040)])
+        self.assertEqual(duty[frame(29)], 200 / 256)
+        self.assertEqual(duty[frame(31)], 0.0)
+        self.assertEqual(set(duty[frame(41):frame(200)]), {0.5})
+
     def test_mix_without_play_fails(self):
         over = self.sound("o", bytes([200]) * 10)
         self.assertFails([mix(5, over)], "serial.log:1: op=pcm_mix with no sample play")

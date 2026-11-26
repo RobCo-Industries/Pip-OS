@@ -26,7 +26,12 @@ Rules it applies, from the library's driver:
 - Sample bytes come from the .u8 files of the --pcm folders, found by the
   CRC-32 of their bytes. An unknown CRC plays as silence, a buffer of 128,
   with one warning per CRC. The pin still moves to the midpoint for it.
-- Mix: play + overlay - 128, clamped to 0 to 255, then the volume.
+- Mix: play + overlay - 128, clamped to 0 to 255, then the volume. A play
+  can have many overlays, one at a time, each from its own start. One
+  overlay runs at once: the library refuses a second while the first
+  plays and prints no line, so such a line is a bad log. An overlay goes
+  on across op=pcm_next and ends at its own end, or when its play ends
+  or is cut.
 - Volume: 128 + (s - 128) * vol / 100. --scale cut
   rounds toward 128, as the pinned library does. --scale nearest rounds to
   the nearest step, a half step away from 128, as the newer library does.
@@ -256,7 +261,7 @@ class Play:
         self.vol = 100 if ramp else vol
         self.data = bytearray(data)
         self.ramp = ramp
-        self.mix = None         # (first sample index, bytes)
+        self.mixes = []         # [(first sample index, bytes)], in order, apart
         self.ended = False
 
     def index(self, frame):
@@ -280,6 +285,7 @@ class Renderer:
         self.scale = scale
         self.warn = warn
         self.unknown = set()
+        self.silence = b""
         self.duty = array.array("f")
         self.rest = 0.0
         self.cur = None
@@ -293,7 +299,10 @@ class Renderer:
         if crc not in self.unknown:
             self.unknown.add(crc)
             self.warn("no .u8 file has crc=%08x len=%d: it plays as silence" % (crc, length))
-        return bytes([128]) * length
+        # One shared buffer of silence, viewed, not copied per line.
+        if len(self.silence) < length:
+            self.silence = bytes([128]) * length
+        return memoryview(self.silence)[:length]
 
     def fill_to(self, frame, level):
         n = frame - len(self.duty)
@@ -341,7 +350,9 @@ class Renderer:
     def render_play(self, p, start, end):
         out = self.duty
         n = len(p.data)
-        mix0, mix = p.mix if p.mix else (n, b"")
+        mixes = p.mixes
+        m = 0                   # the overlay that plays now or comes next
+        mix0, mix = mixes[0] if mixes else (n, b"")
         scale = self.scale
         cache = {}
         after = 0.5 if p.ramp else self.rest
@@ -355,6 +366,10 @@ class Renderer:
                 continue
             s = p.data[i]
             j = i - mix0
+            while j >= len(mix) and m + 1 < len(mixes):
+                m += 1
+                mix0, mix = mixes[m]
+                j = i - mix0
             if 0 <= j < len(mix):
                 s = min(255, max(0, s + mix[j] - 128))
             v = cache.get(s)
@@ -388,10 +403,17 @@ class Renderer:
             elif op == "pcm_mix":
                 if not isinstance(cur, Play) or cur.ended:
                     raise LogError("%s: op=pcm_mix with no sample play" % where)
-                if cur.mix and cur.mix[0] + len(cur.mix[1]) > cur.index(frame_of(t)):
-                    raise LogError("%s: op=pcm_mix while an overlay plays" % where)
                 k = -((cur.t0 - t) * cur.rate // 1000)      # first grid point at or after t
-                cur.mix = (k, self.lookup(f["crc"], f["len"]))
+                if cur.mixes:
+                    busy = cur.mixes[-1][0] + len(cur.mixes[-1][1])
+                    if k < busy:
+                        # t_ms drops the fraction of a millisecond, so the start
+                        # may lie up to one ms later than k says.
+                        if k + (cur.rate + 999) // 1000 < busy:
+                            raise LogError("%s: op=pcm_mix while an overlay plays: the "
+                                           "library refuses it and prints nothing" % where)
+                        k = busy
+                cur.mixes.append((k, self.lookup(f["crc"], f["len"])))
             elif op == "pcm_end":
                 if not isinstance(cur, Play) or cur.ended:
                     raise LogError("%s: op=pcm_end with no sample play" % where)
