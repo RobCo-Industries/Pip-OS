@@ -65,6 +65,7 @@ int pipos_image_run(const pipos_image_t *im, umode_exit_t *ex)
     k_printf("@RC stage=" PIPOS_STAGE " %s\n", im->start_line);
     rc = umode_run(&task, ex);
     if (im->kind == PIP_KIND_ROM) {
+        pipos_dsound_rom_returned(); /* the ROM's clicks end first */
         pipos_screen_ready(); /* before the end hooks redraw the console */
     }
     pipos_sys_image_end(im->kind);

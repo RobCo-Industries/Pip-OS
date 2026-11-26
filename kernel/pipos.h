@@ -113,7 +113,12 @@ void pipos_dsound_note_wait(void);
 void pipos_dsound_jump(void);
 /* Right before ev=jump: the ROM's 700 ms start. */
 void pipos_dsound_anchor(void);
-/* The ROM ended: the boot pace, nothing owed, the gate open. */
+/*
+ * Right after umode_run() returns from a ROM: nothing owed, the gate
+ * closed, a click that plays ends and the queue prints.
+ */
+void pipos_dsound_rom_returned(void);
+/* Before ev=ready after a ROM: the gate opens, the boot pace. */
 void pipos_dsound_rom_ended(void);
 /*
  * In an image's audio call, right before it starts or stops a sound.

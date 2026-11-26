@@ -20,7 +20,7 @@
 /* Under a ROM, in 10 ms ticks. A click needs more than each count. */
 #define PIPOS_ROM_START_TICKS  70u /* since the jump: 700 ms */
 #define PIPOS_ROM_QUIET_TICKS  30u /* since the ROM's last sound: 300 ms */
-#define PIPOS_ROM_DROP_TICKS  300u /* a debt that waits this long in a row is dropped: 3 s */
+#define PIPOS_ROM_DROP_TICKS  300u /* ROM sound over a debt, in total: 3 s */
 
 /* What a due click does now. */
 #define PIPOS_CLICK_WAIT 0 /* it waits a tick */
@@ -54,7 +54,7 @@ struct pipos_dsound {
     int phase;           /* a PIPOS_DS_ value */
     unsigned since_jump; /* ticks of ROM_WAIT, up to PIPOS_ROM_START_TICKS + 1 */
     unsigned quiet;      /* ticks since a ROM sound, up to PIPOS_ROM_QUIET_TICKS + 1 */
-    unsigned held;       /* ticks in a row the debt waited for a ROM sound */
+    unsigned held;       /* ROM_RUN ticks a ROM sound played over a debt since a click */
     int in_call;         /* an image's audio call runs between its cut and its end */
 };
 
@@ -130,8 +130,9 @@ void pipos_dsound_hold(struct pipos_dsound *s);
 void pipos_dsound_rom(struct pipos_dsound *s);
 
 /*
- * The ROM ended: BOOT_OPEN with nothing owed, as on a boot with no ROM
- * after its last line.
+ * The ROM returned: BOOT_QUIET with nothing owed, so the kernel's work
+ * after it owes nothing. pipos_dsound_open() then gives the boot pace, as
+ * on a boot with no ROM after its last line.
  */
 void pipos_dsound_rom_end(struct pipos_dsound *s);
 
@@ -140,8 +141,11 @@ void pipos_dsound_rom_end(struct pipos_dsound *s);
  * plays, click_busy while a kernel click plays. A click is due only in
  * ROM_RUN, more than PIPOS_ROM_START_TICKS after the anchor, and more than
  * PIPOS_ROM_QUIET_TICKS after the ROM's last sound, with nothing playing.
- * A debt that waits for a ROM sound more than PIPOS_ROM_DROP_TICKS in a
- * row is dropped. Returns as pipos_dsound_tick().
+ * The debt is dropped once ROM sounds have played over it for more than
+ * PIPOS_ROM_DROP_TICKS of ROM_RUN in total with no click played. The
+ * 300 ms after a sound, the 700 ms after the jump and silence do not count.
+ * A click that plays or a debt of zero starts the count again. Returns as
+ * pipos_dsound_tick().
  */
 int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy);
 

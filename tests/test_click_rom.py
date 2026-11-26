@@ -237,3 +237,27 @@ def test_sample_queue_with_clicks(board, kernel_image, test_rom, tmp_path, need_
         queue.judge_long_chain(rest[queue.LONG:], gap)
 
     queue.judged(attempt)
+
+
+def test_rom_end_drops_the_debt(board, kernel_image, test_rom, tmp_path, need_mtools):
+    """The ROM sleeps past the 700 ms, reads and exits at once, with clicks
+    owed. A click that plays when it returns ends, and its records print
+    before ev=rom_exit. No click starts from the ROM's return on: none
+    between ev=rom_exit and ev=ready, none after ev=ready.
+
+    In QEMU the kernel's work after the return is short, so this window
+    rarely holds a click even without the fix. tests/host/test_dsound.c
+    pins the rule itself."""
+    with boot_rom(kernel_image, board, tmp_path, test_rom("click_exit"), delay=1) as vm:
+        assert one(vm, "rom_exit")["status"] == "0"
+        wait_markers(vm, "ready")
+        time.sleep(1.5)
+        no_exception(vm)
+    seq = [m for m in vm.markers() if m.get("stage") in ("pipos", "testrom")]
+    read = next(i for i, m in enumerate(seq) if m.get("stage") == "testrom" and m.get("ev") == "read")
+    exit_ = next(i for i, m in enumerate(seq) if m.get("ev") == "rom_exit")
+    assert read < exit_, seq
+    late = [m for m in seq[read:] if m.get("ev") == "audio"]
+    late_clicks = [m for m in seq[exit_:] if m.get("ev") == "audio"]
+    print(f"between_read_and_exit={len(late)}")
+    assert not late_clicks, seq[exit_:]

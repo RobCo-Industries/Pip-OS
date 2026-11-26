@@ -34,8 +34,12 @@
  * a click that plays and holds new ones: the image's sound always wins.
  * Every call ends with pipos_dsound_call_done(), which lets clicks start
  * again and, for a sound that started or stopped, restarts the 300 ms.
- * audio_status and volume cut nothing. When the ROM ends the boot pace comes back
- * with nothing owed and the gate open.
+ * audio_status and volume cut nothing.
+ *
+ * When umode_run() returns from a ROM, before anything else, the debt is
+ * dropped and the gate closes: the redraw and the report click not. A click
+ * that plays ends and its records print before the ROM's end marker. Right
+ * before ev=ready the gate opens, in the boot pace, as on a boot with no ROM.
  *
  * Clicks start from the tick at any moment, and the trace backend queues
  * their records until the main context polls. So the kernel polls through
@@ -422,6 +426,23 @@ void pipos_dsound_anchor(void)
     irq_restore(irq);
 }
 
+void pipos_dsound_rom_returned(void)
+{
+    uint32_t irq;
+
+    if (!on || !jumped) {
+        return;
+    }
+    irq = irq_save();
+    pipos_dsound_rom_end(&rules); /* from here nothing is owed and no click starts */
+    irq_restore(irq);
+    /* A click that plays ends by itself: 21 ms at most. */
+    while (click_on && audio_busy()) {
+        timer_delay_ms(1);
+    }
+    pipos_dsound_poll();
+}
+
 void pipos_dsound_rom_ended(void)
 {
     uint32_t irq;
@@ -430,7 +451,7 @@ void pipos_dsound_rom_ended(void)
         return;
     }
     irq = irq_save();
-    pipos_dsound_rom_end(&rules);
+    pipos_dsound_open(&rules);
     irq_restore(irq);
 }
 

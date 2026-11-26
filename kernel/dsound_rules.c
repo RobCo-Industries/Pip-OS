@@ -156,7 +156,7 @@ void pipos_dsound_rom(struct pipos_dsound *s)
 
 void pipos_dsound_rom_end(struct pipos_dsound *s)
 {
-    s->phase = PIPOS_DS_BOOT_OPEN;
+    s->phase = PIPOS_DS_BOOT_QUIET;
     s->owed = 0;
     s->left = 0;
     s->held = 0;
@@ -164,7 +164,7 @@ void pipos_dsound_rom_end(struct pipos_dsound *s)
 
 int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
 {
-    int waits_for_rom;
+    int waits_for_rom, k;
 
     if (s->phase == PIPOS_DS_ROM_HOLD) {
         return -1; /* the jump: no click starts and the 700 ms wait for the anchor */
@@ -178,16 +178,23 @@ int pipos_dsound_rom_tick(struct pipos_dsound *s, int rom_busy, int click_busy)
         s->quiet++;
     }
     waits_for_rom = rom_busy || s->quiet <= PIPOS_ROM_QUIET_TICKS;
-    if (s->owed > 0 && waits_for_rom) {
-        if (++s->held > PIPOS_ROM_DROP_TICKS) {
-            s->owed = 0; /* a long tune is not followed by a stale burst */
-            s->left = 0;
-            s->held = 0;
-        }
-    } else {
+    /*
+     * The drop counts only the ticks a ROM sound blocks a debt in ROM_RUN.
+     * Silence does not reset it, so a tune with short gaps still drops a
+     * debt that never fits. A click that plays, or no debt, resets it.
+     */
+    if (s->owed == 0) {
+        s->held = 0;
+    } else if (rom_busy && s->phase == PIPOS_DS_ROM_RUN && ++s->held > PIPOS_ROM_DROP_TICKS) {
+        s->owed = 0; /* a long tune is not followed by a stale burst */
+        s->left = 0;
         s->held = 0;
     }
-    return pipos_dsound_tick(s, !waits_for_rom && !click_busy);
+    k = pipos_dsound_tick(s, !waits_for_rom && !click_busy);
+    if (k >= 0) {
+        s->held = 0;
+    }
+    return k;
 }
 
 int pipos_dsound_cut(struct pipos_dsound *s, int click_on, int busy)

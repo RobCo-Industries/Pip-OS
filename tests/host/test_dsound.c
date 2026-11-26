@@ -371,38 +371,122 @@ TEST(rom_sound_holds_a_click_300_ms)
     CHECK_EQ(s.owed, 0u);
 }
 
-/* A debt that waits more than 3 s in a row for a ROM sound is dropped. */
-TEST(rom_drops_a_debt_after_3_s)
+/* ROM_RUN reached, nothing owed, the ROM quiet long enough. */
+static void rom_running(struct pipos_dsound *s)
+{
+    int t;
+
+    pipos_dsound_init(s);
+    pipos_dsound_rom(s);
+    for (t = 0; t < 100; t++) {
+        pipos_dsound_rom_tick(s, 0, 0);
+    }
+    CHECK_EQ(s->phase, PIPOS_DS_ROM_RUN);
+}
+
+/* A 2.9 s ROM sound over a debt, then silence: the clicks play after 300 ms. */
+TEST(rom_drop_a_sound_under_3_s_keeps_the_debt)
 {
     struct pipos_dsound s;
     int t;
 
-    pipos_dsound_init(&s);
-    pipos_dsound_rom(&s);
-    for (t = 0; t < 100; t++) {
-        pipos_dsound_rom_tick(&s, 0, 0);
+    rom_running(&s);
+    pipos_dsound_add(&s, 5);
+    for (t = 0; t < 290; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
     }
-    pipos_dsound_add(&s, 30);
+    /* The 300 ms after the sound do not count toward the drop. */
+    for (t = 0; t < (int)PIPOS_ROM_QUIET_TICKS; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+    }
+    CHECK_EQ(s.owed, 5u);
+    CHECK_EQ(s.held, 290u);
+    CHECK(pipos_dsound_rom_tick(&s, 0, 0) >= 0);
+    CHECK_EQ(s.held, 0u);
+    CHECK_EQ(s.owed, 4u);
+}
+
+/* A 3.1 s ROM sound over a debt: dropped at 3.01 s, nothing plays after. */
+TEST(rom_drop_a_sound_over_3_s_drops_the_debt)
+{
+    struct pipos_dsound s;
+    int t;
+
+    rom_running(&s);
+    pipos_dsound_add(&s, 5);
     for (t = 0; t < (int)PIPOS_ROM_DROP_TICKS; t++) {
         CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
     }
-    CHECK_EQ(s.owed, 8u);
+    CHECK_EQ(s.owed, 5u);
     CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
     CHECK_EQ(s.owed, 0u);
-    /* A break in the wait starts the count again. */
-    pipos_dsound_add(&s, 3);
-    for (t = 0; t < 200; t++) {
-        pipos_dsound_rom_tick(&s, 1, 0);
+    for (t = 0; t < 9; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
     }
-    /* 310 ms of a kernel click: the ROM is quiet, the wait for it ends. */
-    for (t = 0; t <= (int)PIPOS_ROM_QUIET_TICKS; t++) {
-        pipos_dsound_rom_tick(&s, 0, 1);
+    for (t = 0; t < 1000; t++) {
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 0), -1);
+    }
+}
+
+/*
+ * 2.9 s of sound, 100 ms of silence, for ever: no click fits. Silence does
+ * not reset the count, so the debt drops on the 11th tick of the second
+ * sound, 3.11 s after the first one started.
+ */
+TEST(rom_drop_a_tune_with_short_gaps_drops_the_debt)
+{
+    struct pipos_dsound s;
+    int t, dropped = -1;
+
+    rom_running(&s);
+    pipos_dsound_add(&s, 5);
+    for (t = 0; t < 1200; t++) {
+        int busy = t % 300 < 290;
+
+        CHECK_EQ(pipos_dsound_rom_tick(&s, busy, 0), -1);
+        if (dropped < 0 && s.owed == 0) {
+            dropped = t;
+        }
+    }
+    CHECK_EQ(dropped, 310);
+}
+
+/* Work that arrives late in a long sound is owed for 3 s of that sound. */
+TEST(rom_drop_late_work_in_a_long_sound)
+{
+    struct pipos_dsound s;
+    int t, dropped = -1;
+
+    rom_running(&s);
+    for (t = 0; t < 1000; t++) {
+        if (t == 500) {
+            pipos_dsound_add(&s, 3);
+        }
+        CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
+        if (t >= 500 && dropped < 0 && s.owed == 0) {
+            dropped = t;
+        }
+    }
+    CHECK_EQ(dropped, 500 + (int)PIPOS_ROM_DROP_TICKS);
+}
+
+/* Silence with nothing owed resets nothing it needs to: a new debt starts at 0. */
+TEST(rom_drop_count_starts_with_the_debt)
+{
+    struct pipos_dsound s;
+    int t;
+
+    rom_running(&s);
+    for (t = 0; t < 500; t++) {
+        pipos_dsound_rom_tick(&s, 1, 0);
     }
     CHECK_EQ(s.held, 0u);
+    pipos_dsound_add(&s, 2);
     for (t = 0; t < 200; t++) {
         pipos_dsound_rom_tick(&s, 1, 0);
     }
-    CHECK_EQ(s.owed, 3u);
+    CHECK_EQ(s.held, 200u);
+    CHECK_EQ(s.owed, 2u);
 }
 
 /* A ROM state with one click owed and due on the next tick. */
@@ -550,20 +634,32 @@ TEST(rom_questions_leave_a_click)
     CHECK_EQ(pipos_dsound_rom_tick(&s, 0, 1), -1); /* it plays on */
 }
 
-/* The ROM's end: the boot pace, nothing owed, the gate open. */
+/*
+ * The ROM returned with a debt: nothing is owed and nothing plays while
+ * the kernel redraws and reports, even with card work. The gate then opens
+ * in the boot pace.
+ */
 TEST(rom_end)
 {
     struct pipos_dsound s;
+    int t;
 
-    pipos_dsound_init(&s);
-    pipos_dsound_rom(&s);
-    pipos_dsound_add(&s, 3);
+    rom_running(&s);
+    pipos_dsound_add(&s, 8);
     pipos_dsound_rom_end(&s);
     CHECK_EQ(pipos_dsound_in_rom(&s), 0);
     CHECK_EQ(s.owed, 0u);
+    CHECK_EQ(s.phase, PIPOS_DS_BOOT_QUIET);
+    for (t = 0; t < 200; t++) {
+        pipos_dsound_add(&s, 2);
+        CHECK_EQ(pipos_dsound_tick(&s, 1), -1);
+    }
+    CHECK_EQ(s.owed, 0u);
+    pipos_dsound_open(&s);
     CHECK_EQ(s.phase, PIPOS_DS_BOOT_OPEN);
     pipos_dsound_add(&s, 30);
     CHECK_EQ(s.owed, 30u);
+    CHECK(pipos_dsound_tick(&s, 1) >= 0);
 }
 
 /* The boot's gate closed at the jump, as after the quiet second. */
@@ -630,15 +726,15 @@ TEST(rom_work_during_a_rom_sound_is_owed)
     CHECK_EQ(played, (int)PIPOS_CLICK_CAP_ROM);
 }
 
-/* The 3 s drop holds in the first 700 ms too. */
-TEST(rom_drop_counts_from_the_anchor)
+/* A ROM sound in the first 700 ms does not count toward the drop. */
+TEST(rom_drop_counts_from_the_end_of_the_700_ms)
 {
     struct pipos_dsound s;
     int t;
 
     rom_after_quiet(&s);
     pipos_dsound_add(&s, 3);
-    for (t = 0; t < (int)PIPOS_ROM_DROP_TICKS; t++) {
+    for (t = 0; t < (int)(PIPOS_ROM_START_TICKS + PIPOS_ROM_DROP_TICKS); t++) {
         CHECK_EQ(pipos_dsound_rom_tick(&s, 1, 0), -1);
     }
     CHECK_EQ(s.owed, 3u);
