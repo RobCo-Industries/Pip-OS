@@ -27,8 +27,8 @@ _spec = importlib.util.spec_from_file_location("sound_table", TOOL)
 st = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(st)
 
-# SHA-256 of every click, then the blip, then the note, as the tool makes them.
-RECORDED_SHA256 = "8dfe3744e0ef8e5832fe2dff8dcbc6f2f5cabc0a5059f522ee831dd500ce59f9"
+# SHA-256 of every click, then the blip, then the beep, as the tool makes them.
+RECORDED_SHA256 = "a0b96bce8e61edb4c643e1d44f0062d771c6389c4fc466e67a327160f7606165"
 
 
 def load_params():
@@ -42,7 +42,7 @@ S = st.build(P)
 
 
 def all_bytes(s):
-    return b"".join(s["clicks"]) + s["blip"] + s["note"]
+    return b"".join(s["clicks"]) + s["blip"] + s["beep"]
 
 
 def run(*args):
@@ -85,26 +85,10 @@ def peak_hz(x, guess, spread=0.03, step=0.001):
     return best
 
 
-def curve_hz(t):
-    nt = P["note"]
-    start, f0 = 0.0, nt["start_hz"]
-    for seg in nt["segments"]:
-        dur = seg["duration_ms"] / 1000.0
-        if t < start + dur:
-            return f0 * (seg["end_hz"] / f0) ** ((t - start) / dur)
-        start += dur
-        f0 = seg["end_hz"]
-    return f0
-
-
-def rule_steps(hz):
-    nt = P["note"]
-    db = 0.0
-    if hz > nt["flat_to_hz"]:
-        db += nt["first_slope_db_per_octave"] * math.log2(min(hz, nt["knee_hz"]) / nt["flat_to_hz"])
-    if hz > nt["knee_hz"]:
-        db += nt["second_slope_db_per_octave"] * math.log2(hz / nt["knee_hz"])
-    return nt["top_steps"] * 10 ** (db / 20)
+def zero_crossings_hz(x):
+    """Pitch from the rising crossings of 128, first to last."""
+    ups = [i for i in range(1, len(x)) if x[i - 1] < 128 <= x[i]]
+    return (len(ups) - 1) * RATE / (ups[-1] - ups[0])
 
 
 class Determinism(unittest.TestCase):
@@ -149,8 +133,9 @@ class Check(unittest.TestCase):
     def test_wav_and_dump(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(run("--wav", d, "--dump", d)[0], 0)
-            with open(os.path.join(d, "note.u8"), "rb") as f:
-                self.assertEqual(f.read(), S["note"])
+            with open(os.path.join(d, "beep.u8"), "rb") as f:
+                self.assertEqual(f.read(), S["beep"])
+            self.assertFalse(os.path.exists(os.path.join(d, "note.u8")))
             import wave
             with wave.open(os.path.join(d, "blip.wav"), "rb") as w:
                 self.assertEqual((w.getsampwidth(), w.getframerate()), (1, RATE))
@@ -171,7 +156,7 @@ class Ceiling(unittest.TestCase):
 
     def test_loud_click_refused(self):
         p = copy.deepcopy(P)
-        p["click"]["peak_steps"] = 13
+        p["click"]["peak_steps"] = 91
         self.refused(p)
 
     def test_raised_ceiling_still_checked(self):
@@ -184,24 +169,45 @@ class Ceiling(unittest.TestCase):
         c = P["click"]
         self.assertEqual(len(a["sound_click"]), c["count"] * c["samples"])
         top = max(abs(b - 128) for b in a["sound_click"])
-        self.assertLessEqual(top, 12)
+        self.assertLessEqual(top, 90)
         self.assertEqual(top, c["peak_steps"])
 
 
 class Sizes(unittest.TestCase):
     def test_committed_sizes(self):
         a = committed_arrays()
-        self.assertEqual(len(a["sound_click"]), 12 * 464)
-        self.assertEqual(len(a["sound_blip"]), 353)
-        self.assertEqual(len(a["sound_note"]), len(S["note"]))
-        # The note ends where the pitch reaches device_top_hz, 2.971 s.
-        self.assertEqual(len(S["note"]), 65516)
+        self.assertEqual(sorted(a), ["sound_beep", "sound_blip", "sound_click"])
+        self.assertEqual(len(a["sound_click"]), 12 * 789)
+        self.assertEqual(len(a["sound_blip"]), 600)
+        self.assertEqual(len(a["sound_beep"]), 2250)
+        self.assertEqual(a["sound_beep"], S["beep"])
 
     def test_header_matches(self):
         with open(TABLE_H, "r", encoding="utf-8") as f:
             h = f.read()
-        self.assertIn("#define SOUND_NOTE_LEN      %du" % len(S["note"]), h)
-        self.assertIn("#define SOUND_RATE_HZ       22050u", h)
+        self.assertIn("#define SOUND_RATE_HZ       37500u", h)
+        self.assertIn("#define SOUND_CLICK_LEN     789u", h)
+        self.assertIn("#define SOUND_BLIP_LEN      600u", h)
+        self.assertIn("#define SOUND_BEEP_LEN      2250u", h)
+        self.assertNotIn("sound_note", h)
+
+    def test_rate_bound(self):
+        for rate, ok in ((37500, True), (37501, False), (3999, False)):
+            p = copy.deepcopy(P)
+            p["rate_hz"] = rate
+            if ok:
+                st.check_params(p)
+            else:
+                self.assertRaises(st.ParamError, st.check_params, p)
+
+    def test_note_block_ignored(self):
+        p = copy.deepcopy(P)
+        del p["note"]
+        self.assertEqual(all_bytes(st.build(p)), all_bytes(S))
+
+    def test_mix_room(self):
+        # A click over the note's start with its second partial: 22 steps.
+        self.assertLessEqual(P["click"]["ceiling_steps"] + 22, 127)
 
 
 class Click(unittest.TestCase):
@@ -211,6 +217,26 @@ class Click(unittest.TestCase):
             want = st.round_half_away(c["peak_steps"] * c["strength_percent"][k] / 100.0)
             self.assertEqual(max(abs(b - 128) for b in data), want)
             self.assertLess(abs(sum(data) / len(data) - 128), 1.0)
+
+    def test_peak(self):
+        c = P["click"]
+        self.assertEqual(c["samples"], 789)
+        self.assertEqual(max(max(abs(b - 128) for b in d) for d in S["clicks"]), 88)
+        self.assertEqual(c["ceiling_steps"], 90)
+
+    def test_length_is_21_ms(self):
+        self.assertEqual(round(P["click"]["samples"] * 1000 / RATE), 21)
+
+    def test_envelope(self):
+        # The envelope is given per millisecond: its loudest millisecond
+        # is the third, and the last is 28 dB under it.
+        ms = RATE // 1000
+        tops = []
+        for k in range(P["click"]["samples"] // ms):
+            tops.append(sum(max(abs(b - 128) for b in d[k * ms:(k + 1) * ms])
+                            for d in S["clicks"]))
+        self.assertEqual(tops.index(max(tops)), 2)
+        self.assertLess(20 * math.log10(tops[-1] / max(tops)), -20.0)
 
     def test_band(self):
         n = P["click"]["samples"]
@@ -233,43 +259,6 @@ class Click(unittest.TestCase):
                 self.assertLess(db(b), -15.0, "band %d Hz" % b)
 
 
-class Note(unittest.TestCase):
-    def window(self, t, ms=50):
-        n = int(ms * RATE / 1000)
-        i = int(t * RATE) - n // 2
-        return S["note"][i:i + n]
-
-    def test_pitch(self):
-        # 20 ms windows: near the top the pitch climbs 5 percent in 50 ms
-        # while the level falls, which pulls a 50 ms peak low.
-        for t in (0.1, 0.5, 1.2, 2.0, 2.5, 2.7, 2.85, 2.9):
-            want = curve_hz(t)
-            got = peak_hz(self.window(t, 20), want)
-            self.assertLess(abs(got / want - 1.0), 0.01, "at %.2f s" % t)
-
-    def test_level_follows_rule_and_falls(self):
-        last = None
-        t = 0.2
-        end = len(S["note"]) / RATE - 0.1
-        while t < end:
-            w = self.window(t)
-            hz = curve_hz(t)
-            peak = max(abs(b - 128) for b in w)
-            self.assertLessEqual(abs(peak - rule_steps(hz)), 1.0, "at %.2f s" % t)
-            if hz > P["note"]["flat_to_hz"] and last is not None:
-                self.assertLessEqual(peak, last, "rises at %.2f s" % t)
-            if hz > P["note"]["flat_to_hz"]:
-                last = peak
-            t += 0.05
-
-    def test_fades(self):
-        note = S["note"]
-        self.assertEqual(note[0], 128)
-        self.assertEqual(note[-1], 128)
-        early = max(abs(b - 128) for b in note[:int(0.03 * RATE)])
-        self.assertLessEqual(early, 2)
-
-
 class Blip(unittest.TestCase):
     def test_two_pitches(self):
         start = 0
@@ -281,6 +270,46 @@ class Blip(unittest.TestCase):
             start += note["samples"]
         self.assertEqual(S["blip"][0], 128)
         self.assertEqual(S["blip"][-1], 128)
+
+    def test_zero_crossings(self):
+        start = 0
+        for note in P["blip"]["notes"]:
+            self.assertEqual(note["samples"], 300)
+            part = S["blip"][start:start + note["samples"]]
+            got = zero_crossings_hz(part)
+            self.assertLess(abs(got / note["hz"] - 1.0), 0.02)
+            start += note["samples"]
+        self.assertEqual([n["peak_steps"] for n in P["blip"]["notes"]], [48, 40])
+
+    def test_edges(self):
+        rate_ms = RATE / 1000
+        for start in (0, 300):
+            part = S["blip"][start:start + 300]
+            self.assertLessEqual(abs(part[1] - 128), 1)
+            # 2 ms in: under half of the peak before 1 ms.
+            self.assertLess(max(abs(b - 128) for b in part[:int(rate_ms) - 1]), 25)
+            # 4 ms out: under half of the peak in the last 2 ms.
+            self.assertLess(max(abs(b - 128) for b in part[-int(2 * rate_ms):]), 25)
+
+
+class Beep(unittest.TestCase):
+    def test_pitch_and_level(self):
+        b = S["beep"]
+        self.assertEqual(len(b), 2250)
+        self.assertEqual(max(abs(v - 128) for v in b), 24)
+        self.assertLess(abs(zero_crossings_hz(b) / 1000.0 - 1.0), 0.005)
+        self.assertLess(abs(peak_hz(b, 1000.0, spread=0.05) / 1000.0 - 1.0), 0.005)
+        self.assertLess(abs(sum(b) / len(b) - 128), 0.5)
+
+    def test_edges(self):
+        b = S["beep"]
+        self.assertEqual((b[0], b[-1]), (128, 128))
+        # 375 samples each way: full level only between them.
+        self.assertEqual(max(abs(v - 128) for v in b[375:-375]), 24)
+        self.assertLessEqual(max(abs(v - 128) for v in b[:94]), 6)
+        self.assertLessEqual(max(abs(v - 128) for v in b[-94:]), 6)
+        mid = max(abs(v - 128) for v in b[150:225])
+        self.assertTrue(10 <= mid <= 15, mid)
 
 
 if __name__ == "__main__":

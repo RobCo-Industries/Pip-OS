@@ -8,18 +8,18 @@
 
 #include <stdint.h>
 
-#define SOUND_RATE_HZ       22050u
+#define SOUND_RATE_HZ       37500u
 #define SOUND_CLICK_COUNT   12u
-#define SOUND_CLICK_LEN     464u
-#define SOUND_CLICK_CEILING 12u  /* steps from 128 no click passes */
-#define SOUND_BLIP_LEN      353u
-#define SOUND_NOTE_LEN      65516u
+#define SOUND_CLICK_LEN     789u
+#define SOUND_CLICK_CEILING 90u  /* steps from 128 no click passes */
+#define SOUND_BLIP_LEN      600u
+#define SOUND_BEEP_LEN      2250u
 
 /* Disk clicks, played in turn. */
 extern const uint8_t sound_click[SOUND_CLICK_COUNT][SOUND_CLICK_LEN];
 /* The line blip: two short notes. */
 extern const uint8_t sound_blip[SOUND_BLIP_LEN];
-/* The rising note. */
-extern const uint8_t sound_note[SOUND_NOTE_LEN];
+/* The soft beep: a sine with linear edges. */
+extern const uint8_t sound_beep[SOUND_BEEP_LEN];
 
 #endif

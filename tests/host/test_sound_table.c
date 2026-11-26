@@ -10,7 +10,9 @@ TEST(click_stays_under_ceiling)
     int d;
     int top = 0;
 
-    CHECK_EQ(SOUND_CLICK_CEILING, 12);
+    CHECK_EQ(SOUND_CLICK_CEILING, 90);
+    /* Room for a click over the note's start, 22 steps. */
+    CHECK(SOUND_CLICK_CEILING + 22 <= 127);
     for (k = 0; k < SOUND_CLICK_COUNT; k++) {
         unsigned long sum = 0;
         for (i = 0; i < SOUND_CLICK_LEN; i++) {
@@ -25,17 +27,17 @@ TEST(click_stays_under_ceiling)
         /* Mean within 1 step of 128. */
         CHECK(sum > 127ul * SOUND_CLICK_LEN && sum < 129ul * SOUND_CLICK_LEN);
     }
-    CHECK_EQ(top, 11);
+    CHECK_EQ(top, 88);
 }
 
 TEST(sizes_and_ends)
 {
-    CHECK_EQ(SOUND_RATE_HZ, 22050);
-    CHECK_EQ(sizeof(sound_click), 12u * 464u);
-    CHECK_EQ(sizeof(sound_blip), 353u);
-    CHECK_EQ(sizeof(sound_note), SOUND_NOTE_LEN);
-    CHECK_EQ(sound_note[0], 128);
-    CHECK_EQ(sound_note[SOUND_NOTE_LEN - 1], 128);
+    CHECK_EQ(SOUND_RATE_HZ, 37500);
+    CHECK_EQ(sizeof(sound_click), 12u * 789u);
+    CHECK_EQ(sizeof(sound_blip), 600u);
+    CHECK_EQ(sizeof(sound_beep), 2250u);
+    CHECK_EQ(sound_beep[0], 128);
+    CHECK_EQ(sound_beep[SOUND_BEEP_LEN - 1], 128);
     CHECK_EQ(sound_blip[0], 128);
     CHECK_EQ(sound_blip[SOUND_BLIP_LEN - 1], 128);
 }

@@ -159,67 +159,6 @@ def make_click(c, rate, strength, rnd):
     return to_u8([v * scale for v in raw])
 
 
-def note_level(nt, hz):
-    """Peak in steps at pitch hz."""
-    db = 0.0
-    if hz > nt["flat_to_hz"]:
-        upper = hz if hz < nt["knee_hz"] else nt["knee_hz"]
-        db = db + nt["first_slope_db_per_octave"] * ln(upper / nt["flat_to_hz"]) / LN2
-    if hz > nt["knee_hz"]:
-        db = db + nt["second_slope_db_per_octave"] * ln(hz / nt["knee_hz"]) / LN2
-    return nt["top_steps"] * db_to_gain(db)
-
-
-def note_pitch(nt, t):
-    """Pitch at t seconds: a constant ratio per second within each segment."""
-    start = 0.0
-    f0 = nt["start_hz"]
-    for seg in nt["segments"]:
-        dur = seg["duration_ms"] / 1000.0
-        if t < start + dur:
-            return f0 * exp(ln(seg["end_hz"] / f0) * (t - start) / dur)
-        start = start + dur
-        f0 = seg["end_hz"]
-    return f0
-
-
-def note_end_seconds(nt):
-    """Time at which the pitch reaches device_top_hz."""
-    start = 0.0
-    f0 = nt["start_hz"]
-    top = nt["device_top_hz"]
-    for seg in nt["segments"]:
-        dur = seg["duration_ms"] / 1000.0
-        if seg["end_hz"] >= top > f0:
-            return start + dur * ln(top / f0) / ln(seg["end_hz"] / f0)
-        start = start + dur
-        f0 = seg["end_hz"]
-    raise ParamError("note.device_top_hz is not reached by the segments")
-
-
-def make_note(nt, rate):
-    n = int(note_end_seconds(nt) * rate) + 1
-    fade_in = nt["fade_in_ms"] * rate / 1000.0
-    fade_out = nt["device_fade_out_ms"] * rate / 1000.0
-    second = db_to_gain(nt["second_partial_db"])
-    phase = 0.0
-    out = []
-    for i in range(n):
-        hz = note_pitch(nt, i / rate)
-        s = sine_cycle(phase)
-        if 2.0 * hz < rate / 2.0:
-            s = s + second * sine_cycle(frac(2.0 * phase))
-        v = s * note_level(nt, hz)
-        if i < fade_in:
-            v = v * (i / fade_in)
-        left = n - 1 - i
-        if left < fade_out:
-            v = v * (left / fade_out)
-        out.append(v)
-        phase = frac(phase + hz / rate)
-    return to_u8(out)
-
-
 def make_blip(bp, rate):
     fade_in = bp["fade_in_ms"] * rate / 1000.0
     fade_out = bp["fade_out_ms"] * rate / 1000.0
@@ -238,10 +177,27 @@ def make_blip(bp, rate):
     return to_u8(out)
 
 
+def make_beep(bp, rate):
+    """A sine at its peak, with linear edges in and out."""
+    n = bp["samples"]
+    edge = bp["edge_ms"] * rate / 1000.0
+    inc = bp["hz"] / rate
+    out = []
+    for i in range(n):
+        v = bp["peak_steps"] * sine_cycle(frac(i * inc))
+        if i < edge:
+            v = v * (i / edge)
+        left = n - 1 - i
+        if left < edge:
+            v = v * (left / edge)
+        out.append(v)
+    return to_u8(out)
+
+
 def check_params(p):
     rate = p["rate_hz"]
-    if not 4000 <= rate <= 22050:
-        raise ParamError("rate_hz must be 4000 to 22050")
+    if not 4000 <= rate <= 37500:
+        raise ParamError("rate_hz must be 4000 to 37500")
     c = p["click"]
     if c["peak_steps"] > c["ceiling_steps"]:
         raise ParamError("click.peak_steps %d is above click.ceiling_steps %d"
@@ -253,15 +209,22 @@ def check_params(p):
             raise ParamError("click.strength_percent entries must be 1 to 100")
     if c["band_start_hz"] + len(c["band_db"]) * c["band_width_hz"] > rate / 2:
         raise ParamError("click bands pass half of rate_hz")
-    if p["note"]["device_top_hz"] >= rate / 2:
-        raise ParamError("note.device_top_hz must be under half of rate_hz")
     for note in p["blip"]["notes"]:
         if note["hz"] >= rate / 2:
             raise ParamError("blip notes must be under half of rate_hz")
+    bp = p["beep"]
+    if bp["hz"] >= rate / 2:
+        raise ParamError("beep.hz must be under half of rate_hz")
+    if not 2 * bp["edge_ms"] * rate <= bp["samples"] * 1000:
+        raise ParamError("beep edges are longer than the beep")
 
 
 def build(p):
-    """The sounds as {'clicks': [bytes], 'blip': bytes, 'note': bytes}."""
+    """The sounds as {'clicks': [bytes], 'blip': bytes, 'beep': bytes}.
+
+    The note block of the parameters is kept for a later change, which
+    plays the note live from a table of spans. This tool ignores it.
+    """
     check_params(p)
     rate = p["rate_hz"]
     c = p["click"]
@@ -272,7 +235,7 @@ def build(p):
             if abs(b - 128) > c["ceiling_steps"]:
                 raise ParamError("click %d passes click.ceiling_steps" % k)
     return {"clicks": clicks, "blip": make_blip(p["blip"], rate),
-            "note": make_note(p["note"], rate)}
+            "beep": make_beep(p["beep"], rate)}
 
 
 # ---- Output ---------------------------------------------------------------
@@ -299,28 +262,28 @@ def render(p, s):
          "#define SOUND_CLICK_LEN     %du\n"
          "#define SOUND_CLICK_CEILING %du  /* steps from 128 no click passes */\n"
          "#define SOUND_BLIP_LEN      %du\n"
-         "#define SOUND_NOTE_LEN      %du\n\n"
+         "#define SOUND_BEEP_LEN      %du\n\n"
          "/* Disk clicks, played in turn. */\n"
          "extern const uint8_t sound_click[SOUND_CLICK_COUNT][SOUND_CLICK_LEN];\n"
          "/* The line blip: two short notes. */\n"
          "extern const uint8_t sound_blip[SOUND_BLIP_LEN];\n"
-         "/* The rising note. */\n"
-         "extern const uint8_t sound_note[SOUND_NOTE_LEN];\n\n"
+         "/* The soft beep: a sine with linear edges. */\n"
+         "extern const uint8_t sound_beep[SOUND_BEEP_LEN];\n\n"
          "#endif\n") % (p["rate_hz"], c["count"], c["samples"], c["ceiling_steps"],
-                        len(s["blip"]), len(s["note"]))
+                        len(s["blip"]), len(s["beep"]))
     body = [HEADER_LINE, '#include "sound_table.h"\n\n',
             "const uint8_t sound_click[SOUND_CLICK_COUNT][SOUND_CLICK_LEN] = {\n"]
     for data in s["clicks"]:
         body += ["    {\n", c_bytes(data, "        "), "    },\n"]
     body += ["};\n\nconst uint8_t sound_blip[SOUND_BLIP_LEN] = {\n", c_bytes(s["blip"], "    "),
-             "};\n\nconst uint8_t sound_note[SOUND_NOTE_LEN] = {\n", c_bytes(s["note"], "    "),
+             "};\n\nconst uint8_t sound_beep[SOUND_BEEP_LEN] = {\n", c_bytes(s["beep"], "    "),
              "};\n"]
     return "".join(body), h
 
 
 def buffers(s):
     out = [("click%02d" % k, d) for k, d in enumerate(s["clicks"])]
-    return out + [("blip", s["blip"]), ("note", s["note"])]
+    return out + [("blip", s["blip"]), ("beep", s["beep"])]
 
 
 def write_wav(path, rate, data):

@@ -1,11 +1,11 @@
 {
-  "rate_hz": 22050,
+  "rate_hz": 37500,
   "click": {
     "count": 12,
-    "samples": 464,
+    "samples": 789,
     "seed": 1592642901,
-    "peak_steps": 11,
-    "ceiling_steps": 12,
+    "peak_steps": 88,
+    "ceiling_steps": 90,
     "strength_percent": [100, 82, 93, 74, 88, 70, 97, 79, 91, 76, 85, 72],
     "band_start_hz": 1000,
     "band_width_hz": 250,
@@ -39,10 +39,16 @@
   },
   "blip": {
     "notes": [
-      {"hz": 3469, "samples": 176, "peak_steps": 6},
-      {"hz": 2625, "samples": 177, "peak_steps": 5}
+      {"hz": 3469, "samples": 300, "peak_steps": 48},
+      {"hz": 2625, "samples": 300, "peak_steps": 40}
     ],
     "fade_in_ms": 2,
     "fade_out_ms": 4
+  },
+  "beep": {
+    "hz": 1000,
+    "samples": 2250,
+    "peak_steps": 24,
+    "edge_ms": 10
   }
 }
