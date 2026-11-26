@@ -37,6 +37,10 @@ jobs:
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # packages: read pulls the CI image for the boot step.
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,6 +106,24 @@ jobs:
           cat planted.log
           test "$code" -eq 1
           grep -F "FAIL: docs/API.md: holds" planted.log
+      # The QEMU suite boots the kernel of the CI image's compiler. This
+      # boots the one the package ships, built above with xPack, on the
+      # four boards: the simulator card from the package's own files,
+      # QEMU started from its boot.json, the runner's done line rc=0.
+      # It runs in the CI image, which holds QEMU and mtools. The test
+      # tape comes from the image's compiler; only the package is tested.
+      - name: The package's kernel boots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(cat external/robco-core/ci/IMAGE_TAG)
+          image="ghcr.io/robco-industries/robco-ci:$tag"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          zip=$(ls build/pipos-*.zip)
+          docker run --rm -v "$PWD":/w -w /w "$image" \
+            make CI=1 sdk-boot-test SDK_ZIP="$zip" BOARD=all \
+              BUILD=build/sdk-boot VENV=/tmp/venv | tee boot.log
+          grep -E "^=+ 5 passed in " boot.log
       - uses: actions/upload-artifact@v4
         with:
           name: pipos-package
