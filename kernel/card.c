@@ -116,9 +116,11 @@ void pipos_config_load(int card, pipos_settings_t *s)
     }
     k_printf("@RC stage=" PIPOS_STAGE " ev=config rc=%s path=" PIPOS_CFG_PATH
              " line=%u scheme=%s line_delay_ms=%u volume=%u beep=%d"
-             " char_delay_ms=%u key_click=%d\n",
+             " char_delay_ms=%u key_click=%d radio=%u sfx=%u recordings=%u games=%u\n",
              rc, err_line, pipos_scheme_name(s->scheme), (unsigned)s->line_delay_ms,
-             s->volume, s->beep, (unsigned)s->char_delay_ms, s->system_sound);
+             s->volume, s->beep, (unsigned)s->char_delay_ms, s->system_sound,
+             s->levels[PIPOS_SND_RADIO], s->levels[PIPOS_SND_SFX],
+             s->levels[PIPOS_SND_RECORDINGS], s->levels[PIPOS_SND_GAMES]);
 }
 
 unsigned pipos_holo_count(int card)

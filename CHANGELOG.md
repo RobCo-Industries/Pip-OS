@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `[audio]` of `PIPOS.CFG` takes four sound levels, `radio`, `sfx`, `recordings` and `games`, each 0 to 100, default 100. The kernel gives each play one gain from the master `volume` and the level of its kind, squared: the kernel's own sounds and a ROM's are `sfx`, a holotape's are `games`. `ev=config` ends with the four levels. At 100 every trace line is the same as before. `tests/test_levels.py` and `tests/host/test_levels.c` check it.
+- RobCo-Core moves to `245590e`. Its driver gains `audio_set_gain()`, and `audio_set_volume(v)` is now `audio_set_gain(v * 100)`. A volume change reaches a tone or a sample that plays within 20 ms with no step, instead of at the next note. A change while a sound plays prints `op=gain` on the trace backend. Nothing else changes at volume 100.
 - `make test-host` runs RobCo-Core's workflow guard through `make check-workflows`. Pip-OS drops its own `tools/check_workflow_exprs.py` and its test, so the two copies cannot drift. The library's guard also wants each action pinned by a full commit, so `sdk-package.yml` now pins its four actions.
 - RobCo-Core moves to `300e5a3`. Its sound table generator takes `--bed NAME`, for a ROM that plays a quiet loop under its other sounds. No kernel code and no SDK file changes.
 - `make boot-sound` runs RobCo-Core's `tools/audio_preview.py`. Pip-OS drops its own `tools/boot_sound.py`, `tools/voice_engine.py`, `tools/tone_square.py` and their tests, so the two copies cannot drift. `tools/sound_table.py` loads the library's voice engine. The boot sound's bytes are the same. `make boot-sound-test` is gone, since the tests live in the library.

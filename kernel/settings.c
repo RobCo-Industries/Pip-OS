@@ -145,10 +145,15 @@ const char *pipos_tft_pin_refusal(int pin)
 
 void pipos_settings_default(pipos_settings_t *s)
 {
+    int k;
+
     k_memset(s, 0, sizeof(*s));
     s->scheme = 0;
     s->line_delay_ms = 0;
     s->volume = PIPOS_VOLUME_MAX;
+    for (k = 0; k < PIPOS_SND_KINDS; k++) {
+        s->levels[k] = PIPOS_LEVEL_MAX;
+    }
     s->beep = 1;
     s->char_delay_ms = 0;
     s->system_sound = 0;
@@ -268,6 +273,19 @@ static int on_tft_key(parse_ctx_t *p, const char *key, const char *value, const 
     return 1;
 }
 
+/* The kind of an [audio] level key, or -1 for another key. */
+static int level_kind(const char *key)
+{
+    int k;
+
+    for (k = 0; k < PIPOS_SND_KINDS; k++) {
+        if (k_strcmp(key, pipos_levels_key(k)) == 0) {
+            return k;
+        }
+    }
+    return -1;
+}
+
 static int on_key(const char *section, const char *key, const char *value, unsigned line,
                   void *ctx)
 {
@@ -275,6 +293,7 @@ static int on_key(const char *section, const char *key, const char *value, unsig
     uint32_t n;
     int v;
     int ok = 1;
+    int kind;
     const char *why;
 
     if (k_strcmp(section, "display") == 0 && on_tft_key(p, key, value, &why)) {
@@ -321,6 +340,12 @@ static int on_key(const char *section, const char *key, const char *value, unsig
     } else if (k_strcmp(section, "audio") == 0 && k_strcmp(key, "volume") == 0) {
         if (parse_uint(value, PIPOS_VOLUME_MAX, &n) == 0) {
             p->s.volume = (unsigned)n;
+        } else {
+            ok = 0;
+        }
+    } else if (k_strcmp(section, "audio") == 0 && (kind = level_kind(key)) >= 0) {
+        if (parse_uint(value, PIPOS_LEVEL_MAX, &n) == 0) {
+            p->s.levels[kind] = (unsigned)n;
         } else {
             ok = 0;
         }

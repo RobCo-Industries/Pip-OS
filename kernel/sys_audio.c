@@ -16,20 +16,32 @@
  * pipos_dsound_call_done() and what it did: only a sound that started or
  * stopped restarts the 300 ms of quiet. audio_status and volume cut
  * nothing: owned is 0 whenever a click plays, so audio_status never
- * reports one, and the library reads the volume per sample, so a click
- * that plays takes a new level from there on. sample_rate cuts nothing
- * either: a play keeps the rate it started with.
+ * reports one, and the library moves the gain of a play smoothly, so a
+ * click that plays reaches a new level within 20 ms. sample_rate cuts
+ * nothing either: a play keeps the rate it started with.
+ *
+ * Every play has a kind, and its gain comes from the master and the level
+ * of that kind, see levels.h. The kernel sets the gain after the old play
+ * is cut and before the new one starts, and remembers the kind of the play
+ * it started. A sample queued behind a play keeps that play's gain.
  */
 #include <robco/audio.h>
 #include <robco/irq.h>
 
 #include "audio_rules.h"
 #include "dsound_rules.h"
+#include "levels.h"
 #include "pipos.h"
 #include "sys.h"
 
 /* The level every call sees; the library has no getter. Set once by main.c at boot. */
 static unsigned level;
+/* The master is `level`; the four levels come from [audio] at boot. */
+static pipos_levels_t levels;
+/* The kind of the sounds the running image starts: sfx for a ROM, games for a holotape. */
+static int image_snd = PIPOS_SND_SFX;
+/* The kind of the last play started, the image's or the kernel's. Written with IRQs masked. */
+static volatile int play_snd = PIPOS_SND_SFX;
 /* 1 when audio_init() left a backend that plays sounds. Set once by main.c. */
 static int driver_ok;
 /* 1 when the boot rest ramp reached its end. Set once by main.c. */
@@ -56,6 +68,17 @@ static pipos_rate_t rate = { PIP_SAMPLE_RATE, PIP_SAMPLE_RATE };
 static uint32_t play_rate = PIP_SAMPLE_RATE;
 /* play_seq's copy of the caller's notes. Main context only. */
 static pip_note_t user_notes[PIP_SEQ_MAX];
+
+/*
+ * The gain of a play of `snd`. The trim is 100 for every play in this
+ * version. Call it with IRQs masked, or with nothing playing.
+ */
+static void set_gain(int snd)
+{
+    levels.master = level;
+    play_snd = snd;
+    audio_set_gain(pipos_levels_gain_of(&levels, snd, PIPOS_LEVEL_MAX));
+}
 
 static void stop_owned(void)
 {
@@ -106,6 +129,8 @@ static int32_t done(int32_t rc)
 static int32_t tone(uint32_t hz, uint32_t ms)
 {
     int32_t rc = pipos_audio_check_tone(hz, ms);
+    uint32_t s;
+    int prev;
 
     if (rc != 0) {
         return rc;
@@ -114,7 +139,15 @@ static int32_t tone(uint32_t hz, uint32_t ms)
     outcome = PIPOS_ACALL_FAILED;
     /* audio_tone() replaces the PCM and drops the waiting buffer. */
     pipos_pcmq_drop(&pcmq);
-    if (audio_tone(hz, ms) != 0) {
+    s = irq_save();
+    prev = play_snd;
+    set_gain(image_snd);
+    rc = audio_tone(hz, ms);
+    if (rc != 0) {
+        set_gain(prev);
+    }
+    irq_restore(s);
+    if (rc != 0) {
         return -PIP_EIO;
     }
     owned = 1;
@@ -153,6 +186,7 @@ static int32_t start_pcm(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t len
         return rc;
     }
     hz = pipos_pcmq_rate(PIPOS_PCMQ_START, rate.rate, play_rate);
+    set_gain(image_snd); /* the old play is cut, the new one not started */
     if (audio_play_pcm(pcm_buf[0], len, hz, AUDIO_PRIORITY) != 0) {
         return -PIP_EIO;
     }
@@ -238,6 +272,7 @@ static int32_t sample_queue(const pipos_sys_ctx_t *ctx, uint32_t data, uint32_t 
     /* The play ended since the check: nothing reads either buffer. */
     pipos_pcmq_drop(&pcmq);
     hz = pipos_pcmq_rate(PIPOS_PCMQ_START, rate.rate, play_rate);
+    set_gain(image_snd); /* nothing plays: the play ended */
     if (audio_play_pcm(pcm_buf[plan.buf], len, hz, AUDIO_PRIORITY) != 0) {
         return -PIP_EIO;
     }
@@ -286,18 +321,21 @@ static int32_t sys_audio_stop(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t 
 }
 
 /*
- * A question cuts no click. The new level holds for what plays next, and
- * the library reads it per sample, so a click that plays changes level
- * from there on.
+ * A question cuts no click. The new master holds for what plays next, and
+ * the play that sounds gets the gain of its own kind again: the library
+ * moves it there smoothly, a click that plays included.
  */
 static int32_t sys_volume(const pipos_sys_ctx_t *ctx, uint32_t new_level, uint32_t a1,
                           uint32_t a2, uint32_t a3)
 {
     int32_t prev = pipos_audio_volume_swap(&level, new_level);
+    uint32_t s;
 
     (void)ctx, (void)a1, (void)a2, (void)a3;
     if (prev >= 0) {
-        audio_set_volume(level);
+        s = irq_save();
+        set_gain(play_snd);
+        irq_restore(s);
     }
     outcome = PIPOS_ACALL_ASKED;
     return done(prev);
@@ -346,6 +384,7 @@ static int32_t play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t cou
     int32_t rc = pipos_audio_check_count(count);
     uint32_t s;
     int played = 0;
+    int prev;
 
     if (rc != 0) {
         return rc;
@@ -360,7 +399,12 @@ static int32_t play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t cou
         cut_click();
         outcome = PIPOS_ACALL_FAILED;
         pipos_pcmq_drop(&pcmq);
+        prev = play_snd;
+        set_gain(image_snd);
         played = audio_play(seq_buf, count, AUDIO_PRIORITY);
+        if (played != 0) {
+            set_gain(prev);
+        }
     }
     irq_restore(s);
     if (rc != 0) {
@@ -416,9 +460,30 @@ int pipos_audio_rest_mid(void)
     return rest_mid;
 }
 
-void pipos_audio_start_volume(unsigned start)
+void pipos_audio_start_levels(unsigned master, const unsigned start[])
 {
-    level = start;
+    int k;
+
+    level = master;
+    for (k = 0; k < PIPOS_SND_KINDS; k++) {
+        levels.level[k] = start[k];
+    }
+    set_gain(PIPOS_SND_SFX);
+}
+
+int pipos_audio_kernel_gain(void)
+{
+    int prev = play_snd;
+
+    set_gain(PIPOS_SND_SFX);
+    return prev;
+}
+
+void pipos_audio_kernel_gain_undo(int prev, int rc)
+{
+    if (rc != 0) {
+        set_gain(prev);
+    }
 }
 
 /* Runs after main.c set the start level: keeps it. */
@@ -431,17 +496,21 @@ void pipos_audio_init(void)
 /*
  * Only a sound an image started is stopped: the boot beep plays on. Every
  * image starts at 8000 Hz; a holotape's end gives the ROM its rate back.
+ * A ROM's sounds are sfx and a holotape's are games. Only a holotape's end
+ * returns to an image, a ROM, so the kind is sfx again after any end.
  */
 void pipos_audio_image_start(int kind)
 {
     stop_owned();
     pipos_audio_rate_image_start(&rate, kind);
+    image_snd = pipos_levels_image_snd(kind);
 }
 
 void pipos_audio_image_end(int kind)
 {
     stop_owned();
     pipos_audio_rate_image_end(&rate, kind);
+    image_snd = PIPOS_SND_SFX;
 }
 
 void pipos_audio_idle(void)
