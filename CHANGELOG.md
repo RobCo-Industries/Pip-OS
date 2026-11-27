@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `make test-host` runs RobCo-Core's workflow guard through `make check-workflows`. Pip-OS drops its own `tools/check_workflow_exprs.py` and its test, so the two copies cannot drift. The library's guard also wants each action pinned by a full commit, so `sdk-package.yml` now pins its four actions.
 - RobCo-Core moves to `300e5a3`. Its sound table generator takes `--bed NAME`, for a ROM that plays a quiet loop under its other sounds. No kernel code and no SDK file changes.
 - `make boot-sound` runs RobCo-Core's `tools/audio_preview.py`. Pip-OS drops its own `tools/boot_sound.py`, `tools/voice_engine.py`, `tools/tone_square.py` and their tests, so the two copies cannot drift. `tools/sound_table.py` loads the library's voice engine. The boot sound's bytes are the same. `make boot-sound-test` is gone, since the tests live in the library.
 - RobCo-Core moves to `c0bee99`. Its driver now ends the `op=pcm` line of a looped play with `loop=1`. Pip-OS plays no looped sample, so no test or doc changes.
