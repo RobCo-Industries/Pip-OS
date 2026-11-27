@@ -71,7 +71,7 @@ The plugin removes a passing test's `tmp_path` when the test ends. A failing tes
 | `tests/test_env_hygiene.py` | No test copies the host environment; a failing test with `minimal_env()` prints no environment value |
 | `tests/test_conformance.py` | The conformance ROM on the card from `make conformance-card`, with scripted answers, in auto mode, and in auto mode with the clock chip. See [Conformance ROM](#conformance-rom). |
 
-While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/855569a1c9b0b1c773c331e24ac13f6166c51d77/docs/spec/TESTING.md#qemu-keep-alive).
+While a test VM runs, RobCo-Core's harness sends QEMU a monitor ping every 20 ms. This keeps a rare QEMU stall on `raspi0` and `raspi1ap` from hanging a boot. `ROBCO_QEMU_KEEPALIVE=0` turns it off. When a wait times out, the error also shows a guest state dump, with function names from `build/pipos.elf` next to the image. See [QEMU keep-alive](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/TESTING.md#qemu-keep-alive).
 
 The helpers live in the SDK, in `sdk/testing/pipos_testing/`, so a ROM project can use them too. `tests/pipos_helpers.py` re-exports them. Each card test builds its own SD card image with mtools in a temporary directory. `make_rom()` builds a `ROM1` file with a title, an icon, a name and a version through `pack` in RobCo-Core's `tools/rimg.py`. Its payload starts with `exit(0)`, so the kernel runs it and returns to the main loop. The broken ROMs start from a valid one and change one field: a bad CRC, a size past the ROM slot, a header without the META flag.
 
@@ -278,7 +278,7 @@ For self-checks inside the ROM, include `<pipos/selftest.h>`. `pip_check(name, o
 
 ## Conformance ROM
 
-`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/855569a1c9b0b1c773c331e24ac13f6166c51d77/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
+`conformance/` holds a ROM that runs every system call of the [ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/PIPOS_ABI.md) and shows a PASS/FAIL table. It runs in QEMU and on a real Pi. The steps for a real board are in [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
 
 | File | Is |
 |---|---|
