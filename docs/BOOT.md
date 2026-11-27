@@ -52,7 +52,7 @@ With the default `backend = hdmi` the kernel prints no `ev=display` marker and d
 
 ## The card
 
-The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
+The kernel mounts the card with RobCo-Core's `fs_mount_boot()`. Every RobCo stage uses this rule, see [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/245590ed9c7f3db92ea98c4d66e01d5e7ca98500/docs/spec/BOOT_PROTOCOL.md#finding-loading-and-entering-the-next-stage). It reads the four primary MBR entries and tries them in this order:
 
 1. Entries with a FAT type byte (`0x01`, `0x04`, `0x06`, `0x0B`, `0x0C`, `0x0E`), in slot order.
 2. Then the other entries, in slot order. Some tools write a wrong type byte, and the mount reads the boot sector anyway.
@@ -188,7 +188,7 @@ The 300 ms count from the end of the ROM's last sound. The tick holds the count 
 
 `tests/host/test_dsound.c` holds the same table. `sample_queue` runs its cut before it knows the outcome, but `EBUSY` and a queue need the ROM's own play, and no click plays then.
 
-A question cuts no click. `sample_rate` is one too: it changes no sound that plays, only the next play that starts. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core reads the level per sample, so a click that plays changes level from its next sample.
+A question cuts no click. `sample_rate` is one too: it changes no sound that plays, only the next play that starts. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core moves the level of a play smoothly, so a click that plays reaches the new level within 20 ms.
 
 A click may start from the tick between two ROM calls, for example between `audio_status` and a `tone`. Each call is right on its own. The `audio_status` before it said 0, which was true. A `tone`, `sample` or `play_seq` after it cuts the click and starts on an idle driver. `sample_queue` cuts it and then finds no play to queue behind, so it starts a new one. `audio_stop` finds nothing of the ROM's playing and leaves the click alone. `volume` lets it play on. A second `audio_status` still says 0.
 
@@ -295,11 +295,11 @@ The version numbers, `64K RAM SYSTEM` and `38911 BYTES FREE` are fixed presentat
 
 ## ROM check
 
-The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
+The kernel loads `/PIPBOY/ROM1.ROM` with RobCo-Core's stage loader into the ROM slot, `0x00400000` to `0x007FFFFF`. The loader accepts only the `ROM1` magic with ABI major 1, and runs the validation steps of [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/245590ed9c7f3db92ea98c4d66e01d5e7ca98500/docs/spec/IMAGE_FORMAT.md#validation): magic, header version, file size, slot bounds, ABI and CRC.
 
 ## Running the ROM
 
-After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/guide/api/umode.md) with the MMU on.
+After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-Core's [`umode.h`](https://github.com/RobCo-Industries/RobCo-Core/blob/245590ed9c7f3db92ea98c4d66e01d5e7ca98500/docs/guide/api/umode.md) with the MMU on.
 
 1. It writes the startup block, `pipos_startup_t`, at `0x017F0000`, the bottom of the ROM stack. The umode return stub goes right after it, at `0x017F0080`. The heap is not zeroed.
 2. It prints `ev=jump entry=0x00400000` and enters the ROM in USR mode with IRQs on.
@@ -359,7 +359,7 @@ Test builds add `tftdump`, see [TESTING.md](TESTING.md#spi-panel), and `holo`, s
 
 ## Markers
 
-Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/BOOT_PROTOCOL.md#serial-markers).
+Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The format is in [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/245590ed9c7f3db92ea98c4d66e01d5e7ca98500/docs/spec/BOOT_PROTOCOL.md#serial-markers).
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -423,7 +423,7 @@ A boot without a card:
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/300e5a30e9605319425d25dd4cb28a9f3d7b50a7/docs/spec/MEMORY_MAP.md#pip-boy-chain).
+The kernel follows the Pip-Boy chain map of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/245590ed9c7f3db92ea98c4d66e01d5e7ca98500/docs/spec/MEMORY_MAP.md#pip-boy-chain).
 
 | Range | Owner | Use today |
 |---|---|---|
