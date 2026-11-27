@@ -185,11 +185,14 @@ The 300 ms count from the end of the ROM's last sound. The tick holds the count 
 | `audio_stop` | nothing of the ROM's plays | no, the click plays on | no |
 | `volume` | any | no | no |
 | `sample_rate` | any | no | no |
+| `sound_kind` | any | no | no |
+| `sound_level` | any | no | no |
+| `sound_store` | any | no | no |
 | `audio_status` | any | no | no |
 
 `tests/host/test_dsound.c` holds the same table. `sample_queue` runs its cut before it knows the outcome, but `EBUSY` and a queue need the ROM's own play, and no click plays then.
 
-A question cuts no click. `sample_rate` is one too: it changes no sound that plays, only the next play that starts. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core moves the level of a play smoothly, so a click that plays reaches the new level within 20 ms.
+A question cuts no click. `sample_rate` is one too: it changes no sound that plays, only the next play that starts. So are `sound_kind`, `sound_level` and `sound_store`. The write of `sound_store` goes through the same card device as `write_save`, so it counts as card work and adds to the click debt. A ROM with a UI loop may ask `audio_status` every frame, and the click under it plays whole. `audio_status` reads a click as silence: it runs the same step against the driver first, and a click that plays counts as nothing of the ROM's. `volume` sets the level for what plays next. RobCo-Core moves the level of a play smoothly, so a click that plays reaches the new level within 20 ms.
 
 A click may start from the tick between two ROM calls, for example between `audio_status` and a `tone`. Each call is right on its own. The `audio_status` before it said 0, which was true. A `tone`, `sample` or `play_seq` after it cuts the click and starts on an idle driver. `sample_queue` cuts it and then finds no play to queue behind, so it starts a new one. `audio_stop` finds nothing of the ROM's playing and leaves the click alone. `volume` lets it play on. A second `audio_status` still says 0.
 
@@ -314,7 +317,7 @@ After the boot text, the kernel runs a ROM that passed the check. It uses RobCo-
 | r0 | `0x017F0000`, the startup block |
 | r1 to r3 | 0 |
 | lr | `0x017F0080`, the return stub. Returning acts like `exit(r0)`. |
-| `abi_version`, `size` | `0x00010005`, 128 |
+| `abi_version`, `size` | `0x00010006`, 128 |
 | `heap_base`, `heap_size` | `0x01000000`, `0x007F0000` |
 | `stack_top`, `kind`, `flags`, `args` | `0x01800000`, 0, 0, empty |
 
