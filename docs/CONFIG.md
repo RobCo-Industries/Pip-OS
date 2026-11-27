@@ -26,7 +26,11 @@ beep = yes
 | `display` | `line_delay_ms` | 0 to 2000 | `0` | Pause between two boot lines, in milliseconds |
 | `display` | `char_delay_ms` | 0 to 100 | `0` | Pause after each character of the boot text, in milliseconds. See [BOOT.md](BOOT.md#boot-text). |
 | `display` | `backend` | `hdmi`, `tft`, `both`, any case | `hdmi` | Where frames go, see [SPI panel](#spi-panel) |
-| `audio` | `volume` | 0 to 100 | `100` | Audio volume in percent |
+| `audio` | `volume` | 0 to 100 | `100` | Audio volume in percent. It is the master level: every sound follows it. |
+| `audio` | `radio` | 0 to 100 | `100` | Level of the radio sounds a ROM marks as such, see [Sound levels](#sound-levels) |
+| `audio` | `sfx` | 0 to 100 | `100` | Level of the effects: every sound Pip-OS plays itself and every sound of a ROM |
+| `audio` | `recordings` | 0 to 100 | `100` | Level of the recordings a ROM marks as such |
+| `audio` | `games` | 0 to 100 | `100` | Level of every sound a holotape plays |
 | `holotape` | `slot` | `on`, `off`, any case | `off` | The holotape slot of ABI 1.4. `off` touches no slot pin. See [API.md](API.md#the-holotape-slot) and [Slot and panel](#slot-and-panel). |
 | `audio` | `beep` | `yes`, `no`, `true`, `false`, `on`, `off`, `1`, `0`, any case | `yes` | Beep once at power-on |
 | `audio` | `system_sound` | A boolean, as `beep` | `no` | The system sound. At power-on the kernel moves the audio rest level to the midpoint with the library's ramp, then plays the soft beep instead of the square beep if `beep` is on. Card work and typed boot lines then make disk clicks. See [BOOT.md](BOOT.md#the-system-sound) and [the disk click](BOOT.md#the-disk-click). |
@@ -38,7 +42,19 @@ For a real device we suggest `char_delay_ms = 20`, `line_delay_ms = 200` and `sy
 
 `char_delay_ms` and `system_sound` are off by default, so a card without them boots as before. The `ev=config` summary keeps the field name `key_click=` and prints the resolved value of `system_sound` there.
 
-## SPI panel
+## Sound levels
+
+Each sound has a kind, and each kind has a level. The four keys `radio`, `sfx`, `recordings` and `games` set them. `volume` stays the master and scales every kind.
+
+- The power-on beep, the boot note, the line blip and the disk clicks are `sfx`.
+- A ROM's sounds are `sfx` in this version. A ROM cannot mark a sound as radio or a recording yet, so `radio` and `recordings` change nothing today.
+- A holotape's sounds are `games`. When the holotape ends, the ROM's sounds are `sfx` again.
+
+A level is squared, the master is not. So `sfx = 50` plays the effects at a quarter of their height, 12 dB lower. The gain of a sound is `volume * level * level / 10000` percent, rounded. At 100 a level changes nothing, so a card without these keys sounds as before.
+
+A sound keeps the level of its kind from its start to its end. A `volume` change moves the sound that plays to its new height within 20 ms. The rest ramp of the system sound has no level.
+
+
 
 These `[display]` keys set up the ILI9341 panel. The kernel reads them only when `backend` is `tft` or `both`. The defaults are RobCo-Core's `TFT_CONFIG_DEFAULT`. [HARDWARE.md](HARDWARE.md#spi-panel) has the wiring.
 
@@ -104,7 +120,9 @@ No configuration problem stops the boot. The kernel prints one marker per proble
 The summary marker:
 
 ```
-@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=amber line_delay_ms=150 volume=80 beep=1 char_delay_ms=0 key_click=0
+@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=amber line_delay_ms=150 volume=80 beep=1 char_delay_ms=0 key_click=0 radio=100 sfx=100 recordings=100 games=100
 ```
+
+The last four fields are the four sound levels.
 
 On a syntax error, keys before the bad line may already have printed `unknown` or `badvalue` markers. None of them applies.
