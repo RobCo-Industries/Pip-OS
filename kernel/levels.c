@@ -7,6 +7,14 @@
 
 #include "levels.h"
 
+_Static_assert(PIPOS_SND_RADIO == PIP_SND_RADIO && PIPOS_SND_SFX == PIP_SND_SFX &&
+                   PIPOS_SND_RECORDINGS == PIP_SND_RECORDINGS &&
+                   PIPOS_SND_GAMES == PIP_SND_GAMES,
+               "the kinds are the ABI's PIP_SND_* values");
+_Static_assert(PIPOS_LEVEL_MASTER == PIP_LEVEL_MASTER && PIPOS_LEVEL_ASK == PIP_LEVEL_ASK &&
+                   PIPOS_LEVEL_MAX == PIP_VOLUME_MAX,
+               "sound_level's numbers are the ABI's");
+
 static const char *const level_keys[PIPOS_SND_KINDS] = {
     "radio", "sfx", "recordings", "games",
 };

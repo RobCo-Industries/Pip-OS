@@ -90,6 +90,30 @@ int32_t pip_sample_rate(uint32_t hz);
 #else
 int32_t pip_sample_rate(uint32_t hz) PIP_ABI_HIDDEN(sample_rate, "1.5");
 #endif
+/*
+ * The kind, PIP_SND_*, of the sounds the image starts after it. A play
+ * keeps the kind it started with. The previous kind, -PIP_EINVAL for a
+ * kind above 3, or -PIP_EPERM for radio or sfx from a holotape. sfx at a
+ * ROM's start, games at a holotape's.
+ *
+ * sound_level: which is a PIP_SND_* kind or PIP_LEVEL_MASTER. level is 0
+ * to 100, or PIP_LEVEL_ASK to read. The level before, -PIP_EINVAL, or
+ * -PIP_EPERM when a holotape sets a level.
+ *
+ * sound_store: writes the master and the four levels to the boot card. 0,
+ * -PIP_EPERM for a holotape, -PIP_ENOSPC for a full card or -PIP_EIO.
+ *
+ * ABI 1.6: -PIP_ENOSYS on an older Pip-OS.
+ */
+#if PIPOS_ABI_TARGET >= 0x00010006
+int32_t pip_sound_kind(uint32_t kind);
+int32_t pip_sound_level(uint32_t which, uint32_t level);
+int32_t pip_sound_store(void);
+#else
+int32_t pip_sound_kind(uint32_t kind) PIP_ABI_HIDDEN(sound_kind, "1.6");
+int32_t pip_sound_level(uint32_t which, uint32_t level) PIP_ABI_HIDDEN(sound_level, "1.6");
+int32_t pip_sound_store(void) PIP_ABI_HIDDEN(sound_store, "1.6");
+#endif
 
 /* Time, sensors and power. */
 /* PIP_SENSOR_*. 0, or -PIP_ENODEV. */

@@ -139,6 +139,21 @@ int32_t pip_sample_rate(uint32_t hz)
     return pip_syscall(PIP_SYS_SAMPLE_RATE, U(hz), 0, 0, 0);
 }
 
+int32_t pip_sound_kind(uint32_t kind)
+{
+    return pip_syscall(PIP_SYS_SOUND_KIND, U(kind), 0, 0, 0);
+}
+
+int32_t pip_sound_level(uint32_t which, uint32_t level)
+{
+    return pip_syscall(PIP_SYS_SOUND_LEVEL, U(which), U(level), 0, 0);
+}
+
+int32_t pip_sound_store(void)
+{
+    return pip_syscall(PIP_SYS_SOUND_STORE, 0, 0, 0, 0);
+}
+
 int32_t pip_read_sensor(uint32_t sensor, uint32_t *value)
 {
     return pip_syscall(PIP_SYS_READ_SENSOR, U(sensor), P(value), 0, 0);

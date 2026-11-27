@@ -103,6 +103,12 @@ TEST(wrappers_pass_number_and_arguments)
     CHECK_CALL(PIP_SYS_SAMPLE_QUEUE, 0x111, 0x122, 0, 0);
     CHECK_EQ(pip_sample_rate(0x111), RET);
     CHECK_CALL(PIP_SYS_SAMPLE_RATE, 0x111, 0, 0, 0);
+    CHECK_EQ(pip_sound_kind(0x111), RET);
+    CHECK_CALL(PIP_SYS_SOUND_KIND, 0x111, 0, 0, 0);
+    CHECK_EQ(pip_sound_level(0x111, 0x122), RET);
+    CHECK_CALL(PIP_SYS_SOUND_LEVEL, 0x111, 0x122, 0, 0);
+    CHECK_EQ(pip_sound_store(), RET);
+    CHECK_CALL(PIP_SYS_SOUND_STORE, 0, 0, 0, 0);
     CHECK_EQ(pip_audio_stop(), RET);
     CHECK_CALL(PIP_SYS_AUDIO_STOP, 0, 0, 0, 0);
     CHECK_EQ(pip_volume(0x111), RET);

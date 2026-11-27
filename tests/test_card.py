@@ -285,7 +285,7 @@ def test_default_card_runs_hello_and_tape(board, kernel_image, need_mtools, defa
         m = one(vm, "rom")
         assert (m["rc"], m["name"], m["version"]) == ("ok", "HELLO", "1.0.0"), vm.serial
         assert one(vm, "holo")["count"] == "1", vm.serial
-        assert "hello: Pip-OS ROM running, ABI 0x00010005\n" in vm.serial
+        assert "hello: Pip-OS ROM running, ABI 0x00010006\n" in vm.serial
         assert "hello: heap 0x01000000, 8128 KiB, stack top 0x01800000\n" in vm.serial
         assert "hello: This line came from the heap.\n" in vm.serial
         assert "hello: slept " in vm.serial

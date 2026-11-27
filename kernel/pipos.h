@@ -7,6 +7,7 @@
 #include <robco/input.h>
 #include <robco/loader.h>
 
+#include "levels.h"
 #include "settings.h"
 
 #define PIPOS_STAGE      "pipos"
@@ -29,6 +30,11 @@ void pipos_config_load(int card, pipos_settings_t *s);
 unsigned pipos_holo_count(int card);
 /* Loads and validates the ROM. Returns a rimg_err_t code. */
 int pipos_rom_load(int card, loader_result_t *res);
+/*
+ * Writes the master and the four levels of *lv to PIPOS.SET with the
+ * atomic whole-file write. 0, -PIP_ENOSPC for a full card, else -PIP_EIO.
+ */
+int32_t pipos_levels_store(const pipos_levels_t *lv);
 
 /* rom.c: runs the loaded ROM in user mode until it ends, and reports how. */
 void pipos_rom_run(const loader_result_t *res);
