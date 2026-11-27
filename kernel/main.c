@@ -270,8 +270,7 @@ static int start_sound(int beep)
 static int apply_settings(const pipos_settings_t *s)
 {
     console_set_scheme(s->scheme);
-    audio_set_volume(s->volume);
-    pipos_audio_start_volume(s->volume);
+    pipos_audio_start_levels(s->volume, s->levels); /* the gain of an sfx play */
     pipos_screen_delay(s->line_delay_ms);
     pipos_screen_typing(s->char_delay_ms);
     if (s->system_sound && start_sound(s->beep)) {

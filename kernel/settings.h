@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "levels.h"
+
 #define PIPOS_DELAY_MAX_MS  2000u
 #define PIPOS_VOLUME_MAX    100u
 
@@ -52,6 +54,7 @@ typedef struct {
     unsigned scheme;        /* CONSOLE_SCHEME_* number, 0 to 3 */
     uint32_t line_delay_ms; /* pause between boot lines */
     unsigned volume;        /* audio volume, 0 to 100 */
+    unsigned levels[PIPOS_SND_KINDS]; /* [audio] radio, sfx, recordings, games, 0 to 100 */
     int beep;               /* 1: beep at power-on */
     uint32_t char_delay_ms; /* pause after each boot text character, 0: none */
     int system_sound;       /* 1: the ramp and the soft beep; [audio] system_sound or key_click */

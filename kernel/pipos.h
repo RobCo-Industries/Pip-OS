@@ -37,8 +37,21 @@ void pipos_poll(void);
 /* main.c: the pipos_poll() passes since boot. The test slot backend reports it. */
 uint32_t pipos_poll_passes(void);
 
-/* sys_audio.c: the level main.c gave audio_set_volume() at boot; the volume call starts from it. */
-void pipos_audio_start_volume(unsigned level);
+/*
+ * sys_audio.c: the master and the four levels of [audio] at boot, by
+ * PIPOS_SND_*. Sets the driver's gain for an sfx play. The volume call
+ * starts from the master.
+ */
+void pipos_audio_start_levels(unsigned master, const unsigned levels[]);
+/*
+ * sys_audio.c: a sound the kernel starts itself is sfx. Call with IRQs
+ * masked: kernel_gain() sets the gain of an sfx play and returns the kind
+ * that held before, right before the start. kernel_gain_undo() takes that
+ * kind back when the driver refused the start, so the play that goes on
+ * keeps its own gain.
+ */
+int pipos_audio_kernel_gain(void);
+void pipos_audio_kernel_gain_undo(int prev, int rc);
 /* sys_audio.c: main.c reports whether a backend plays sounds after boot; PIP_HW_AUDIO reads it. */
 void pipos_audio_driver_result(int started);
 int pipos_audio_driver_ok(void);

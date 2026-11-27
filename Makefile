@@ -51,6 +51,7 @@ PURE_SRCS  := \
               kernel/holo_rules.c \
               kernel/input_events.c \
               kernel/keyclick.c \
+              kernel/levels.c \
               kernel/settings.c \
               kernel/slot_rules.c \
               kernel/sound_table.c \

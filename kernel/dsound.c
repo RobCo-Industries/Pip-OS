@@ -237,7 +237,7 @@ static uint32_t note_left_ms(void)
 static void dsound_tick(void)
 {
     struct pipos_dsound before;
-    int busy, way, k, rc;
+    int busy, way, k, rc, prev;
 
     busy = audio_busy();
     if (!busy) {
@@ -260,7 +260,10 @@ static void dsound_tick(void)
     if (way == PIPOS_CLICK_MIX) {
         rc = audio_pcm_mix(sound_click[k], SOUND_CLICK_LEN);
     } else {
+        /* A click is sfx. In the tick, IRQs are masked. A mix keeps the note's gain. */
+        prev = pipos_audio_kernel_gain();
         rc = audio_play_pcm(sound_click[k], SOUND_CLICK_LEN, SOUND_RATE_HZ, 0);
+        pipos_audio_kernel_gain_undo(prev, rc);
         if (rc == 0) {
             click_on = 1;
         }
@@ -328,7 +331,7 @@ void pipos_dsound_note(uint32_t char_ms, uint32_t line_ms)
 {
     unsigned chars, delays;
     uint32_t irq;
-    int rc;
+    int rc, prev;
 
     if (!on || jumped) {
         return;
@@ -341,9 +344,11 @@ void pipos_dsound_note(uint32_t char_ms, uint32_t line_ms)
     pipos_dsound_close(&rules);
     irq_restore(irq);
     audio_wait();
+    irq = irq_save();
+    prev = pipos_audio_kernel_gain();
     rc = audio_play_voice((const audio_voice_span_t *)sound_note_spans, SOUND_NOTE_SPANS,
                           SOUND_RATE_HZ, 0);
-    irq = irq_save();
+    pipos_audio_kernel_gain_undo(prev, rc);
     if (rc == 0) {
         /* The play starts at the next tick, so the real end is a little later. */
         note_end_ms = timer_now_ms() + SOUND_NOTE_MS;
@@ -398,10 +403,18 @@ void pipos_dsound_reopen(void)
 
 int pipos_dsound_blip(void)
 {
+    uint32_t irq;
+    int prev, rc;
+
     if (!on || jumped) {
         return 0;
     }
-    return audio_play_pcm(sound_blip, SOUND_BLIP_LEN, SOUND_RATE_HZ, 0) == 0;
+    irq = irq_save();
+    prev = pipos_audio_kernel_gain();
+    rc = audio_play_pcm(sound_blip, SOUND_BLIP_LEN, SOUND_RATE_HZ, 0);
+    pipos_audio_kernel_gain_undo(prev, rc);
+    irq_restore(irq);
+    return rc == 0;
 }
 
 void pipos_dsound_note_wait(void)
