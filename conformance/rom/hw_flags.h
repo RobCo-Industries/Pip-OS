@@ -40,10 +40,20 @@ static inline int conform_hw_audio_ok(uint32_t hw_flags, int32_t tone_rc, int32_
     return (hw_flags & PIP_HW_AUDIO) ? played : played || refused;
 }
 
-/* Bit 1 and bits 4 to 31 are 0. Bit 3 is PIP_HW_TAPE, ABI 1.4. */
+/*
+ * PIP_HW_AUDIO_MID, ABI 1.5: the output rests at its midpoint. The ROM
+ * cannot read the card's system_sound, so it checks only that the bit is
+ * never set with PIP_HW_AUDIO clear.
+ */
+static inline int conform_hw_audio_mid_ok(uint32_t hw_flags)
+{
+    return (hw_flags & PIP_HW_AUDIO_MID) == 0 || (hw_flags & PIP_HW_AUDIO) != 0;
+}
+
+/* Bit 1 and bits 5 to 31 are 0. Bit 3 is PIP_HW_TAPE, ABI 1.4. Bit 4 is PIP_HW_AUDIO_MID, ABI 1.5. */
 static inline int conform_hw_reserved_ok(uint32_t hw_flags)
 {
-    return (hw_flags & ~(PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE)) == 0;
+    return (hw_flags & ~(PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE | PIP_HW_AUDIO_MID)) == 0;
 }
 
 /*

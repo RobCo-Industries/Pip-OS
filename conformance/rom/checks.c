@@ -439,8 +439,11 @@ static void check_hw_flags(const pip_sys_info_t *si)
     pip_audio_stop();
     ck_res("sysinfo_hw_audio", si != NULL && conform_hw_audio_ok(f, tone, status) ?
            R_PASS : R_FAIL, 1, tone, (f & PIP_HW_AUDIO) ? 0 : -PIP_EIO);
+    ck_res("sysinfo_hw_audio_mid", si != NULL && conform_hw_audio_mid_ok(f) ? R_PASS : R_FAIL,
+           1, (int32_t)(f & PIP_HW_AUDIO_MID), (f & PIP_HW_AUDIO) ? (int32_t)(f & PIP_HW_AUDIO_MID) : 0);
     ck_res("sysinfo_hw_reserved", si != NULL && conform_hw_reserved_ok(f) ? R_PASS : R_FAIL,
-           1, (int32_t)f, (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE)));
+           1, (int32_t)f,
+           (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE | PIP_HW_AUDIO_MID)));
 }
 
 /* hw_flags for the ABI 1.4 holotape checks. */

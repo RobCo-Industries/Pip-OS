@@ -51,7 +51,17 @@ TEST(reserved_bits)
     CHECK_EQ(conform_hw_reserved_ok(1u << 1), 0);
     CHECK_EQ(conform_hw_reserved_ok(1u << 31), 0);
     CHECK_EQ(conform_hw_reserved_ok(PIP_HW_TAPE), 1);
-    CHECK_EQ(conform_hw_reserved_ok(1u << 4), 0);
+    CHECK_EQ(conform_hw_reserved_ok(PIP_HW_AUDIO_MID), 1);
+    CHECK_EQ(conform_hw_reserved_ok(1u << 5), 0);
+}
+
+TEST(audio_mid)
+{
+    CHECK_EQ(conform_hw_audio_mid_ok(0), 1);
+    CHECK_EQ(conform_hw_audio_mid_ok(PIP_HW_AUDIO), 1);
+    CHECK_EQ(conform_hw_audio_mid_ok(PIP_HW_AUDIO | PIP_HW_AUDIO_MID), 1);
+    CHECK_EQ(conform_hw_audio_mid_ok(PIP_HW_AUDIO_MID), 0);
+    CHECK_EQ(conform_hw_audio_mid_ok(PIP_HW_RTC | PIP_HW_AUDIO_MID), 0);
 }
 
 TEST(holo_flags)
