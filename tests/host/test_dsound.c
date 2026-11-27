@@ -71,6 +71,27 @@ TEST(closed_gate_adds_nothing)
     CHECK_EQ(s.owed, 0u);
 }
 
+TEST(click_handed_before_the_close_is_pending)
+{
+    struct pipos_dsound s;
+    int t, k = -1;
+
+    pipos_dsound_init(&s);
+    CHECK_EQ(pipos_dsound_click_pending(&s), 0);
+    pipos_dsound_open(&s);
+    pipos_dsound_add(&s, 10);
+    for (t = 0; t < 100 && k < 0; t++) {
+        k = pipos_dsound_tick(&s, 1);
+    }
+    CHECK(k >= 0);
+    /* The close comes in the tick right after the hand-over. */
+    pipos_dsound_close(&s);
+    CHECK_EQ(pipos_dsound_click_pending(&s), 1);
+    /* The next tick starts that click in the driver and hands none over. */
+    CHECK_EQ(pipos_dsound_tick(&s, 1), -1);
+    CHECK_EQ(pipos_dsound_click_pending(&s), 0);
+}
+
 TEST(nothing_owed_nothing_played)
 {
     struct pipos_dsound s;

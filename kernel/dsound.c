@@ -19,7 +19,9 @@
  *
  * When the last boot line starts, typing on, the main context closes the
  * gate for good and drops what is owed: the quiet second before the
- * scroll. A click that plays then ends by itself. A boot with no ROM opens
+ * scroll. A click the last tick handed over starts at the next tick, so
+ * the close waits for that tick before ev=quiet. A click that plays then
+ * ends by itself. A boot with no ROM opens
  * the gate again after the last line. The scroll's blips play from the
  * main context while the gate is closed.
  *
@@ -265,6 +267,7 @@ static void dsound_tick(void)
     }
     if (rc != 0) {
         rules = before; /* refused, the note's end for one: try again next tick */
+        rules.handed = 0;
     }
 }
 
@@ -352,7 +355,8 @@ void pipos_dsound_note(uint32_t char_ms, uint32_t line_ms)
 
 int pipos_dsound_quiet(uint32_t at_ms)
 {
-    unsigned dropped;
+    unsigned dropped, waited;
+    int pending;
     uint32_t irq;
 
     if (!on || jumped) {
@@ -361,7 +365,19 @@ int pipos_dsound_quiet(uint32_t at_ms)
     irq = irq_save();
     dropped = rules.owed;
     pipos_dsound_close(&rules);
+    pending = pipos_dsound_click_pending(&rules);
     irq_restore(irq);
+    /*
+     * A click the last tick handed over starts, and makes its record, at
+     * the next tick. Wait for that tick, so the record comes before
+     * ev=quiet. A tick is 10 ms; the bound keeps a stopped tick harmless.
+     */
+    for (waited = 0; pending && waited < 50u; waited++) {
+        timer_delay_ms(1);
+        irq = irq_save();
+        pending = pipos_dsound_click_pending(&rules);
+        irq_restore(irq);
+    }
     pipos_dsound_poll();
     k_printf("@RC stage=" PIPOS_STAGE " ev=quiet dropped=%u t_ms=%u\n", dropped,
              (unsigned)at_ms);

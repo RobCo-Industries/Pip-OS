@@ -56,6 +56,7 @@ struct pipos_dsound {
     unsigned quiet;      /* ticks since a ROM sound, up to PIPOS_ROM_QUIET_TICKS + 1 */
     unsigned held;       /* ROM_RUN ticks a ROM sound played over a debt since a click */
     int in_call;         /* an image's audio call runs between its cut and its end */
+    int handed;          /* the last tick handed a click over: it starts at the next tick */
 };
 
 /* What an image's audio call did. Only STARTED and STOPPED restart the 300 ms. */
@@ -116,6 +117,13 @@ void pipos_dsound_open(struct pipos_dsound *s);
 
 /* BOOT_OPEN to BOOT_QUIET: what is owed is dropped. Does nothing in a ROM phase. */
 void pipos_dsound_close(struct pipos_dsound *s);
+
+/*
+ * 1 when the last tick handed a click to the driver. The driver starts it
+ * and makes its record at the next tick, so a close must wait one tick
+ * before it prints ev=quiet.
+ */
+int pipos_dsound_click_pending(const struct pipos_dsound *s);
 
 /*
  * The jump starts: ROM_HOLD. The debt is cut to the ROM cap and no click

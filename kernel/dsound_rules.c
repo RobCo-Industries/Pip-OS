@@ -20,6 +20,7 @@ void pipos_dsound_init(struct pipos_dsound *s)
     s->quiet = 0;
     s->held = 0;
     s->in_call = 0;
+    s->handed = 0;
 }
 
 unsigned pipos_dsound_io_adds(uint32_t count)
@@ -131,6 +132,11 @@ void pipos_dsound_close(struct pipos_dsound *s)
     }
 }
 
+int pipos_dsound_click_pending(const struct pipos_dsound *s)
+{
+    return s->handed;
+}
+
 static void to_rom(struct pipos_dsound *s, int phase)
 {
     if (!pipos_dsound_in_rom(s)) {
@@ -220,6 +226,7 @@ int pipos_dsound_tick(struct pipos_dsound *s, int can_play)
 {
     static const uint8_t gap[8] = { 3, 6, 4, 7, 5, 8, 6, 7 }; /* ticks */
 
+    s->handed = 0;
     if (s->wait > 0) {
         s->wait--;
     }
@@ -237,5 +244,6 @@ int pipos_dsound_tick(struct pipos_dsound *s, int can_play)
         s->left = 0;
         s->wait += pipos_dsound_in_rom(s) ? 30 + 10 * (rnd(s) % 7) : 15 + 5 * (rnd(s) % 10);
     }
+    s->handed = 1;
     return (int)(s->n++ % 12);
 }

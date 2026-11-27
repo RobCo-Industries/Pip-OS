@@ -242,7 +242,7 @@ With typing on, the last boot line starts the quiet second. With the system soun
 @RC stage=pipos ev=quiet dropped=0 t_ms=9280
 ```
 
-`dropped` is the clicks owed at that moment. `t_ms` is `tick_ms()`. The audio clock starts from `tick_ms()`, so it and the trace's `t_ms` agree within one 10 ms tick. A click that plays then ends by itself. No click starts after `ev=quiet`. With typing off the gate never closes and nothing here happens.
+`dropped` is the clicks owed at that moment. `t_ms` is `tick_ms()`. The audio clock starts from `tick_ms()`, so it and the trace's `t_ms` agree within one 10 ms tick. A click the last tick handed to the driver starts at the next tick, so the kernel waits for that tick before it prints `ev=quiet`. A click that plays then ends by itself. No click starts after `ev=quiet`. With typing off the gate never closes and nothing here happens.
 
 After the last line the kernel first waits for the note, if it still plays. Then, if a ROM loaded, the text scrolls away. The scroll starts `line_delay_ms` after the last line ends, and with the system sound on never sooner than 1000 ms after the gate closed. So fast typing waits up to 1 s there. Every 40 ms the kernel moves the text up one line, with `console_set_cursor(0, console_rows() - 1)` and `console_putc('\n')`, until every boot line has left. With the system sound on, each line that leaves and is not blank plays the blip, `sound_blip` of `kernel/sound_table.c`, 600 bytes at 37500 Hz. A blank line has no character from `0x21` to `0x7e`. The stock text has 15 lines and 2 blank ones, so 13 blips. Then the kernel clears the console, sends one clear frame to the SPI panel and prints:
 
