@@ -12,6 +12,7 @@
 #define PIPOS_STAGE      "pipos"
 #define PIPOS_VOLUME     "sd"
 #define PIPOS_CFG_PATH   "/PIPBOY/PIPOS.CFG"
+#define PIPOS_SET_PATH   "/PIPBOY/PIPOS.SET"
 #define PIPOS_ROM_PATH   "/PIPBOY/ROM1.ROM"
 #define PIPOS_HOLO_DIR   "/PIPBOY/HOLO"
 

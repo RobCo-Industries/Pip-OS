@@ -17,6 +17,7 @@
 
 static fs_boot_t boot_vol;
 static char cfg_text[CFG_TEXT_MAX];
+static char set_text[PIPOS_LEVELS_FILE_MAX];
 
 /*
  * A volume that holds one of these as a non-empty file is the Pip-OS card.
@@ -104,23 +105,69 @@ static const char *config_read(int card, pipos_settings_t *s, unsigned *err_line
     return "ok";
 }
 
+/*
+ * The stored levels of PIPOS.SET over those of PIPOS.CFG. Returns NULL
+ * when the file is missing or applies, else the reason it does not.
+ */
+static const char *levels_read(int card, pipos_settings_t *s)
+{
+    pipos_levels_t lv;
+    const char *why;
+    size_t len = 0;
+    int rc;
+    int k;
+
+    if (!card) {
+        return NULL;
+    }
+    rc = fs_read_file(VOL(PIPOS_SET_PATH), set_text, sizeof(set_text), &len);
+    if (rc == FS_ERR_NOENT) {
+        return NULL;
+    }
+    if (rc == FS_ERR_TOOBIG) {
+        return "size";
+    }
+    if (rc != FS_OK) {
+        return "read";
+    }
+    lv.master = s->volume;
+    for (k = 0; k < PIPOS_SND_KINDS; k++) {
+        lv.level[k] = s->levels[k];
+    }
+    why = pipos_levels_read_text(set_text, len, &lv);
+    if (why == NULL) {
+        s->volume = lv.master;
+        for (k = 0; k < PIPOS_SND_KINDS; k++) {
+            s->levels[k] = lv.level[k];
+        }
+    }
+    return why;
+}
+
 void pipos_config_load(int card, pipos_settings_t *s)
 {
+    pipos_settings_t cfg;
     unsigned err_line = 0;
     const char *rc;
+    const char *bad;
 
     pipos_settings_default(s);
     rc = config_read(card, s, &err_line);
+    cfg = *s;
+    bad = levels_read(card, s);
     if (card) {
         pipos_dsound_stage("config");
     }
     k_printf("@RC stage=" PIPOS_STAGE " ev=config rc=%s path=" PIPOS_CFG_PATH
              " line=%u scheme=%s line_delay_ms=%u volume=%u beep=%d"
              " char_delay_ms=%u key_click=%d radio=%u sfx=%u recordings=%u games=%u\n",
-             rc, err_line, pipos_scheme_name(s->scheme), (unsigned)s->line_delay_ms,
-             s->volume, s->beep, (unsigned)s->char_delay_ms, s->system_sound,
-             s->levels[PIPOS_SND_RADIO], s->levels[PIPOS_SND_SFX],
-             s->levels[PIPOS_SND_RECORDINGS], s->levels[PIPOS_SND_GAMES]);
+             rc, err_line, pipos_scheme_name(cfg.scheme), (unsigned)cfg.line_delay_ms,
+             cfg.volume, cfg.beep, (unsigned)cfg.char_delay_ms, cfg.system_sound,
+             cfg.levels[PIPOS_SND_RADIO], cfg.levels[PIPOS_SND_SFX],
+             cfg.levels[PIPOS_SND_RECORDINGS], cfg.levels[PIPOS_SND_GAMES]);
+    if (bad != NULL) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=levels result=bad reason=%s\n", bad);
+    }
 }
 
 unsigned pipos_holo_count(int card)
