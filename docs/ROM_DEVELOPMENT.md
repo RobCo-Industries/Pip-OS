@@ -247,6 +247,8 @@ void play_fast(const uint8_t *data, uint32_t length)   /* data made for 37500 Hz
 
 Data made for 37500 Hz played at 8000 Hz lasts 4.6875 times longer and sounds that much lower, so play a copy made for 8000 Hz or stay silent there. With `ABI := 1.4` or lower the headers hide `pip_sample_rate` and `PIP_SYS_SAMPLE_RATE`: see [The target ABI](#the-target-abi).
 
+Play short sample effects only when `PIP_HW_AUDIO_MID` is set in `sys_info`'s `hw_flags`. With the bit clear the output rests at its low level, so every sample play starts and ends with a step that a speaker turns into a thump. A short effect would then sound like two clicks. Check `abi_version` first: before ABI 1.5 the bit reads 0. See [API.md](API.md#system).
+
 With the system sound on, the kernel may click between your sounds while the ROM reads files. Your sound always wins and the queue behaves as if the click were silence. See [API.md](API.md#audio).
 
 ## Library functions

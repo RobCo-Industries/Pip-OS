@@ -92,6 +92,8 @@ With `[audio] system_sound = yes`, or its old name `key_click = yes`, the kernel
 
 If `audio_rest_mid()` fails, the kernel prints `ev=sound rc=<n>` with the library's error code and boots as with the system sound off: the square beep, if `beep` is on.
 
+The library has no call that reports the rest level. The kernel records its own result instead: the ramp call returned 0 and the wait ended. Only then does `sys_info` set `PIP_HW_AUDIO_MID` in `hw_flags`, and only with `PIP_HW_AUDIO`. With the sound off or after a failed ramp the bit is clear.
+
 In QEMU the boot then prints, before the first boot line:
 
 ```
