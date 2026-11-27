@@ -19,7 +19,7 @@ On macOS with Homebrew:
 brew install arm-none-eabi-gcc qemu mtools python
 ```
 
-RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/guide/GETTING_STARTED.md) lists the versions in detail.
+RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/c0bee999b3c0993bd627ca5c4b0ecc8512563fca/docs/guide/GETTING_STARTED.md) lists the versions in detail.
 
 ## Build the image
 
@@ -121,7 +121,7 @@ Each row of `sound_note_spans` is `n, phase, inc, dinc, amp, damp, p2`, the orde
 - Inside a span the engine moves the pitch linearly. Against the curve's constant ratio the worst error is 0.008 percent.
 - The note ends at the first span from which the peak stays under half a step, where it would round to silence. That is after 237 190 samples. The last span starts at 0.52 step. Past the last span the engine gives 0.
 
-`tools/voice_engine.py` is the engine in pure Python, sample for sample: the 1024-entry sine table, the per-sample integer steps and the one rounding with an overlay and the volume. `tools/sound_table.py` and `tools/boot_sound.py` both load it. It builds its sine from a fixed sum, and a test checks the table's CRC-32, `05067686`.
+RobCo-Core's [`tools/voice_engine.py`](https://github.com/RobCo-Industries/RobCo-Core/blob/c0bee999b3c0993bd627ca5c4b0ecc8512563fca/tools/voice_engine.py) is the engine in pure Python, sample for sample: the 1024-entry sine table, the per-sample integer steps and the one rounding with an overlay and the volume. `tools/sound_table.py` and the library's `tools/audio_preview.py` both load it. It builds its sine from a fixed sum, and a test checks the table's CRC-32, `05067686`.
 
 After a change to the parameters, run `make sound-table` and commit the three files. `tools/sound_table.py --check` fails when the committed files differ from what the tool writes, and says to run `make sound-table`. It runs before anything compiles the table: `build/obj/kernel/sound_table.o` and the host tests take it as an order-only prerequisite. So `make`, `make kernel`, `make sdimage`, `make bootdir`, `make run`, `make sdk-package` and the test goals that build stop on a stale table before they write an image. The build never writes the table itself, so a forgotten commit fails instead of hiding. `make test-host` runs `tests/tools/test_sound_table.py` and `tests/host/sound_table_make_test.sh`.
 
@@ -193,4 +193,4 @@ FAT holds only files and folders. `tools/card.py` does all the card staging and 
 - In `DIR`, a link at any path `bootdir` writes or removes stops it, and nothing changes. That covers the files and folders it writes, every folder on the way to them, the stale files `CLEAN=1` removes and `BOOTDIR.LST`. A link elsewhere in `DIR` is left alone. A `PIPBOY/PIPOS.CFG` that exists, even as a link, is kept and never written.
 - `DIR` itself may be a link to a folder, for example when you keep the card folder somewhere else. `bootdir` resolves it once, says so, and writes into the real folder.
 
-`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/BOARD_SUPPORT.md#configtxt).
+`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/c0bee999b3c0993bd627ca5c4b0ecc8512563fca/docs/spec/BOARD_SUPPORT.md#configtxt).

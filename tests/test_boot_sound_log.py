@@ -5,7 +5,7 @@ character, 200 ms per line, volume 80, the beep and the system sound on, and
 carries the sleep test ROM, which makes no sound and waits. So the log holds
 the rest ramp, the soft beep, the disk clicks, the note, the quiet second and
 the scroll's blips. The test waits until the sounds stop, so the log holds
-them all. tools/boot_sound.py
+them all. RobCo-Core's tools/audio_preview.py
 turns the log into a WAV file.
 """
 
