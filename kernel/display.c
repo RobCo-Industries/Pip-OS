@@ -267,6 +267,28 @@ int32_t pipos_display_send(const uint32_t *bb)
     return 0;
 }
 
+/*
+ * SLPOUT, then DISPON, as one send with its own marker. The next present
+ * covers the whole frame. A failed call skips the rest.
+ */
+static void wake(void)
+{
+    gfx_rect_t none = { 0, 0, 0, 0 };
+    int rc;
+
+    send_begin();
+    rc = tft_sleep(0);
+    if (rc == 0) {
+        rc = tft_display(1);
+    }
+    send_end("wake", &none);
+    dark = rc != 0;
+    full = 1;
+    if (rc != 0) {
+        fail("wake", rc);
+    }
+}
+
 void pipos_display_blank(int on)
 {
     int rc;
@@ -274,22 +296,17 @@ void pipos_display_blank(int on)
     if (!panel) {
         return;
     }
-    if (on) {
-        dark = 1;
-        rc = tft_display(0);
-        if (rc == 0) {
-            rc = tft_sleep(1);
-        }
-    } else {
-        rc = tft_sleep(0);
-        if (rc == 0) {
-            rc = tft_display(1);
-        }
-        dark = rc != 0;
-        full = 1;
+    if (!on) {
+        wake();
+        return;
+    }
+    dark = 1;
+    rc = tft_display(0);
+    if (rc == 0) {
+        rc = tft_sleep(1);
     }
     if (rc != 0) {
-        fail(on ? "blank" : "wake", rc);
+        fail("blank", rc);
     }
 }
 
@@ -329,6 +346,22 @@ void pipos_display_line(const char *t)
     pipos_display_console();
 }
 
+void pipos_display_set_text(const char *const lines[], unsigned n)
+{
+    unsigned i;
+
+    rows = 0;
+    for (i = 0; i < n; i++) {
+        add_line(lines[i]);
+    }
+}
+
+void pipos_display_text(const char *const lines[], unsigned n)
+{
+    pipos_display_set_text(lines, n);
+    pipos_display_console();
+}
+
 /*
  * A panic after power blanked the screen must still show: wake the panel
  * first, then send the whole console frame. tft_sleep() returns at once
@@ -337,20 +370,8 @@ void pipos_display_line(const char *t)
  */
 void pipos_display_panic(const char *why)
 {
-    gfx_rect_t none = { 0, 0, 0, 0 };
-    int rc;
-
     if (panel && dark) {
-        send_begin();
-        rc = tft_sleep(0);
-        if (rc == 0) {
-            rc = tft_display(1);
-        }
-        send_end("wake", &none);
-        if (rc != 0) {
-            fail("wake", rc);
-        }
-        full = 1;
+        wake();
     }
     add_line("");
     add_line("KERNEL PANIC:");

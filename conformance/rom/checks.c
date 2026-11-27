@@ -307,6 +307,28 @@ void check_sample_queue(void)
     pip_audio_stop();
 }
 
+/*
+ * sample_rate, ABI 1.5. Runs before any other call sets the rate, so the
+ * first answer is the 8000 Hz of the image start. A holotape starts at
+ * 8000 Hz too, and the ROM has its own rate back after it.
+ */
+void check_sample_rate(void)
+{
+    ck_eq("rate_start_8000", pip_sample_rate(PIP_SAMPLE_RATE_HI), PIP_SAMPLE_RATE);
+    ck_eq("rate_prev_37500", pip_sample_rate(PIP_SAMPLE_RATE), PIP_SAMPLE_RATE_HI);
+    ck_eq("rate_prev_8000", pip_sample_rate(PIP_SAMPLE_RATE_HI), PIP_SAMPLE_RATE);
+    ck_eq("rate_bad", pip_sample_rate(44100), -PIP_EINVAL);
+    ck_eq("rate_bad_zero", pip_sample_rate(0), -PIP_EINVAL);
+    ck_eq("rate_bad_keeps", pip_sample_rate(PIP_SAMPLE_RATE_HI), PIP_SAMPLE_RATE_HI);
+    /* The call never fails for a valid value while a sound plays. */
+    pip_tone(440, 2000);
+    ck_eq("rate_while_playing", pip_sample_rate(PIP_SAMPLE_RATE_HI), PIP_SAMPLE_RATE_HI);
+    ck_eq("rate_plays_on", pip_audio_status(), 1);
+    pip_audio_stop();
+    ck_eq("rate_tape_starts_8000", pip_holo_launch(TAPE_FILE, "rate"), 80);
+    ck_eq("rate_back_after_tape", pip_sample_rate(PIP_SAMPLE_RATE), PIP_SAMPLE_RATE_HI);
+}
+
 /* ---- sensors, time, system --------------------------------------------- */
 
 static const char *const sensor_names[PIP_SENSOR_COUNT] = {
@@ -417,8 +439,11 @@ static void check_hw_flags(const pip_sys_info_t *si)
     pip_audio_stop();
     ck_res("sysinfo_hw_audio", si != NULL && conform_hw_audio_ok(f, tone, status) ?
            R_PASS : R_FAIL, 1, tone, (f & PIP_HW_AUDIO) ? 0 : -PIP_EIO);
+    ck_res("sysinfo_hw_audio_mid", si != NULL && conform_hw_audio_mid_ok(f) ? R_PASS : R_FAIL,
+           1, (int32_t)(f & PIP_HW_AUDIO_MID), (f & PIP_HW_AUDIO) ? (int32_t)(f & PIP_HW_AUDIO_MID) : 0);
     ck_res("sysinfo_hw_reserved", si != NULL && conform_hw_reserved_ok(f) ? R_PASS : R_FAIL,
-           1, (int32_t)f, (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE)));
+           1, (int32_t)f,
+           (int32_t)(f & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE | PIP_HW_AUDIO_MID)));
 }
 
 /* hw_flags for the ABI 1.4 holotape checks. */

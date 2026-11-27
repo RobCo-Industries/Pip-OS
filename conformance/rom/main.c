@@ -12,7 +12,7 @@
 #include "conform.h"
 
 /*
- * Result slots: a full run records 214 checks. The last slot is kept for
+ * Result slots: a full run records 226 checks. The last slot is kept for
  * the results_overflow FAIL, so a check that does not fit is never lost
  * without a trace.
  */

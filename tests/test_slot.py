@@ -181,7 +181,7 @@ def test_shipped_slot_on_starts_real_driver(board, kernel_image, tmp_path, test_
         m = one(vm, "holo_slot")
         assert (m["backend"], m["rc"]) == ("holo", "0"), m
         flags, abi = hw(vm)
-        assert (flags & HW_TAPE, abi) == (HW_TAPE, 0x00010004), vm.serial
+        assert (flags & HW_TAPE, abi) == (HW_TAPE, 0x00010005), vm.serial
         no_exception(vm)
 
 
@@ -196,7 +196,7 @@ def test_slot_off(board, kernel_image, holo_build, test_rom, test_holo, tmp_path
     for image in (kernel_image, holo_build):
         with run(image, board, sd, {0: card}) as vm:
             flags, abi = hw(vm)
-            assert (flags & HW_TAPE, abi) == (0, 0x00010004)
+            assert (flags & HW_TAPE, abi) == (0, 0x00010005)
             assert not pipos_markers(vm, "holo_slot"), vm.serial
             if image == holo_build:
                 holo(vm, "insert", "0", str(CARD_BLOCKS))

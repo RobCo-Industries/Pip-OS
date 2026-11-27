@@ -139,13 +139,14 @@ def both_sends(markers):
     s.bytes_are(small[0], lambda n: n == 11 + 3 * 2 * 2, "the small change")
     holo = s.of_step(3)
     assert [(m["why"], rect(m)) for m in holo] == [("full", (0, 0, W, H))], holo
-    # The wake itself sends the whole frame, so the present after it sends nothing.
+    # The wake, then the whole frame, so the present after it sends nothing.
     seq = s.ordered()
     shown3 = [k for k, (kind, m) in enumerate(seq) if kind == "shown"][3]
     step4 = next(k for k, (kind, m) in enumerate(seq) if kind == "step" and m["n"] == "4")
     woke = [m for kind, m in seq[shown3 + 1:step4] if kind == "send"]
-    assert [(m["why"], rect(m)) for m in woke] == [("full", (0, 0, W, H))], woke
-    s.bytes_are(woke[0], lambda n: n >= FULL_BYTES, "the wake")
+    assert [(m["why"], rect(m)) for m in woke] == \
+        [("wake", (0, 0, 0, 0)), ("full", (0, 0, W, H))], woke
+    s.bytes_are(woke[1], lambda n: n >= FULL_BYTES, "the frame after the wake")
     assert [rect(m) for m in s.of_step(4)] == [(0, 0, 0, 0)]
     return s
 
@@ -177,4 +178,43 @@ def panic_sends(markers, crc):
         ((0, 0, 0, 0), "2", f"{crc:08x}"), seq[0]
     assert rect(seq[1]) == (0, 0, W, H), seq[1]
     s.bytes_are(seq[1], lambda n: n >= FULL_BYTES, "the console")
+    return s
+
+
+def restore_sends(markers, crc):
+    """test_boot_text_wakes_a_blanked_panel: after the ROM went dark, a wake, then the console.
+
+    crc is the CRC-32 of SLPOUT then DISPON, each with DC low.
+    """
+    s = Sends(markers)
+    seq, seen = [], False
+    for m in s.markers:
+        if m.get("stage") == "testrom" and m.get("ev") == "dark":
+            seen = True
+        elif seen and is_pipos(m, "tft_send"):
+            seq.append(m)
+    assert [m["why"] for m in seq] == ["wake", "full"], seq
+    assert (rect(seq[0]), seq[0]["bytes"], seq[0]["crc"]) == \
+        ((0, 0, 0, 0), "2", f"{crc:08x}"), seq[0]
+    assert rect(seq[1]) == (0, 0, W, H), seq[1]
+    s.bytes_are(seq[1], lambda n: n >= FULL_BYTES, "the boot text")
+    return s
+
+
+def end_sends(markers, shown):
+    """test_boot_text_after_a_rom_is_one_frame: after the ROM's last frame, one whole frame.
+
+    shown is how many frames the ROM showed. No wake, no blank frame before the text.
+    The frame differs from the ROM's everywhere, so its diff is the whole panel.
+    """
+    s = Sends(markers)
+    seq, n = [], 0
+    for m in s.markers:
+        if m.get("stage") == "testrom" and m.get("ev") == "shown":
+            n += 1
+        elif n >= shown and is_pipos(m, "tft_send"):
+            seq.append(m)
+    assert len(seq) == 1 and seq[0]["why"] in ("diff", "full"), seq
+    assert rect(seq[0]) == (0, 0, W, H), seq[0]
+    s.bytes_are(seq[0], lambda n: n >= FULL_BYTES, "the boot text")
     return s

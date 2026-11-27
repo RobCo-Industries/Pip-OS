@@ -91,6 +91,13 @@ void pipos_gfx_blank(int on)
     }
 }
 
+void pipos_gfx_wake(void)
+{
+    if (screen.blanked) {
+        pipos_gfx_blank(0); /* no ROM runs: this shows the console */
+    }
+}
+
 static int32_t sys_draw_line(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_t a1, uint32_t a2,
                              uint32_t a3)
 {

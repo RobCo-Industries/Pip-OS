@@ -18,6 +18,8 @@
  *   loop        logs ev=tloop, then calls sleep_ms(20) until the kernel ends it
  *   ticks       logs ev=tloop, then calls only ticks_ms until the kernel ends it
  *   eject       returns holo_eject_event()
+ *   rate        sets the rate to 37500, plays 375 bytes at it, waits for
+ *               the end and returns the rate it started with / 100: 80
  *
  * Checks print "@RC stage=testrom ev=tcheck name=<name> ok=<0|1>", apart
  * from the ROM's ev=check lines. Faults print "ev=tfault pc=<hex>" first.
@@ -219,6 +221,22 @@ int pip_main(const pipos_startup_t *startup)
                 (void)pip_ticks_ms();
             }
         }
+    }
+    if (starts(a, "rate")) {
+        static uint8_t pcm[375];
+        int32_t prev = pip_sample_rate(37500);
+        uint32_t i;
+
+        for (i = 0; i < sizeof(pcm); i++) {
+            pcm[i] = (uint8_t)(i * 7u + 6u * 31u);
+        }
+        if (prev < 0 || pip_sample(pcm, sizeof(pcm)) != 0) {
+            return 1;
+        }
+        while (pip_audio_status() == 1) {
+            pip_sleep_ms(5);
+        }
+        return prev / 100;
     }
     if (starts(a, "eject")) {
         return pip_holo_eject_event();

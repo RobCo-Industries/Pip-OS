@@ -25,8 +25,8 @@ from harness.boot import boot
 from harness.env import minimal_env
 
 from hosttiming import judge_stream, judged
-from panelsends import (FULL_BYTES, H, W, Sends, both_sends, judged_sends, panic_sends,
-                        window_sends)
+from panelsends import (FULL_BYTES, H, W, Sends, both_sends, end_sends, judged_sends,
+                        panic_sends, restore_sends, window_sends)
 
 from pipos_helpers import (TIMEOUT, assert_rom_checks, booted, config, config_issues, dump,
                            make_card, no_exception, one, pipos_markers, press, rom_markers,
@@ -151,6 +151,23 @@ def test_bad_pin_is_refused(board, tft_build, tmp_path, need_mtools):
         m = one(vm, "display")
         assert (m["backend"], m["bad"]) == ("both", "3"), m
         no_exception(vm)
+
+
+def test_boot_note_starts_with_the_boot_text_after_the_failure_line(board, tft_build, tmp_path,
+                                                                    need_mtools):
+    """The panel's failure line comes before the boot text. The boot note still
+    rises between the boot text's first and second lines."""
+    line1 = "*************** PIP-OS(R) V7.1.0.8 ***************\n"
+    line2 = "COPYRIGHT 2075 ROBCO IND.\n"
+    cfg = ("[display]\nbackend = tft\ntft_test = fail\nchar_delay_ms = 30\nline_delay_ms = 0\n"
+           "[audio]\nvolume = 80\nbeep = yes\nsystem_sound = yes\n").encode()
+    with booted(tft_build[0], board, sd=card(tmp_path, cfg)) as vm:
+        no_exception(vm)
+    serial = vm.serial
+    failed = serial.index("\nSPI DISPLAY FAILED, USING HDMI\n")
+    assert serial.count(" op=voice ") == 1, serial
+    at = serial.index(" op=voice ")
+    assert failed < serial.index(line1) < at < serial.index(line2), serial
 
 
 def test_init_failure_falls_back_to_hdmi(board, tft_build, test_rom, test_holo, tmp_path,
@@ -297,3 +314,56 @@ def test_panic_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, need_
 
     judged_sends(strict)
 
+
+def test_boot_text_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, need_mtools):
+    """The boot text after a ROM that left the screen blanked: one wake, then one frame."""
+    def strict():
+        image, _ = tft_build
+        cfg = config(beep="no", extra="[display]\nbackend = both\nchar_delay_ms = 1\n"
+                                      "[audio]\nsystem_sound = no\n")
+        sd = card(tmp_path, cfg, {ROM: test_rom("tft_window")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+            vm.wait_for("ev=scroll", timeout=TIMEOUT)
+            wait_rom(vm, "shown", 1)
+            for n in range(1, 3):
+                press(vm, "select")
+                wait_rom(vm, "shown", n + 1)
+            press(vm, "select")
+            wait_rom(vm, "dark", 1)
+            assert screenshot(vm, tmp_path).getcolors() == [(640 * 480, (0, 0, 0))]
+            vm.script("kill", timeout=TIMEOUT)
+            vm.wait_for("ev=ready", timeout=TIMEOUT)
+            # HDMI: the boot text lands on the black screen.
+            img = screenshot(vm, tmp_path)
+            assert len(img.getcolors(640 * 480)) > 1, img.getcolors(640 * 480)
+            rows = [r.rstrip() for r in dump(vm)]
+            assert "PIP-OS READY" in rows and "PIP-OS KERNEL INITIALIZED" in rows, rows
+        # SLPOUT, then DISPON: one command byte each, DC low.
+        return restore_sends(vm.markers(), zlib.crc32(bytes([0, 0x11, 0, 0x29])))
+
+    judged_sends(strict)
+
+
+def test_boot_text_after_a_rom_is_one_frame(board, tft_build, test_rom, tmp_path, need_mtools):
+    """After a scroll, a ROM killed on a lit screen: one whole frame with the boot text."""
+    def strict():
+        image, model = tft_build
+        cfg = config(beep="no", extra="[display]\nbackend = both\nchar_delay_ms = 1\n"
+                                      "[audio]\nsystem_sound = no\n")
+        sd = card(tmp_path, cfg, {ROM: test_rom("tft_window")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+            vm.wait_for("ev=scroll", timeout=TIMEOUT)
+            wait_rom(vm, "shown", 1)
+            vm.script("kill", timeout=TIMEOUT)
+            press(vm, "select")  # the kill lands when the ROM's wait returns
+            vm.wait_for("ev=ready", timeout=TIMEOUT)
+            # The panel model shows the text, read back from the bytes sent.
+            view = panel_view(vm, model)
+            fg = rgb565(0x33, 0xE0, 0x66)
+            lines = {y // 16 for y in range(H) if fg in view[y]}
+            assert len(lines) >= 5, sorted(lines)
+            rows = [r.rstrip() for r in dump(vm)]
+            assert "PIP-OS READY" in rows and "PIP-OS KERNEL INITIALIZED" in rows, rows
+        return end_sends(vm.markers(), 1)
+
+    judged_sends(strict)

@@ -43,6 +43,10 @@ void pipos_display_blank(int on);
 /* Panel console: a line of boot text, the console redraw, the panic text. */
 void pipos_display_line(const char *text);
 void pipos_display_console(void);
+/* Replaces the panel console's lines with these n lines, in one frame. 0 clears it. */
+void pipos_display_text(const char *const lines[], unsigned n);
+/* The same lines, held for the next console redraw, with nothing sent. */
+void pipos_display_set_text(const char *const lines[], unsigned n);
 void pipos_display_panic(const char *why);
 
 /* Test builds: the tftdump script command. Returns 0, or -1 when not built in. */

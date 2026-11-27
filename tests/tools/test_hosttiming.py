@@ -239,7 +239,10 @@ def both_run(small=((101, 57, 3, 2), 23), boot_retry=False, step2_retry=False):
             rom("step", 2), send("diff", *small)]
     if step2_retry:
         out += retry()
-    out += [rom("shown"), rom("step", 3), full, rom("shown"), full,
+    # Step 3's holotape blanks the screen. Its end wakes the panel: the wake
+    # has its own send record, then the whole frame follows.
+    out += [rom("shown"), rom("step", 3), full, rom("shown"),
+            send("wake", (0, 0, 0, 0), 2), full,
             rom("step", 4), send("diff", (0, 0, 0, 0), 0), rom("shown")]
     return out
 

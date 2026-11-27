@@ -16,6 +16,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | `rimg` image format and stage loader | RobCo-Core `src/lib`, `tools/rimg.py` |
 | Build rules, host test rules | RobCo-Core `mk/robco.mk`, `mk/host.mk` |
 | Boot order, boot screen, card and ROM checks | `kernel/main.c`, `kernel/card.c`, `kernel/bootlines.c`, `kernel/screen.c` |
+| The disk click: the click debt and its limiter, the block device wrapper, the boot note and the clicks mixed over it | `kernel/dsound_rules.c`, `kernel/dsound.c` |
 | Running an image | `kernel/rom.c`, `kernel/rom.h` |
 | System-call dispatch | `kernel/syscall.c`, `kernel/sysdispatch.c`, `kernel/sys.h` |
 | System-call groups | `kernel/sys_<group>.c` |
@@ -23,7 +24,7 @@ Pip-OS is a bare-metal AArch32 kernel for the Raspberry Pi. It boots from the Pi
 | ABI header shared with ROM code | `sdk/include/pipos/abi.h` |
 | ROM and holotape SDK | `sdk/` |
 
-The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/guide/API.md).
+The library's own guide is in [RobCo-Core `docs/guide`](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/guide/API.md).
 
 ## Boot flow
 
@@ -38,7 +39,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 7. `start_clock()`: `i2c_init()` and `rtc_init()`.
 8. `pipos_card_mount()` in `card.c`: `sd_init()`, then `fs_mount_boot()`.
 9. `pipos_config_load()` reads `/PIPBOY/PIPOS.CFG` through `pipos_settings_parse()`.
-10. `apply_settings()`: scheme, volume, line delay, power-on beep. Then `pipos_display_start()` in `display.c` starts the SPI panel when `[display] backend` asks for it.
+10. `apply_settings()`: scheme, volume, line delay, power-on beep. `pipos_dsound_start()` in `dsound.c` then starts the disk click when the system sound runs. Then `pipos_display_start()` in `display.c` starts the SPI panel when `[display] backend` asks for it.
 11. `pipos_sys_init()` in `syscall.c`: builds the call index, runs every group's `init`, installs the `svc` handler.
 12. `boot_screen()`: the head lines, `pipos_holo_count()`, `pipos_rom_load()`, the ROM line, the tail lines.
 13. `pipos_rom_run()` in `rom.c` when the ROM passed the check.
@@ -54,7 +55,7 @@ A failure in `mmu_init()`, `fb_init()`, `console_init()`, the heap or the tick c
 
 ## Memory map
 
-The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
+The kernel follows the Pip-Boy chain of RobCo-Core's [MEMORY_MAP.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/MEMORY_MAP.md#pip-boy-chain). That page is the contract. This table is what the code uses.
 
 | Range | Use | Defined in |
 |---|---|---|
@@ -82,7 +83,7 @@ The startup block of each image sits at the bottom of its stack, `stack_top - 0x
 
 ## How an image runs
 
-`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
+`kernel/card.c` loads the ROM with RobCo-Core's `loader_load()` into the ROM slot. It expects the `ROM1` magic and ABI major 1. The loader runs the [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/IMAGE_FORMAT.md#validation) checks: magic, header version, size, slot bounds, ABI and CRC. `pipos_rom_error_line()` in `bootlines.c` turns each `rimg` error into the screen text.
 
 `pipos_image_run()` in `kernel/rom.c` runs both kinds of image:
 
@@ -148,7 +149,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 ### gfx
 
-`sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
+`sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. After a scroll, `rom.c` has the kernel write the boot text back before the image end hooks run, so this redraw is the one frame with the text. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
 
 ### Display path
 
@@ -156,7 +157,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 - HDMI: `present` scales the back buffer by 2 into the framebuffer, as before.
 - Panel: `present` compares the back buffer with the shadow, a copy of the last frame sent at `0x00C80000`. `gfx_dirty_rect()` in `gfx_draw.c` finds the smallest rectangle that holds every changed pixel the panel shows. At 0 and 180 degrees the panel shows the left 240 columns and the top 240 rows, so it looks only there, with the 320-pixel row stride. A change outside that window is never sent and never reaches the shadow. It skips equal rows from the top and the bottom, then looks for the leftmost and rightmost change in the rows between. RobCo-Core's `tft_present_px32_rect()` sends that rectangle in RGB565, and `gfx_copy_rect()` copies it into the shadow. An unchanged frame sends nothing.
-- The whole frame goes out after `tft_init()`, after `power` wakes the screen, after a holotape returns and after a failed send.
+- The whole frame goes out after `tft_init()`, after `power` wakes the screen, after the boot text comes back on a screen a ROM left blanked, after a holotape returns and after a failed send.
 - A panic after `power` blanked the screen wakes the panel first: sleep out, display on, backlight on. Then the whole console frame goes out. `tft_sleep()` returns at once when the timer has stopped, and every SPI wait fails after 20 ms plus four byte times with no byte moved, so the panic path stays bounded. A failed panel call skips the rest of the wake; the frame is still sent. On HDMI the panic text lands on the black screen, since the console draws straight into the framebuffer.
 
 Cost on the wire: a rectangle of w by h pixels takes 11 bytes of window commands and `2 * w * h` bytes of pixels. At 9.62 MHz, the rate set for the default 10 MHz:
@@ -180,7 +181,7 @@ A panel call that fails after boot is counted. The first prints `ev=display_erro
 
 ### audio
 
-`sys_audio.c`: `tone`, `sample`, `audio_stop`, `volume`, `audio_status`, `play_seq`. One voice through RobCo-Core's `audio.h`, PWM on hardware and a trace backend in QEMU. A new sound replaces the one that plays. `sample` copies up to 64 KiB of 8000 Hz PCM into one static buffer. `play_seq` takes up to 256 notes. `image_start` and `image_end` stop a sound the image started. Pure rules in `audio_rules.c`, tested by `tests/host/test_audio.c`.
+`sys_audio.c`: `tone`, `sample`, `audio_stop`, `volume`, `audio_status`, `play_seq`, `sample_queue`, `sample_rate`. One voice through RobCo-Core's `audio.h`, PWM on hardware and a trace backend in QEMU. A new sound replaces the one that plays. `sample` copies up to 64 KiB of PCM into a static buffer, at 8000 or 37500 Hz. `play_seq` takes up to 256 notes. `image_start` and `image_end` stop a sound the image started. The sample rate is per-image state, like the drawing state: `image_start` saves the ROM's rate when a holotape starts and sets 8000 Hz for every image, and a holotape's `image_end` gives the ROM its rate back. A new play passes the rate in force to the driver. A queued buffer passes none: the driver plays it at the rate of its play. Pure rules in `audio_rules.c`, tested by `tests/host/test_audio.c`.
 
 ### time
 
@@ -304,7 +305,7 @@ The mini UART carries RobCo-Core's script channel. `script_command()` in `main.c
 | `kill` | Ends the innermost running image with `umode_request_kill()` |
 | `panic <reason>` | Takes the panic path |
 
-Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
+Every marker starts with `@RC stage=pipos` and follows [BOOT_PROTOCOL.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/BOOT_PROTOCOL.md#serial-markers). The full marker list is in [BOOT.md](BOOT.md#markers). Markers go to the PL011 only. Boot text goes to the screen and the PL011, through `pipos_screen_line()` in `screen.c`.
 
 ## Build
 

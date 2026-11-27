@@ -37,6 +37,27 @@ int32_t pipos_audio_convert(const pip_note_t *in, uint32_t count, audio_note_t *
 int32_t pipos_audio_volume_swap(unsigned *level, uint32_t new_level);
 
 /*
+ * sample_rate, ABI 1.5. The rate belongs to the image: `rate` is the one
+ * in force, `rom_rate` the ROM's while a holotape it launched runs.
+ */
+typedef struct {
+    uint32_t rate;
+    uint32_t rom_rate;
+} pipos_rate_t;
+
+/*
+ * Sets r->rate to hz and returns the rate before, or returns -PIP_EINVAL
+ * and changes nothing unless hz is PIP_SAMPLE_RATE or PIP_SAMPLE_RATE_HI.
+ */
+int32_t pipos_audio_rate_swap(pipos_rate_t *r, uint32_t hz);
+
+/* Every image starts at PIP_SAMPLE_RATE. A holotape's start keeps the ROM's rate. */
+void pipos_audio_rate_image_start(pipos_rate_t *r, int kind);
+
+/* A holotape's end gives the ROM back the rate it had at holo_launch. */
+void pipos_audio_rate_image_end(pipos_rate_t *r, int kind);
+
+/*
  * sample_queue's two PCM buffers, 0 and 1. The driver does not copy, so
  * the kernel must know which buffer it may still read:
  *   play  the buffer that plays, or -1 when no sample of the image plays;
@@ -76,5 +97,36 @@ pipos_pcmq_plan_t pipos_pcmq_plan(const pipos_pcmq_t *q, int can_queue);
 void pipos_pcmq_queued(pipos_pcmq_t *q, int buf);
 void pipos_pcmq_started(pipos_pcmq_t *q, int buf);
 void pipos_pcmq_drop(pipos_pcmq_t *q);
+
+/*
+ * The rate a sample or sample_queue call plays at, for the plan's action:
+ * QUEUE joins the play and keeps play_rate, the rate it started with.
+ * START, and sample, start a new play at in_force. BUSY plays nothing and
+ * returns 0.
+ */
+uint32_t pipos_pcmq_rate(int action, uint32_t in_force, uint32_t play_rate);
+
+/*
+ * Brings the state the handlers keep about the image's own play up to
+ * date against the driver, in one place, before a click is cut or a
+ * question is answered. owned is 1 after the image started a sound,
+ * busy is audio_busy(), click is 1 while a kernel click plays, can_queue
+ * is audio_pcm_can_queue(), all read under one irq_save(). Returns the new
+ * owned. The image's play goes on only when owned and busy hold and no
+ * click plays: then the queue syncs as in pipos_pcmq_sync(). Anything else
+ * means nothing of the image plays: a play that ended, long ago or one
+ * tick ago, a click that plays, or the pending stop of a click just cut.
+ * Then owned is 0 and both buffers are free, so a cut leaves the state
+ * "the image has nothing playing" and sample_queue starts a new play.
+ */
+int pipos_audio_reconcile(int owned, pipos_pcmq_t *q, int busy, int click, int can_queue);
+
+/*
+ * audio_status: owned is 1 after the image started a sound, busy is
+ * audio_busy(). Returns the new owned, which is also the answer: 0 once
+ * the driver went idle. The disk click's tick clears owned when it finds
+ * the driver idle, before it starts a click, so a click reads as silence.
+ */
+int pipos_audio_status_of(int owned, int busy);
 
 #endif

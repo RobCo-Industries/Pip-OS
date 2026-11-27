@@ -19,7 +19,7 @@ On macOS with Homebrew:
 brew install arm-none-eabi-gcc qemu mtools python
 ```
 
-RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/guide/GETTING_STARTED.md) lists the versions in detail.
+RobCo-Core's [getting started guide](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/guide/GETTING_STARTED.md) lists the versions in detail.
 
 ## Build the image
 
@@ -58,6 +58,8 @@ The image is a `rimg` `BOOT` image with the Pip-OS subtype, linked at `0x8000`. 
 | `make test`, `make test-host`, `make test-target` | The tests, see [TESTING.md](TESTING.md) |
 | `make sdk-package` | `build/pipos-<version>.zip`, the SDK package, then its check. See [SDK_PACKAGE.md](SDK_PACKAGE.md). |
 | `make check-pins` | The CI pins and the RobCo-Core doc links match the submodule |
+| `make sound-table` | Writes `kernel/sound_table.c` and `.h` again, see [System sound tables](#system-sound-tables) |
+| `make boot-sound` | Boots a card with the sound on in QEMU and writes `build/boot_sound.wav`, see [Hearing a boot](TESTING.md#hearing-a-boot) |
 | `make clean` | Removes `build/` |
 
 | Variable | Default | Meaning |
@@ -84,14 +86,48 @@ A ROM project in another repository calls these targets with `make -C <pip-os>`.
 | `kernel/` | Kernel sources and `robco_config.h` |
 | `kernel/syscall.c`, `kernel/sys.h` | The system-call dispatcher and the interface of the call groups |
 | `kernel/sys_<group>.c` | One group of system calls each: `system`, `gfx`, `input`, `audio`, `time`, `storage`, `holo` |
-| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: the `*_rules.c` files, `gfx_draw.c`, `input_events.c`, `time_clock.c`, `bootlines.c`, `settings.c`, `sysabi.c` and `sysdispatch.c` in `kernel/` |
+| `PURE_SRCS` in the `Makefile` | Pure code, also built for the host tests: the `*_rules.c` files, `gfx_draw.c`, `input_events.c`, `time_clock.c`, `bootlines.c`, `settings.c`, `sound_table.c`, `sysabi.c` and `sysdispatch.c` in `kernel/` |
 | `sdk/` | The ROM SDK: headers in `include/pipos/`, `crt0.S`, `rom.ld`, `holotape.ld`, `lib/` for `libpip.a`, `pipos-app.mk`, and the examples `examples/hello` and `examples/tape`, and the runner ROM `examples/runner` |
 | `boot/config.txt` | The firmware settings for the Pip-Boy chain |
 | `boot/PIPOS.CFG` | Sample kernel configuration, see [CONFIG.md](CONFIG.md) |
 | `conformance/` | The conformance ROM and its tapes, built with the SDK only, see [TESTING.md](TESTING.md#conformance-rom) |
 | `tests/` | Host tests in `tests/host/`, QEMU tests in `tests/*.py`, test ROMs in `tests/roms/` |
+| `kernel/sound_params.json`, `tools/sound_table.py` | The system sounds and the tool that writes their tables, see [System sound tables](#system-sound-tables) |
 | `pytest.ini` | The boards the QEMU tests run on by default |
 | `external/robco-core/` | The library |
+
+## System sound tables
+
+`kernel/sound_params.json` states the system sounds of Pip-OS: a disk click, a line blip, a soft beep and a rising note. `tools/sound_table.py` turns it into `kernel/sound_table.c` and `kernel/sound_table.h`. The click, the blip and the beep are tables of unsigned 8-bit samples at 37500 Hz, the PWM carrier rate, where 128 is silence. The note is a small table of spans for RobCo-Core's voice engine, which computes it live, one sample per interrupt. Both files are committed, so a build runs no Python for them. The kernel plays the soft beep when `[audio] system_sound` is on. The clicks, the blip and the note are not played yet: the pinned RobCo-Core has no voice engine. `--gc-sections` keeps only the beep in the image.
+
+| Table | Bytes |
+|---|---|
+| `sound_click` | 12 clicks of 789 samples, 21 ms each, peak 88 steps |
+| `sound_blip` | 600: 300 samples at 3469 Hz and 48 steps, then 300 at 2625 Hz and 40 steps |
+| `sound_beep` | 2250: a 1000 Hz sine at 24 steps, 60 ms, with 10 ms linear edges |
+| `sound_note_spans` | 4536: 162 spans of seven `uint32_t`, `SOUND_NOTE_SPANS`. The note lasts `SOUND_NOTE_MS`, 6326 ms. |
+
+The sample tables take 12 318 bytes, the spans 4536.
+
+### The note's spans
+
+Each row of `sound_note_spans` is `n, phase, inc, dinc, amp, damp, p2`, the order and size of RobCo-Core's `audio_voice_span_t`. The table is plain `uint32_t`, so it builds without the library's type. `dinc` and `damp` are signed and stored as two's complement.
+
+- Pitch: 1890 Hz, then a glide by a constant ratio to 2120 Hz in 300 ms, 2566 in 1125, 4200 in 1350, 8000 in 1350, 15700 in 1050, then 15700 Hz held.
+- Level: 20 steps at 1890 Hz and `20 * 1890 / hz` above, so 6 dB less per octave. The held whine falls 30 dB over 2500 ms, even in dB, with a linear taper over its last 200 ms. The note fades in over 150 ms.
+- A second partial at twice the pitch, 22 dB under, `p2` 2603, while the pitch is under 8437 Hz.
+- One span per 40 ms at most. A span starts at every corner: the end of each glide, the end of the fade in, the start of the taper and the sample where the second partial stops. Each piece between corners splits into equal spans. A corner at a half sample rounds up.
+- Each span starts on the curve: `inc` is `floor(hz * 2^32 / 37500)` and `amp` the level in 1/65536 of a step, rounded to nearest. `dinc` is the nearest whole step that takes `inc` to the next span's start. `damp` rounds toward zero, so the level never passes the next span's start and never rises where the law falls. The tool carries the phase with the engine's own closed form, so the wave has no step at a span edge.
+- Inside a span the engine moves the pitch linearly. Against the curve's constant ratio the worst error is 0.008 percent.
+- The note ends at the first span from which the peak stays under half a step, where it would round to silence. That is after 237 190 samples. The last span starts at 0.52 step. Past the last span the engine gives 0.
+
+`tools/voice_engine.py` is the engine in pure Python, sample for sample: the 1024-entry sine table, the per-sample integer steps and the one rounding with an overlay and the volume. `tools/sound_table.py` and `tools/boot_sound.py` both load it. It builds its sine from a fixed sum, and a test checks the table's CRC-32, `05067686`.
+
+After a change to the parameters, run `make sound-table` and commit the three files. `tools/sound_table.py --check` fails when the committed files differ from what the tool writes, and says to run `make sound-table`. It runs before anything compiles the table: `build/obj/kernel/sound_table.o` and the host tests take it as an order-only prerequisite. So `make`, `make kernel`, `make sdimage`, `make bootdir`, `make run`, `make sdk-package` and the test goals that build stop on a stale table before they write an image. The build never writes the table itself, so a forgotten commit fails instead of hiding. `make test-host` runs `tests/tools/test_sound_table.py` and `tests/host/sound_table_make_test.sh`.
+
+- Each table holds its sound at its level for `[audio] volume = 100`. The tool refuses a click sample more than `ceiling_steps`, 90 steps, from 128. That leaves 37 steps under 127 for a sound mixed under a click.
+- The same parameters give the same bytes on every system and every Python 3. The tool uses only add, subtract, multiply, divide and comparisons, which IEEE 754 fixes. It builds its own logarithm, exponential and sine from them, and its noise is a 32-bit xorshift from `seed`. It calls no `math` function and no `random`.
+- `--wav DIR` writes each sound as an 8-bit WAV file, to listen to. The note's file is the engine's integer render at volume 100. `--dump DIR` writes each buffer as a raw `.u8` file and the note as `note.voice`: the spans as 28-byte little-endian records, the bytes whose CRC-32 the trace prints.
 
 ## Button pins
 
@@ -157,4 +193,4 @@ FAT holds only files and folders. `tools/card.py` does all the card staging and 
 - In `DIR`, a link at any path `bootdir` writes or removes stops it, and nothing changes. That covers the files and folders it writes, every folder on the way to them, the stale files `CLEAN=1` removes and `BOOTDIR.LST`. A link elsewhere in `DIR` is left alone. A `PIPBOY/PIPOS.CFG` that exists, even as a link, is kept and never written.
 - `DIR` itself may be a link to a folder, for example when you keep the card folder somewhere else. `bootdir` resolves it once, says so, and writes into the real folder.
 
-`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/BOARD_SUPPORT.md#configtxt).
+`config.txt` holds exactly the settings of the Pip-Boy chain from RobCo-Core's [BOARD_SUPPORT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/BOARD_SUPPORT.md#configtxt).

@@ -28,6 +28,7 @@
 #include "display.h"
 #include "pipos.h"
 #include "slot_backend.h"
+#include "sound_table.h"
 #include "storage.h"
 #include "sys.h"
 
@@ -245,16 +246,41 @@ static void start_clock(void)
     }
 }
 
-static void apply_settings(const pipos_settings_t *s)
+/*
+ * The system sound: the rest ramp, then the soft beep if beep is on.
+ * Returns 1 when the ramp played. If the ramp fails, it prints ev=sound and
+ * returns 0: the boot goes on as with the system sound off.
+ */
+static int start_sound(int beep)
+{
+    int rc = audio_rest_mid();
+
+    if (rc != 0) {
+        k_printf("@RC stage=" PIPOS_STAGE " ev=sound rc=%d\n", rc);
+        return 0;
+    }
+    audio_wait();
+    if (beep) {
+        audio_play_pcm(sound_beep, SOUND_BEEP_LEN, SOUND_RATE_HZ, 0);
+    }
+    return 1;
+}
+
+/* Returns 1 when the system sound runs. */
+static int apply_settings(const pipos_settings_t *s)
 {
     console_set_scheme(s->scheme);
     audio_set_volume(s->volume);
     pipos_audio_start_volume(s->volume);
     pipos_screen_delay(s->line_delay_ms);
-    pipos_screen_typing(s->char_delay_ms, s->key_click);
+    pipos_screen_typing(s->char_delay_ms);
+    if (s->system_sound && start_sound(s->beep)) {
+        return 1;
+    }
     if (s->beep) {
         audio_beep();
     }
+    return 0;
 }
 
 static int boot_screen(int card, loader_result_t *res)
@@ -265,6 +291,9 @@ static int boot_screen(int card, loader_result_t *res)
     int rc;
 
     for (i = 0; pipos_boot_head[i] != NULL; i++) {
+        if (i == 1) {
+            pipos_screen_note_next();
+        }
         pipos_screen_line(pipos_boot_head[i]);
     }
     pipos_holo_line(pipos_holo_count(card), line, sizeof(line));
@@ -280,6 +309,9 @@ static int boot_screen(int card, loader_result_t *res)
     pipos_screen_line(line);
 
     for (i = 0; pipos_boot_tail[i] != NULL; i++) {
+        if (pipos_boot_tail[i + 1] == NULL) {
+            pipos_screen_last_next();
+        }
         pipos_screen_line(pipos_boot_tail[i]);
     }
     return rc == RIMG_OK;
@@ -353,6 +385,7 @@ void robco_main(void)
     loader_result_t res;
     int card;
     int rom;
+    int sound;
 
     uart_init(115200);
     k_printf("\n@RC stage=" PIPOS_STAGE " ev=boot midr=0x%08x soc=%s base=0x%08x "
@@ -370,18 +403,25 @@ void robco_main(void)
 
     card = pipos_card_mount();
     pipos_config_load(card, &settings);
-    apply_settings(&settings);
+    sound = apply_settings(&settings);
+    /* The ramp and its wait ended: the rest level is the midpoint. */
+    pipos_audio_rest_result(sound);
+    pipos_dsound_start(sound);
     pipos_display_start(&settings);
     pipos_slot_start(settings.holo_slot);
     pipos_sys_init();
 
     rom = boot_screen(card, &res);
-    pipos_screen_typing(0, 0); /* later lines, a fault for one, appear at once */
+    pipos_screen_end(rom);
+    pipos_screen_typing(0); /* later lines, a fault for one, appear at once */
     rom_loaded = rom;
     if (rom) {
+        pipos_dsound_jump();
         pipos_rom_run(&res);
+        pipos_dsound_rom_ended();
     }
     ready_flag = 1;
+    pipos_dsound_poll();
     k_printf("@RC stage=" PIPOS_STAGE " ev=ready rom=%d\n", rom);
     main_loop();
 }

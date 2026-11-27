@@ -71,6 +71,8 @@ PIP-OS READY
 **************************************************
 ```
 
+With `char_delay_ms` above 0 and a ROM to run, the text scrolls up and off the screen before the ROM starts. With the system sound on, each line that leaves makes a short blip.
+
 The first eight lines never change. [LORE.md](LORE.md) explains them. The speaker beeps once unless the configuration turns the beep off.
 
 The holotape line counts the `.HTP` files in `PIPBOY/HOLO/`:
@@ -168,7 +170,7 @@ beep = yes
 | `volume` in `[audio]` | 0 to 100 | `100` |
 | `beep` in `[audio]` | `yes` or `no` | `yes` |
 | `char_delay_ms` in `[display]` | 0 to 100, pause after each boot text character | `0` |
-| `key_click` in `[audio]` | `yes` or `no`, a click per character. It needs `char_delay_ms` above 0. | `no` |
+| `system_sound` in `[audio]` | `yes` or `no`, the system sound: a soft beep at power-on, then disk clicks while the card works. `key_click` is its old name. | `no` |
 
 A bad value keeps the default. A line that is not INI makes Pip-OS ignore the whole file.
 

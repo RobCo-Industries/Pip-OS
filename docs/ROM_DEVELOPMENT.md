@@ -2,7 +2,7 @@
 
 A ROM is the program Pip-OS runs after boot. It is one file, `/PIPBOY/ROM1.ROM` on the SD card. Pip-OS loads it at `0x00400000`, checks it and runs it in user mode. The ROM talks to the kernel only through system calls.
 
-The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
+The file uses the `rimg` format with the `ROM1` magic and a META block for the title and icon. RobCo-Core specifies it in [IMAGE_FORMAT.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/IMAGE_FORMAT.md). The SDK in `sdk/` builds and seals it for you.
 
 ## A first ROM
 
@@ -46,7 +46,7 @@ include $(PIPOS_SDK)/pipos-app.mk
 | `ICON` | META icon: a 32x32 PBM, P1 or P4, or 128 raw bytes |
 | `VERSION` | Image version, such as `1.2.0` |
 | `SUBTYPE` | Holotape subtype: `game` or `0`, the default, or `utility` or `1`. A data tape, `2`, has no slot, so the build refuses it. A ROM takes only `0`. A change reseals the image. |
-| `ABI` | The lowest Pip-OS ABI the image needs, `MAJOR.MINOR`, such as `1.3`. See [The target ABI](#the-target-abi). Not set, the image targets the ABI of the headers, 1.4. |
+| `ABI` | The lowest Pip-OS ABI the image needs, `MAJOR.MINOR`, such as `1.3`. See [The target ABI](#the-target-abi). Not set, the image targets the ABI of the headers, 1.5. |
 | `BUILD` | Output folder, `build` by default |
 | `CFLAGS_EXTRA` | More compiler flags |
 | `ROBCO_CORE` | RobCo-Core, `$(PIPOS_SDK)/../external/robco-core` by default |
@@ -76,10 +76,11 @@ The calls hidden by target, from the spec's change list:
 
 | Target | Hidden |
 |---|---|
-| 1.0 | `sample_queue` |
-| 1.1 to 1.4 | Nothing |
+| 1.0 | `sample_queue`, `sample_rate` |
+| 1.1 to 1.4 | `sample_rate` |
+| 1.5 | Nothing |
 
-ABI 1.2, 1.3 and 1.4 added no call. A change of `ABI` rebuilds the startup code and every source.
+ABI 1.2, 1.3 and 1.4 added no call. ABI 1.5 added `sample_rate`. A change of `ABI` rebuilds the startup code and every source.
 
 ### flags.json
 
@@ -105,7 +106,7 @@ What differs from a ROM:
 - The return value of `pip_main`, or the value given to `pip_exit()`, is the exit status, 0 to 255. The ROM gets it back from `pip_holo_launch()`. A fault ends the tape and the ROM gets `-PIP_EFAULT`.
 - Pip-OS stops the sound, empties the event queue and resets the drawing state before and after the tape. The ROM redraws its screen when the tape ends.
 
-To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/PIPOS_ABI.md#holotapes).
+To put a tape on the card, copy it to `/PIPBOY/HOLO/` under an 8.3 name ending in `.HTP`. `make sdimage` already puts the example there as `/PIPBOY/HOLO/BEACON.HTP`. The rules are in RobCo-Core's [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/PIPOS_ABI.md#holotapes).
 
 ### The holotape slot
 
@@ -132,7 +133,7 @@ The event is a hint: the queue is emptied around `holo_launch` and can drop even
 
 `crt0.S` puts the branch, the `rimg` header and an empty META block at the start of the image. On entry it saves r0 to r3, sp and lr in `pip_entry_regs`, clears BSS and calls `int pip_main(const pipos_startup_t *startup)`. The return value of `pip_main` goes to `exit`.
 
-The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/PIPOS_ABI.md#entry-state).
+The ROM starts in user mode with sp at `0x01800000` and r0 pointing at the startup block. The block names the heap: `0x007F0000` bytes from `0x01000000`. The details are in [PIPOS_ABI.md](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/PIPOS_ABI.md#entry-state).
 
 ## System calls
 
@@ -221,6 +222,34 @@ void play_file(const char *path)
 ```
 
 A 4096-byte chunk lasts 512 ms, so a 20 ms sleep leaves plenty of margin. If the ROM comes back too late, the sound ends and the next call starts it again, with a gap. `sample_queue` is new in ABI 1.1: on a 1.0 Pip-OS it returns `-PIP_ENOSYS`. Read `startup->abi_version` to check.
+
+### Faster samples
+
+`pip_sample_rate(37500)` makes the plays that start after it run at 37500 Hz, so a sound can reach above 4 kHz. The call returns the rate before. A play keeps the rate it started with, so the ROM can set the old rate back right after `pip_sample()`. A chunk queued behind a play takes that play's rate. Every image starts at 8000 Hz. At 37500 Hz the 65536-byte limit lasts about 1.748 s, and a 4096-byte chunk about 109 ms. A streaming ROM keeps the rate set until the stream ends.
+
+`sample_rate` is new in ABI 1.5. On an older Pip-OS number `0x27` returns `-PIP_ENOSYS` and every sample plays at 8000 Hz. An image that must also run there reads `abi_version` in the startup block once, and calls `sample_rate` only on 1.5 or later:
+
+```c
+static int has_rate;   /* set once in pip_main: startup->abi_version >= 0x00010005 */
+
+void play_fast(const uint8_t *data, uint32_t length)   /* data made for 37500 Hz */
+{
+    int32_t prev;
+
+    if (!has_rate) {
+        return;        /* or play a copy made for 8000 Hz */
+    }
+    prev = pip_sample_rate(37500);
+    pip_sample(data, length);
+    pip_sample_rate((uint32_t)prev);
+}
+```
+
+Data made for 37500 Hz played at 8000 Hz lasts 4.6875 times longer and sounds that much lower, so play a copy made for 8000 Hz or stay silent there. With `ABI := 1.4` or lower the headers hide `pip_sample_rate` and `PIP_SYS_SAMPLE_RATE`: see [The target ABI](#the-target-abi).
+
+Play short sample effects only when `PIP_HW_AUDIO_MID` is set in `sys_info`'s `hw_flags`. With the bit clear the output rests at its low level, so every sample play starts and ends with a step that a speaker turns into a thump. A short effect would then sound like two clicks. Check `abi_version` first: before ABI 1.5 the bit reads 0. See [API.md](API.md#system).
+
+With the system sound on, the kernel may click between your sounds while the ROM reads files. Your sound always wins and the queue behaves as if the click were silence. See [API.md](API.md#audio).
 
 ## Library functions
 

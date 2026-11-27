@@ -41,10 +41,10 @@ void pipos_sys_info_fill(pip_sys_info_t *s, uint32_t pipos_version, uint32_t boa
     s->hw_flags = hw_flags;
 }
 
-uint32_t pipos_hw_flags(int rtc_present, int audio_ok, int tape_slot)
+uint32_t pipos_hw_flags(int rtc_present, int audio_ok, int tape_slot, int rest_mid)
 {
     return (rtc_present ? PIP_HW_RTC : 0u) | (audio_ok ? PIP_HW_AUDIO : 0u) |
-           (tape_slot ? PIP_HW_TAPE : 0u);
+           (tape_slot ? PIP_HW_TAPE : 0u) | (audio_ok && rest_mid ? PIP_HW_AUDIO_MID : 0u);
 }
 
 char pipos_log_char(char c)

@@ -61,7 +61,7 @@ int32_t pip_wait_event(pip_event_t *out, uint32_t timeout_ms);
 /* Audio. One voice; sounds play in the background. */
 /* 20 to 20000 Hz, 1 to 60000 ms. 0. */
 int32_t pip_tone(uint32_t freq_hz, uint32_t duration_ms);
-/* 8-bit unsigned at 8000 Hz, at most 65536 bytes. 0. */
+/* 8-bit unsigned at the rate of pip_sample_rate, 8000 Hz unless set, at most 65536 bytes. 0. */
 int32_t pip_sample(const uint8_t *data, uint32_t length);
 /* 0. */
 int32_t pip_audio_stop(void);
@@ -79,6 +79,16 @@ int32_t pip_play_seq(const pip_note_t *notes, uint32_t count);
 int32_t pip_sample_queue(const uint8_t *data, uint32_t length);
 #else
 int32_t pip_sample_queue(const uint8_t *data, uint32_t length) PIP_ABI_HIDDEN(sample_queue, "1.1");
+#endif
+/*
+ * 8000 or 37500 Hz for the plays that start after it. A play keeps the
+ * rate it started with. The previous rate, or -PIP_EINVAL. 8000 at every
+ * image start. ABI 1.5: -PIP_ENOSYS on an older Pip-OS.
+ */
+#if PIPOS_ABI_TARGET >= 0x00010005
+int32_t pip_sample_rate(uint32_t hz);
+#else
+int32_t pip_sample_rate(uint32_t hz) PIP_ABI_HIDDEN(sample_rate, "1.5");
 #endif
 
 /* Time, sensors and power. */

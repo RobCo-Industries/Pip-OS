@@ -101,6 +101,8 @@ TEST(wrappers_pass_number_and_arguments)
     CHECK_CALL(PIP_SYS_SAMPLE, 0x111, 0x122, 0, 0);
     CHECK_EQ(pip_sample_queue((const uint8_t *)(uintptr_t)0x111, 0x122), RET);
     CHECK_CALL(PIP_SYS_SAMPLE_QUEUE, 0x111, 0x122, 0, 0);
+    CHECK_EQ(pip_sample_rate(0x111), RET);
+    CHECK_CALL(PIP_SYS_SAMPLE_RATE, 0x111, 0, 0, 0);
     CHECK_EQ(pip_audio_stop(), RET);
     CHECK_CALL(PIP_SYS_AUDIO_STOP, 0, 0, 0, 0);
     CHECK_EQ(pip_volume(0x111), RET);

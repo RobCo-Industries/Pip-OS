@@ -16,7 +16,7 @@ What works now:
 - Configuration from `/PIPBOY/PIPOS.CFG`: colour scheme, boot line delay, boot text speed and key click, volume and power-on beep.
 - The ROM check: the kernel loads `/PIPBOY/ROM1.ROM` into the ROM slot and validates it. The boot screen shows its name and version, or the reason it failed.
 - Running the ROM in user mode, with the MMU keeping it inside its own memory. A fault stops the ROM and shows on screen.
-- Every system call of RobCo-Core's Pip-OS ABI: graphics on a 320x240 back buffer, input events, one audio voice with tones, sequences and 8-bit samples, the clock and `power`, saves and read-only files on the card, and holotapes that the ROM runs from `/PIPBOY/HOLO/` in their own sandbox. See [docs/API.md](docs/API.md).
+- Every system call of RobCo-Core's Pip-OS ABI: graphics on a 320x240 back buffer, input events, one audio voice with tones, sequences and 8-bit samples at 8000 or 37500 Hz, the clock and `power`, saves and read-only files on the card, and holotapes that the ROM runs from `/PIPBOY/HOLO/` in their own sandbox. See [docs/API.md](docs/API.md).
 - A ROM SDK in `sdk/`: headers, `crt0.S`, link scripts, `libpip.a` with the syscall wrappers, string functions, printf and a heap, and `pipos-app.mk` to build and seal a ROM or a holotape. Start with [docs/ROM_DEVELOPMENT.md](docs/ROM_DEVELOPMENT.md).
 - Input from GPIO buttons and a dial, the serial console and a script channel on the mini UART.
 - Audio through PWM, or a trace on the serial console in QEMU.
@@ -83,9 +83,9 @@ Copy the files in `DIR` to the FAT32 boot partition of the card. They include th
 
 RobCo-Core documents the library and the shared specifications:
 
-- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/guide/API.md)
-- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/MEMORY_MAP.md)
-- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/712db81c9c804d4a8ede1f866ea764c0c6299844/docs/spec/PIPOS_ABI.md)
+- [Getting started](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/guide/GETTING_STARTED.md) and the [API reference](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/guide/API.md)
+- [Boot protocol](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/BOOT_PROTOCOL.md), [image format](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/IMAGE_FORMAT.md) and [memory map](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/MEMORY_MAP.md)
+- [Pip-OS ABI](https://github.com/RobCo-Industries/RobCo-Core/blob/9a11561b63068156cce77ff14af45e34e11da37f/docs/spec/PIPOS_ABI.md)
 
 ## Related projects
 

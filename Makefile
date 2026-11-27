@@ -25,6 +25,8 @@
 #   make conformance-bootdir DIR=<path>
 #                             bootdir with the conformance ROM as
 #                             PIPBOY/ROM1.ROM and its two holotapes
+#   make boot-sound           boot a card with the sound on in QEMU and write
+#                             build/boot_sound.wav, what the pin would play
 #   make sdk-package          build/pipos-<version>.zip, the SDK package,
 #                             then its check: see docs/SDK_PACKAGE.md
 #
@@ -44,12 +46,14 @@ PYTHON     ?= python3
 PURE_SRCS  := \
               kernel/audio_rules.c \
               kernel/bootlines.c \
+              kernel/dsound_rules.c \
               kernel/gfx_draw.c \
               kernel/holo_rules.c \
               kernel/input_events.c \
               kernel/keyclick.c \
               kernel/settings.c \
               kernel/slot_rules.c \
+              kernel/sound_table.c \
               kernel/storage_rules.c \
               kernel/sysabi.c \
               kernel/sysdispatch.c \
@@ -117,6 +121,54 @@ include $(ROBCO_CORE)/mk/host.mk
 
 # Target tests boot the image built here; keep top-level targets serial.
 .NOTPARALLEL:
+
+# ---- System sound tables ------------------------------------------------
+
+# kernel/sound_table.c and .h are generated from kernel/sound_params.json
+# and committed. `make sound-table` writes them again. The check runs
+# before anything compiles the table: the kernel object and the host
+# tests that link it take it as an order-only prerequisite, so a stale
+# table stops the build before any object or image is written. Every
+# image, card and package goal builds that object. SOUND_PARAMS lets
+# tests/host/sound_table_make_test.sh point the check at a changed copy.
+# See docs/BUILD.md.
+SOUND_PARAMS ?= kernel/sound_params.json
+.PHONY: sound-table sound-table-check sound-table-test
+all: sound-table-check
+$(BUILD)/obj/kernel/sound_table.o $(HOST_TESTS): | sound-table-check
+sound-table:
+	$(PYTHON) -I tools/sound_table.py
+
+sound-table-check:
+	$(PYTHON) -I tools/sound_table.py --check --params $(SOUND_PARAMS)
+
+sound-table-test:
+	$(PYTHON) -I -m unittest discover -s tests/tools -p test_sound_table.py
+	tests/host/sound_table_make_test.sh
+
+# ---- Boot sound preview -----------------------------------------------
+#
+# QEMU has no sound. `make boot-sound` boots a card with the sound on in
+# QEMU on one board, raspi0 unless BOARD names one, saves the serial log
+# and rebuilds what the audio pin would play into build/boot_sound.wav.
+# See docs/TESTING.md.
+
+BOOT_SOUND_BOARD = $(if $(filter all,$(BOARD)),raspi0,$(BOARD))
+.PHONY: boot-sound boot-sound-test
+boot-sound: kernel venv rom-sleep
+	@mkdir -p $(BUILD)/boot_sound
+	@rm -f $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav
+	$(VENV)/bin/pytest tests/test_boot_sound_log.py -q --tb=short --board $(BOOT_SOUND_BOARD) \
+		--build-dir $(BUILD) --boot-sound-log $(BUILD)/boot_sound/serial.log
+	@test -s $(BUILD)/boot_sound/serial.log || { \
+		echo "boot-sound: the boot did not run, so there is no log. Check that QEMU and mtools are installed." >&2; \
+		exit 1; }
+	$(PYTHON) -I tools/sound_table.py --dump $(BUILD)/boot_sound/pcm
+	$(PYTHON) -I tools/boot_sound.py $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav \
+		--pcm $(BUILD)/boot_sound/pcm
+
+boot-sound-test:
+	$(PYTHON) -I -m unittest discover -s tests/tools -p test_boot_sound.py
 
 # ---- ROMs ---------------------------------------------------------------
 
@@ -271,7 +323,7 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
-           workflow-exprs-test
+           workflow-exprs-test sound-table-test boot-sound-test
 
 # Every workflow line with a ${{ expression has the one safe KEY: value shape.
 .PHONY: workflow-exprs-test
@@ -488,7 +540,7 @@ sdk-package:
 	    --forbid "$$HOME" --user "$(PKG_USER)" --forbid "$(PKG_HOST)" --skip-short
 
 # Boots the kernel a package ships, with only what is in it, on BOARD:
-# make sdk-boot-test SDK_ZIP=build/pipos-1.4.0.zip [BOARD=raspi0]
+# make sdk-boot-test SDK_ZIP=build/pipos-1.5.0.zip [BOARD=raspi0]
 # tests/test_sdk_boot.py builds the simulator card with the run_exit0 tape.
 .PHONY: sdk-boot-test
 sdk-boot-test: holo-run_exit0 venv

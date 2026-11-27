@@ -119,7 +119,8 @@ static const struct {
     { 0x0F, "set_font" }, { 0x10, "read_buttons" }, { 0x11, "read_dial" },
     { 0x12, "poll_event" }, { 0x13, "wait_event" }, { 0x20, "tone" }, { 0x21, "sample" },
     { 0x22, "audio_stop" }, { 0x23, "volume" }, { 0x24, "audio_status" },
-    { 0x25, "play_seq" }, { 0x26, "sample_queue" }, { 0x30, "read_sensor" }, { 0x31, "sensor_available" },
+    { 0x25, "play_seq" }, { 0x26, "sample_queue" }, { 0x27, "sample_rate" },
+    { 0x30, "read_sensor" }, { 0x31, "sensor_available" },
     { 0x40, "get_time" }, { 0x41, "get_battery" }, { 0x42, "ticks_ms" },
     { 0x43, "sleep_ms" }, { 0x44, "exit" }, { 0x45, "sys_info" }, { 0x46, "mem_info" },
     { 0x47, "power" }, { 0x48, "log" }, { 0x49, "rand" }, { 0x4A, "set_time" },
@@ -195,12 +196,20 @@ TEST(constants)
     CHECK_EQ(PIP_LOG_MAX, 256);
 }
 
+/* ABI 1.5: sample_rate. */
+TEST(abi_1_5)
+{
+    CHECK_EQ(PIP_ABI_VERSION, 0x00010005);
+    /* Not set by the build, the target is the headers' ABI. */
+    CHECK_EQ(PIPOS_ABI_TARGET, PIP_ABI_VERSION);
+    CHECK_EQ(PIP_SYS_SAMPLE_RATE, 0x27);
+    CHECK_EQ(PIP_SAMPLE_RATE, 8000);
+    CHECK_EQ(PIP_SAMPLE_RATE_HI, 37500);
+}
+
 /* ABI 1.4: the holotape slot. */
 TEST(abi_1_4)
 {
-    CHECK_EQ(PIP_ABI_VERSION, 0x00010004);
-    /* Not set by the build, the target is the headers' ABI. */
-    CHECK_EQ(PIPOS_ABI_TARGET, PIP_ABI_VERSION);
     CHECK_EQ(PIP_EV_TAPE, 3);
     CHECK_EQ(PIP_HW_TAPE, 0x8u);
     CHECK_EQ(PIP_HOLO_SLOT, 0x1u);
@@ -208,4 +217,11 @@ TEST(abi_1_4)
     CHECK_EQ(PIP_HOLO_EV_REMOVED, 0x2u);
     CHECK_EQ(PIP_HOLO_EV_BAD, 0x4u);
     CHECK_EQ(sizeof(((pip_holo_info_t *)0)->flags), 2);
+}
+
+/* ABI 1.5: the rest level, row 4 of the hw_flags table. */
+TEST(abi_1_5_audio_mid)
+{
+    CHECK_EQ(PIP_HW_AUDIO_MID, 0x10u);
+    CHECK_EQ(PIP_HW_AUDIO_MID & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE), 0u);
 }

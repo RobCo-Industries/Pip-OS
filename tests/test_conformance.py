@@ -22,6 +22,7 @@ from test_time import RTC_DEVICE
 
 HW_RTC = 1 << 0     # sys_info hw_flags bits, ABI 1.3
 HW_AUDIO = 1 << 2
+HW_AUDIO_MID = 1 << 4  # ABI 1.5
 
 PART_OFFSET = 2048 * 512
 
@@ -66,6 +67,9 @@ CHECKS = [
                       "squeue_len0", "squeue_len65537", "squeue_bad_ptr", "squeue_still_busy",
                       "squeue_stop", "squeue_stop_silent", "squeue_restarts",
                       "squeue_restart_chains", "squeue_restart_busy"]),
+    ("sample_rate", ["rate_start_8000", "rate_prev_37500", "rate_prev_8000", "rate_bad",
+                     "rate_bad_zero", "rate_bad_keeps", "rate_while_playing", "rate_plays_on",
+                     "rate_tape_starts_8000", "rate_back_after_tape"]),
     ("read_sensor", ["sensor_rtc", "sensor_battery", "sensor_geiger", "sensor_gps", "sensor_accel",
                     "sensor_temp", "sensor_heart", "sensor_7", "sensor_bad_ptr"]),
     ("sensor_available", ["available_rtc", "available_7"]),
@@ -75,7 +79,7 @@ CHECKS = [
     ("sleep_ms", ["sleep_rc", "sleep_50", "sleep_range"]),
     ("exit", ["exit_low8", "exit_zero"]),
     ("sys_info", ["sysinfo_rc", "sysinfo_fields", "sysinfo_bad_ptr", "sysinfo_hw_rtc",
-                  "sysinfo_hw_audio", "sysinfo_hw_reserved"]),
+                  "sysinfo_hw_audio", "sysinfo_hw_audio_mid", "sysinfo_hw_reserved"]),
     ("mem_info", ["meminfo_rom", "meminfo_straddle"]),
     ("power", ["power_screen_off", "power_screen_on", "power_bad_op"]),
     ("log", ["log_ok", "log_no_nul", "log_bad_ptr"]),
@@ -344,7 +348,24 @@ def test_conformance_auto(board, kernel_image, conformance_card, tmp_path, need_
         assert not conform(vm, "prompt"), vm.serial
         assert one_conform(vm, "start")["mode"] == "auto"
         assert_results(vm, skip=set(INTERACTIVE))
+        # The card's PIPOS.CFG leaves system_sound off: PIP_HW_AUDIO_MID clear.
         assert hw_flags(vm) == HW_AUDIO, vm.serial
+        assert one(vm, "rom_exit")["status"] == "0", vm.serial
+        no_exception(vm)
+
+
+def test_conformance_auto_sound(board, kernel_image, conformance_card, tmp_path, need_mtools):
+    """Auto mode with [audio] system_sound = yes: the rest ramp reaches its
+    end at boot, so sys_info sets PIP_HW_AUDIO_MID. The card's own
+    PIPOS.CFG leaves the sound off, and test_conformance_auto sees it clear."""
+    sd = card_copy(conformance_card, tmp_path, auto=True)
+    cfg = tmp_path / "PIPOS.CFG"
+    cfg.write_bytes(b"[audio]\nvolume = 80\nbeep = yes\nsystem_sound = yes\n")
+    _mtools("mcopy", "-o", "-i", f"{sd}@@{PART_OFFSET}", str(cfg), "::PIPBOY/PIPOS.CFG")
+    with booted(kernel_image, board, sd=sd) as vm:
+        assert not pipos_markers(vm, "sound"), vm.serial
+        assert_results(vm, skip=set(INTERACTIVE))
+        assert hw_flags(vm) == HW_AUDIO | HW_AUDIO_MID, vm.serial
         assert one(vm, "rom_exit")["status"] == "0", vm.serial
         no_exception(vm)
 

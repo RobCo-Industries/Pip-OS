@@ -1,0 +1,52 @@
+{
+  "rate_hz": 37500,
+  "click": {
+    "count": 12,
+    "samples": 789,
+    "seed": 1592642901,
+    "peak_steps": 88,
+    "ceiling_steps": 90,
+    "strength_percent": [100, 82, 93, 74, 88, 70, 97, 79, 91, 76, 85, 72],
+    "band_start_hz": 1000,
+    "band_width_hz": 250,
+    "band_db": [-42, -41, -35, -21, -27, -7, 0, -4, -6, -15, -15, -16,
+                -23, -25, -28, -36, -32, -14, -9, -10, -18, -30, -36, -37],
+    "partials_per_band": 6,
+    "envelope_step_ms": 1,
+    "envelope_db": [-7, -4, 0, -2, -3, -2, -3, -2, -4, -6, -7, -9,
+                    -10, -12, -14, -17, -19, -20, -23, -24, -28, -28]
+  },
+  "note": {
+    "start_hz": 1890,
+    "segments": [
+      {"duration_ms": 300, "end_hz": 2120},
+      {"duration_ms": 1125, "end_hz": 2566},
+      {"duration_ms": 1350, "end_hz": 4200},
+      {"duration_ms": 1350, "end_hz": 8000},
+      {"duration_ms": 1050, "end_hz": 15700},
+      {"duration_ms": 2500, "end_hz": 15700}
+    ],
+    "level_steps": 20,
+    "whine_db": -30,
+    "whine_taper_ms": 200,
+    "fade_in_ms": 150,
+    "second_partial_db": -22,
+    "second_partial_below_hz": 8437,
+    "span_ms": 40,
+    "end_below_steps": 0.5
+  },
+  "blip": {
+    "notes": [
+      {"hz": 3469, "samples": 300, "peak_steps": 48},
+      {"hz": 2625, "samples": 300, "peak_steps": 40}
+    ],
+    "fade_in_ms": 2,
+    "fade_out_ms": 4
+  },
+  "beep": {
+    "hz": 1000,
+    "samples": 2250,
+    "peak_steps": 24,
+    "edge_ms": 10
+  }
+}
