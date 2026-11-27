@@ -48,6 +48,57 @@ int pipos_levels_image_snd(int image_kind);
 /* The key of a level in [audio] of PIPOS.CFG: "radio", "sfx", "recordings", "games". */
 const char *pipos_levels_key(int kind);
 
+/* sound_level's `which` for the master, and its level that reads. Equal to the ABI's. */
+#define PIPOS_LEVEL_MASTER    4u
+#define PIPOS_LEVEL_ASK       0xFFFFFFFFu
+
+/*
+ * The sound state of the image that runs. The kind belongs to the image,
+ * like the sample rate: snd is the one in force, rom_snd the ROM's while a
+ * holotape it launched runs. trim is the holotape's volume, 0 to 100. It
+ * is 100 while no holotape runs.
+ */
+typedef struct {
+    int snd;
+    int rom_snd;
+    unsigned trim;
+} pipos_image_snd_t;
+
+#define PIPOS_IMAGE_SND_INIT { PIPOS_SND_SFX, PIPOS_SND_SFX, PIPOS_LEVEL_MAX }
+
+/*
+ * A ROM starts as sfx. A holotape starts as games with a trim of 100, and
+ * its start keeps the ROM's kind. image_kind is a PIP_KIND_* value.
+ */
+void pipos_image_snd_start(pipos_image_snd_t *s, int image_kind);
+
+/* A holotape's end gives the ROM back its kind and sets the trim to 100. */
+void pipos_image_snd_end(pipos_image_snd_t *s, int image_kind);
+
+/*
+ * sound_kind for a caller of image_kind. -PIP_EINVAL for a kind above 3,
+ * then -PIP_EPERM for radio or sfx from a holotape. Else sets the kind in
+ * force and returns the kind before. A refused call changes nothing.
+ */
+int32_t pipos_image_snd_swap(pipos_image_snd_t *s, int image_kind, uint32_t kind);
+
+/*
+ * sound_level for a caller of image_kind. which is a kind or
+ * PIPOS_LEVEL_MASTER. -PIP_EINVAL for a which above 4 or a level that is
+ * neither 0 to 100 nor PIPOS_LEVEL_ASK. PIPOS_LEVEL_ASK returns the level
+ * and changes nothing. Then -PIP_EPERM when a holotape sets a level. Else
+ * sets it and returns the level before. A refused call changes nothing.
+ */
+int32_t pipos_levels_swap(pipos_levels_t *lv, int image_kind, uint32_t which, uint32_t level);
+
+/*
+ * volume by its caller: a ROM sets the master, a holotape its trim. Each
+ * returns the value before. -PIP_EINVAL for a level above 100, which
+ * changes nothing.
+ */
+int32_t pipos_levels_volume(pipos_levels_t *lv, pipos_image_snd_t *s, int image_kind,
+                            uint32_t level);
+
 /*
  * The stored levels, /PIPBOY/PIPOS.SET: INI text with one section,
  * [audio], and the keys volume, radio, sfx, recordings and games.

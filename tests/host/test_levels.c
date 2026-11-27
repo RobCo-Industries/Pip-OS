@@ -332,3 +332,161 @@ TEST(set_reason_order)
     CHECK_STR(rd(text, &lv), "size");
     CHECK(same5(&lv, 1, 2, 3, 4, 5));
 }
+
+TEST(kind_at_image_start_and_end)
+{
+    pipos_image_snd_t s = PIPOS_IMAGE_SND_INIT;
+    int k;
+
+    CHECK_EQ(s.snd, PIPOS_SND_SFX);
+    CHECK_EQ(s.trim, 100u);
+    for (k = 0; k < PIPOS_SND_KINDS; k++) {
+        pipos_image_snd_start(&s, PIP_KIND_ROM);
+        CHECK_EQ(s.snd, PIPOS_SND_SFX);
+        CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_ROM, (uint32_t)k), PIPOS_SND_SFX);
+        pipos_image_snd_start(&s, PIP_KIND_HOLOTAPE);
+        CHECK_EQ(s.snd, PIPOS_SND_GAMES);
+        CHECK_EQ(s.trim, 100u);
+        CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, PIPOS_SND_RECORDINGS),
+                 PIPOS_SND_GAMES);
+        pipos_image_snd_end(&s, PIP_KIND_HOLOTAPE);
+        CHECK_EQ(s.snd, k);
+        /* a second launch starts as games again */
+        pipos_image_snd_start(&s, PIP_KIND_HOLOTAPE);
+        CHECK_EQ(s.snd, PIPOS_SND_GAMES);
+        pipos_image_snd_end(&s, PIP_KIND_HOLOTAPE);
+        CHECK_EQ(s.snd, k);
+    }
+}
+
+TEST(kind_rules_rom)
+{
+    pipos_image_snd_t s = PIPOS_IMAGE_SND_INIT;
+    uint32_t k;
+
+    for (k = 0; k < PIPOS_SND_KINDS; k++) {
+        int prev = s.snd;
+
+        CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_ROM, k), prev);
+        CHECK_EQ(s.snd, (int)k);
+    }
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_ROM, 4), -PIP_EINVAL);
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_ROM, 0xFFFFFFFFu), -PIP_EINVAL);
+    CHECK_EQ(s.snd, PIPOS_SND_GAMES);
+}
+
+TEST(kind_rules_holotape)
+{
+    pipos_image_snd_t s = PIPOS_IMAGE_SND_INIT;
+
+    pipos_image_snd_start(&s, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, PIPOS_SND_RADIO), -PIP_EPERM);
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, PIPOS_SND_SFX), -PIP_EPERM);
+    CHECK_EQ(s.snd, PIPOS_SND_GAMES);
+    /* the limit comes before the caller */
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, 4), -PIP_EINVAL);
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, 0xFFFFFFFFu), -PIP_EINVAL);
+    CHECK_EQ(s.snd, PIPOS_SND_GAMES);
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, PIPOS_SND_RECORDINGS), PIPOS_SND_GAMES);
+    CHECK_EQ(pipos_image_snd_swap(&s, PIP_KIND_HOLOTAPE, PIPOS_SND_GAMES),
+             PIPOS_SND_RECORDINGS);
+    CHECK_EQ(s.snd, PIPOS_SND_GAMES);
+}
+
+static unsigned which_of(const pipos_levels_t *lv, uint32_t which)
+{
+    return which == PIPOS_LEVEL_MASTER ? lv->master : lv->level[which];
+}
+
+TEST(level_rules)
+{
+    static const int callers[] = { PIP_KIND_ROM, PIP_KIND_HOLOTAPE };
+    pipos_levels_t lv;
+    unsigned v;
+    uint32_t w;
+    int c;
+
+    for (c = 0; c < 2; c++) {
+        int tape = callers[c] == PIP_KIND_HOLOTAPE;
+
+        for (w = 0; w <= 5; w++) {
+            set5(&lv, 11, 22, 33, 44, 55);
+            if (w > PIPOS_LEVEL_MASTER) {
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 0), -PIP_EINVAL);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 50), -PIP_EINVAL);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 100), -PIP_EINVAL);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 101), -PIP_EINVAL);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, PIPOS_LEVEL_ASK), -PIP_EINVAL);
+                CHECK(same5(&lv, 11, 22, 33, 44, 55));
+                continue;
+            }
+            v = which_of(&lv, w);
+
+            CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, PIPOS_LEVEL_ASK), (int32_t)v);
+            CHECK(same5(&lv, 11, 22, 33, 44, 55));
+            CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 101), -PIP_EINVAL);
+            CHECK(same5(&lv, 11, 22, 33, 44, 55));
+            if (tape) {
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 0), -PIP_EPERM);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 100), -PIP_EPERM);
+                CHECK(same5(&lv, 11, 22, 33, 44, 55));
+            } else {
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 0), (int32_t)v);
+                CHECK_EQ(which_of(&lv, w), 0u);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, 100), 0);
+                CHECK_EQ(which_of(&lv, w), 100u);
+                CHECK_EQ(pipos_levels_swap(&lv, callers[c], w, PIPOS_LEVEL_ASK), 100);
+            }
+        }
+    }
+    /* a holotape's which 5 with level 50: the limit wins over the caller */
+    set5(&lv, 11, 22, 33, 44, 55);
+    CHECK_EQ(pipos_levels_swap(&lv, PIP_KIND_HOLOTAPE, 5, 50), -PIP_EINVAL);
+    CHECK_EQ(pipos_levels_swap(&lv, PIP_KIND_HOLOTAPE, 0, 101), -PIP_EINVAL);
+}
+
+TEST(volume_by_caller)
+{
+    pipos_image_snd_t s = PIPOS_IMAGE_SND_INIT;
+    pipos_levels_t lv;
+
+    set5(&lv, 80, 40, 100, 50, 30);
+    /* a ROM sets the master */
+    CHECK_EQ(pipos_levels_volume(&lv, &s, PIP_KIND_ROM, 60), 80);
+    CHECK_EQ(lv.master, 60u);
+    CHECK_EQ(pipos_levels_volume(&lv, &s, PIP_KIND_ROM, 101), -PIP_EINVAL);
+    CHECK_EQ(lv.master, 60u);
+    /* a holotape sets its trim, 100 at its start */
+    pipos_image_snd_start(&s, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(s.trim, 100u);
+    CHECK_EQ(pipos_levels_volume(&lv, &s, PIP_KIND_HOLOTAPE, 100), 100);
+    CHECK_EQ(pipos_levels_volume(&lv, &s, PIP_KIND_HOLOTAPE, 50), 100);
+    CHECK_EQ(s.trim, 50u);
+    CHECK_EQ(pipos_levels_volume(&lv, &s, PIP_KIND_HOLOTAPE, 101), -PIP_EINVAL);
+    CHECK_EQ(s.trim, 50u);
+    CHECK_EQ(pipos_levels_volume(&lv, &s, PIP_KIND_HOLOTAPE, 0), 50);
+    CHECK(same5(&lv, 60, 40, 100, 50, 30));
+    pipos_image_snd_end(&s, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(s.trim, 100u);
+    pipos_image_snd_start(&s, PIP_KIND_HOLOTAPE);
+    CHECK_EQ(s.trim, 100u);
+    pipos_image_snd_end(&s, PIP_KIND_HOLOTAPE);
+}
+
+TEST(gain_with_trim)
+{
+    static const struct { unsigned m, l, t, g; } rows[] = {
+        { 100, 100, 100, 10000 }, { 80, 100, 100, 8000 }, { 100, 50, 100, 2500 },
+        { 80, 40, 100, 1280 },    { 100, 45, 90, 1823 },  { 100, 100, 0, 0 },
+        { 100, 100, 50, 5000 },   { 100, 100, 90, 9000 }, { 80, 40, 50, 640 },
+    };
+    pipos_levels_t lv;
+    unsigned i;
+
+    for (i = 0; i < sizeof(rows) / sizeof(rows[0]); i++) {
+        CHECK_EQ(pipos_levels_gain(rows[i].m, rows[i].l, rows[i].t), rows[i].g);
+    }
+    set5(&lv, 100, 100, 100, 100, 45);
+    CHECK_EQ(pipos_levels_gain_of(&lv, PIPOS_SND_GAMES, 90), 1823u);
+    CHECK_EQ(pipos_levels_gain_of(&lv, PIPOS_SND_GAMES, 0), 0u);
+}
