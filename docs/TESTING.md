@@ -309,7 +309,7 @@ Then `ev=intro` when the intro screen shows and `ev=intro_answer start=<0|1>` on
 
 Each run on a real board is recorded here, with the commit that ran. A result holds only for that board and that commit.
 
-Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3 and 1.4, the SPI panel backend, the holotape slot and this tree with RobCo-Core `cab5f69` have not run on a board. RobCo-Core records its own hardware runs in its docs.
+Every run below used Pip-OS `2d10c2c` with RobCo-Core `f5bba36`. No later commit of Pip-OS has run on a board, so ABI 1.3 and 1.4, the SPI panel backend, the holotape slot and this tree with RobCo-Core `712db81` have not run on a board. RobCo-Core records its own hardware runs in its docs.
 
 ### Hardware checklist
 
@@ -361,7 +361,7 @@ The boot log, exact:
 @RC stage=pipos ev=clock rtc=absent time=unset
 @RC stage=pipos ev=card rc=ok
 @RC stage=pipos ev=mount part=0 type=0x0b lba=8192 blocks=31107072 marker=1
-@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=green line_delay_ms=150 volume=80 beep=1 char_delay_ms=0 key_click=0
+@RC stage=pipos ev=config rc=ok path=/PIPBOY/PIPOS.CFG line=0 scheme=green line_delay_ms=150 volume=80 beep=1
 @RC stage=pipos ev=gfx bb=0x00c00000 size=307200 user=0 heap_end=0x00400000
 @RC stage=pipos ev=syscalls served=0000000f00ff07ff0003007f000ffffe
 *************** PIP-OS(R) V7.1.0.8 ***************
