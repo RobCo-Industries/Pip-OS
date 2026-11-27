@@ -42,6 +42,9 @@ void pipos_audio_start_volume(unsigned level);
 /* sys_audio.c: main.c reports whether a backend plays sounds after boot; PIP_HW_AUDIO reads it. */
 void pipos_audio_driver_result(int started);
 int pipos_audio_driver_ok(void);
+/* main.c reports whether the boot rest ramp reached its end; PIP_HW_AUDIO_MID reads it. */
+void pipos_audio_rest_result(int done);
+int pipos_audio_rest_mid(void);
 /* Tick context: the driver is idle, so no image sound is owned. */
 void pipos_audio_idle(void);
 

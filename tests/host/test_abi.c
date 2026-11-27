@@ -218,3 +218,10 @@ TEST(abi_1_4)
     CHECK_EQ(PIP_HOLO_EV_BAD, 0x4u);
     CHECK_EQ(sizeof(((pip_holo_info_t *)0)->flags), 2);
 }
+
+/* ABI 1.5: the rest level, row 4 of the hw_flags table. */
+TEST(abi_1_5_audio_mid)
+{
+    CHECK_EQ(PIP_HW_AUDIO_MID, 0x10u);
+    CHECK_EQ(PIP_HW_AUDIO_MID & (PIP_HW_RTC | PIP_HW_AUDIO | PIP_HW_TAPE), 0u);
+}

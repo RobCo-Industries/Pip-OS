@@ -385,6 +385,7 @@ void robco_main(void)
     loader_result_t res;
     int card;
     int rom;
+    int sound;
 
     uart_init(115200);
     k_printf("\n@RC stage=" PIPOS_STAGE " ev=boot midr=0x%08x soc=%s base=0x%08x "
@@ -402,7 +403,10 @@ void robco_main(void)
 
     card = pipos_card_mount();
     pipos_config_load(card, &settings);
-    pipos_dsound_start(apply_settings(&settings));
+    sound = apply_settings(&settings);
+    /* The ramp and its wait ended: the rest level is the midpoint. */
+    pipos_audio_rest_result(sound);
+    pipos_dsound_start(sound);
     pipos_display_start(&settings);
     pipos_slot_start(settings.holo_slot);
     pipos_sys_init();

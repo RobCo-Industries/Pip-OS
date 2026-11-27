@@ -464,10 +464,11 @@ typedef struct __attribute__((packed)) pip_sys_info {
     uint32_t reserved;       /* 0 */
 } pip_sys_info_t;
 
-/* sys_info hw_flags bits. Bit 1 and bits 4 to 31 are 0. */
+/* sys_info hw_flags bits. Bit 1 and bits 5 to 31 are 0. */
 #define PIP_HW_RTC          (1u << 0)  /* a clock chip answered at boot */
 #define PIP_HW_AUDIO        (1u << 2)  /* the audio driver started at boot */
 #define PIP_HW_TAPE         (1u << 3)  /* a holotape slot exists, since ABI 1.4 */
+#define PIP_HW_AUDIO_MID    (1u << 4)  /* the audio output rests at its midpoint, since ABI 1.5 */
 
 PIP_ABI_SIZE(pip_sys_info_t, 32);
 PIP_ABI_AT(pip_sys_info_t, size, 0x00);

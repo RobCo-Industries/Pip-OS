@@ -32,6 +32,8 @@
 static unsigned level;
 /* 1 when audio_init() left a backend that plays sounds. Set once by main.c. */
 static int driver_ok;
+/* 1 when the boot rest ramp reached its end. Set once by main.c. */
+static int rest_mid;
 /*
  * 1 after the image started a sound, until it stops or ends. The disk
  * click's tick clears it when it finds the driver idle.
@@ -402,6 +404,16 @@ void pipos_audio_driver_result(int started)
 int pipos_audio_driver_ok(void)
 {
     return driver_ok;
+}
+
+void pipos_audio_rest_result(int done)
+{
+    rest_mid = done != 0;
+}
+
+int pipos_audio_rest_mid(void)
+{
+    return rest_mid;
 }
 
 void pipos_audio_start_volume(unsigned start)

@@ -27,9 +27,11 @@ void pipos_sys_info_fill(pip_sys_info_t *s, uint32_t pipos_version, uint32_t boa
 
 /*
  * sys_info's hw_flags: PIP_HW_RTC when a clock chip answered at boot,
- * PIP_HW_AUDIO when the audio driver started. Every other bit is 0.
+ * PIP_HW_AUDIO when the audio driver started, PIP_HW_TAPE when the slot
+ * started. PIP_HW_AUDIO_MID when the boot rest ramp reached its end, and
+ * only with PIP_HW_AUDIO. Every other bit is 0.
  */
-uint32_t pipos_hw_flags(int rtc_present, int audio_ok, int tape_slot);
+uint32_t pipos_hw_flags(int rtc_present, int audio_ok, int tape_slot, int rest_mid);
 
 /*
  * An image's exit status: the low 8 bits of the value it passed to exit

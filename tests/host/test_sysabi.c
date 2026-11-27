@@ -77,14 +77,28 @@ TEST(info_structs)
 
 TEST(hw_flags)
 {
-    CHECK_EQ(pipos_hw_flags(0, 0, 0), 0u);
-    CHECK_EQ(pipos_hw_flags(1, 0, 0), PIP_HW_RTC);
-    CHECK_EQ(pipos_hw_flags(0, 1, 0), PIP_HW_AUDIO);
-    CHECK_EQ(pipos_hw_flags(1, 1, 0), PIP_HW_RTC | PIP_HW_AUDIO);
-    /* Any non-zero answer sets only its own bit: bit 1 and bits 3 to 31 stay 0. */
-    CHECK_EQ(pipos_hw_flags(-1, 7, 0), 0x5u);
-    CHECK_EQ(pipos_hw_flags(0, 0, 1), PIP_HW_TAPE);
-    CHECK_EQ(pipos_hw_flags(1, 1, 1), 0xDu);
+    CHECK_EQ(pipos_hw_flags(0, 0, 0, 0), 0u);
+    CHECK_EQ(pipos_hw_flags(1, 0, 0, 0), PIP_HW_RTC);
+    CHECK_EQ(pipos_hw_flags(0, 1, 0, 0), PIP_HW_AUDIO);
+    CHECK_EQ(pipos_hw_flags(1, 1, 0, 0), PIP_HW_RTC | PIP_HW_AUDIO);
+    /* Any non-zero answer sets only its own bit: bit 1 and bits 5 to 31 stay 0. */
+    CHECK_EQ(pipos_hw_flags(-1, 7, 0, 0), 0x5u);
+    CHECK_EQ(pipos_hw_flags(0, 0, 1, 0), PIP_HW_TAPE);
+    CHECK_EQ(pipos_hw_flags(1, 1, 1, 0), 0xDu);
+    CHECK_EQ(pipos_hw_flags(1, 1, 1, 9), 0x1Du);
+}
+
+/*
+ * PIP_HW_AUDIO_MID, ABI 1.5. main.c passes 1 only when system_sound is on
+ * and the rest ramp returned 0 and its wait ended. Sound off and a failed
+ * ramp pass 0. Without PIP_HW_AUDIO the bit stays clear.
+ */
+TEST(hw_flags_audio_mid)
+{
+    CHECK_EQ(pipos_hw_flags(0, 1, 0, 1), PIP_HW_AUDIO | PIP_HW_AUDIO_MID);
+    CHECK_EQ(pipos_hw_flags(0, 1, 0, 0), PIP_HW_AUDIO);
+    CHECK_EQ(pipos_hw_flags(0, 0, 0, 1), 0u);
+    CHECK_EQ(pipos_hw_flags(1, 0, 1, 1), PIP_HW_RTC | PIP_HW_TAPE);
 }
 
 TEST(log_char)

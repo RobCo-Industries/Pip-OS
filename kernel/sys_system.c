@@ -65,7 +65,7 @@ static int32_t sys_sys_info(const pipos_sys_ctx_t *ctx, uint32_t out, uint32_t a
                                            PIPOS_VERSION_PATCH),
                         b->board_rev, (uint32_t)b->soc, b->mem_size,
                         pipos_hw_flags(rtc_present(), pipos_audio_driver_ok(),
-                                       pipos_slot_enabled()));
+                                       pipos_slot_enabled(), pipos_audio_rest_mid()));
     return pipos_user_copy_out(ctx, out, &info, sizeof(info));
 }
 
