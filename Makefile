@@ -322,11 +322,12 @@ test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-exampl
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
            workflow-exprs-test sound-table-test
 
-# Every workflow line with a ${{ expression has the one safe KEY: value shape.
+# RobCo-Core's check-workflows judges every workflow: each ${{ has the one
+# safe KEY: value shape and each uses: names a full commit. The test checks
+# that the CI goal runs it and that make prints no override warning.
 .PHONY: workflow-exprs-test
-workflow-exprs-test:
-	$(PYTHON) -I -m unittest discover -s tests/tools -p test_check_workflow_exprs.py
-	$(PYTHON) -I tools/check_workflow_exprs.py $(wildcard .github/workflows/*.yml .github/workflows/*.yaml)
+workflow-exprs-test: check-workflows
+	tests/host/workflow_exprs_test.sh
 
 .PHONY: flags-json-test sdk-example-test sdk-abi-target-test sdk-rebuild-test sdimage-rom-test outside-project-test
 sdk-example-test:
