@@ -50,6 +50,9 @@ endif
 # SUBTYPE: the header subtype. A ROM has only 0. A holotape takes 0 or
 # game, 1 or utility. Data holotapes, subtype 2, have no slot: seal refuses them.
 PIP_SUBTYPE_IN := $(strip $(SUBTYPE))
+ifneq ($(words $(PIP_SUBTYPE_IN)),$(if $(PIP_SUBTYPE_IN),1,0))
+$(error SUBTYPE=$(PIP_SUBTYPE_IN) must be one word, such as 0 or game)
+endif
 PIP_LDS_rom      := $(PIP_SDK)/rom.ld
 PIP_LDS_holotape := $(PIP_SDK)/holotape.ld
 # The startup code's defines per kind and subtype, the keys of

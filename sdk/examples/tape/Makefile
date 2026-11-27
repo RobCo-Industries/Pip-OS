@@ -8,4 +8,5 @@ TITLE     := Beacon sample tape
 VERSION   := 1.0.0
 ICON      := icon.pbm
 SRCS      := main.c
+ABI       := 1.4
 include $(PIPOS_SDK)/pipos-app.mk

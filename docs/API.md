@@ -83,6 +83,7 @@ The rules are in the spec's [System information](https://github.com/RobCo-Indust
 The drawing rules, the pixel rules of lines, rectangles, arcs and text, and the check order are in the spec's [Display](https://github.com/RobCo-Industries/RobCo-Core/blob/855569a1c9b0b1c773c331e24ac13f6166c51d77/docs/spec/PIPOS_ABI.md#display) section.
 
 - `gfx_info` reports `backend` 1, `PIP_GFX_BACKEND_SPI`, while the panel takes frames, else 0, HDMI. The ABI has no value for both, so `backend = both` reports 1. It reports `fg_default` as the normal text colour of the `PIPOS.CFG` scheme. Green is `0x33E066`.
+- Text uses one font, `PIP_FONT_SYSTEM`, font 0. Its cell is `PIP_FONT_W` by `PIP_FONT_H`, 8 by 16 pixels, times `scale`. A 320-pixel line holds 40 cells at scale 1, and the screen holds 15 rows.
 - The back buffer is 320x240 words at `0x00C00000`, in kernel-only memory. The boot prints `ev=gfx bb=0x00c00000 size=307200 user=0 heap_end=...` and panics if an image could reach that memory or the kernel heap overlaps it.
 - `present` scales the back buffer by 2 onto the 640x480 framebuffer and centres it on black. Each `present` takes about 1.4 ms in QEMU.
 - When the ROM starts, the back buffer is cleared to black and the drawing state is reset. The boot screen stays until the ROM's first `present`.

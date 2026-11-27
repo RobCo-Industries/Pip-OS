@@ -139,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+- `sdk/pipos-app.mk` refuses a `SUBTYPE` of more than one word. `SUBTYPE=0 game` built a game tape before.
 - After a holotape, the ROM keeps its open files and its input events.
 - `mem_info` reports the caller's own heap.
 - `read_buttons` stays right when RobCo-Core's input queue overflows, and an event's `time_ms` is the time it came in.
