@@ -11,7 +11,7 @@ Samples are unsigned 8-bit, 128 is silence, at rate_hz. The rising note
 is a table of spans for RobCo-Core's voice engine, which the kernel plays
 live. note.voice holds the spans as 28-byte little-endian records, the
 bytes whose CRC-32 the trace prints. Its WAV is the engine's own integer
-render at volume 100, from tools/voice_engine.py.
+render at volume 100, from RobCo-Core's tools/voice_engine.py.
 
 The same parameters give the same bytes on every system and Python 3.
 The maths uses only add, subtract, multiply, divide and comparisons,
@@ -38,11 +38,13 @@ class ParamError(Exception):
 
 
 def _load_engine():
-    """tools/voice_engine.py, found beside this file. python -I leaves the
-    script's folder off sys.path, so it is loaded by its path."""
+    """RobCo-Core's tools/voice_engine.py, in the submodule
+    external/robco-core. python -I leaves the script's folder off
+    sys.path, so it is loaded by its path."""
     name = "pipos_voice_engine"
     if name not in sys.modules:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_engine.py")
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                            "external", "robco-core", "tools", "voice_engine.py")
         spec = importlib.util.spec_from_file_location(name, path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -219,7 +221,8 @@ def make_beep(bp, rate):
 # ---- The rising note: spans for the voice engine ------------------------
 #
 # The note is not stored as samples. The kernel plays it live with
-# RobCo-Core's voice engine from a table of spans, see tools/voice_engine.py.
+# RobCo-Core's voice engine from a table of spans, see its
+# tools/voice_engine.py.
 # Inside a span the engine moves the pitch linearly in inc and the level
 # linearly in amp. The curve glides by a constant ratio, so each span
 # starts on the curve and its chord runs to the next span's start.

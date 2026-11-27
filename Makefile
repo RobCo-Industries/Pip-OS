@@ -154,7 +154,7 @@ sound-table-test:
 # See docs/TESTING.md.
 
 BOOT_SOUND_BOARD = $(if $(filter all,$(BOARD)),raspi0,$(BOARD))
-.PHONY: boot-sound boot-sound-test
+.PHONY: boot-sound
 boot-sound: kernel venv rom-sleep
 	@mkdir -p $(BUILD)/boot_sound
 	@rm -f $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav
@@ -164,11 +164,8 @@ boot-sound: kernel venv rom-sleep
 		echo "boot-sound: the boot did not run, so there is no log. Check that QEMU and mtools are installed." >&2; \
 		exit 1; }
 	$(PYTHON) -I tools/sound_table.py --dump $(BUILD)/boot_sound/pcm
-	$(PYTHON) -I tools/boot_sound.py $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav \
+	$(PYTHON) -I $(ROBCO_CORE)/tools/audio_preview.py $(BUILD)/boot_sound/serial.log $(BUILD)/boot_sound.wav \
 		--pcm $(BUILD)/boot_sound/pcm
-
-boot-sound-test:
-	$(PYTHON) -I -m unittest discover -s tests/tools -p test_boot_sound.py
 
 # ---- ROMs ---------------------------------------------------------------
 
@@ -323,7 +320,7 @@ $(PANEL_MODEL): tests/host/panel_model.c $(ROBCO_CORE)/tests/host/ili9341_model.
 # Host unit tests come from mk/host.mk. The shell tests run first.
 test-host: check-pins check-pins-test build-dir-test libpip-host-test sdk-example-test sdk-abi-target-test flags-json-test sdk-rebuild-test \
            sdimage-rom-test bootdir-test conformance-bootdir-test outside-project-test sdk-package-inputs-test \
-           workflow-exprs-test sound-table-test boot-sound-test
+           workflow-exprs-test sound-table-test
 
 # Every workflow line with a ${{ expression has the one safe KEY: value shape.
 .PHONY: workflow-exprs-test
