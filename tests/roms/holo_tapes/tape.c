@@ -20,6 +20,11 @@
  *   eject       returns holo_eject_event()
  *   rate        sets the rate to 37500, plays 375 bytes at it, waits for
  *               the end and returns the rate it started with / 100: 80
+ *   levels      the sound calls of ABI 1.6 from a holotape: the kind, the
+ *               trim through volume, the refused calls and the five reads,
+ *               on the card of tests/test_audio_levels.py. Returns the
+ *               failures.
+ *   trim        returns volume(100): the trim it started with
  *
  * Checks print "@RC stage=testrom ev=tcheck name=<name> ok=<0|1>", apart
  * from the ROM's ev=check lines. Faults print "ev=tfault pc=<hex>" first.
@@ -168,6 +173,57 @@ static void state(int32_t h)
     }
 }
 
+/* Waits until the tape's sound ends, at most 3 s. */
+static void quiet(void)
+{
+    uint32_t t0 = pip_ticks_ms();
+
+    while (pip_audio_status() == 1 && pip_ticks_ms() - t0 < 3000u) {
+        pip_sleep_ms(5);
+    }
+}
+
+/*
+ * The card sets volume 80, radio 40, sfx 100, recordings 50 and games 30.
+ * The trace shows each start's gain: tests/test_audio_levels.py.
+ */
+static int levels(void)
+{
+    static uint8_t pcm[8000];
+    uint32_t i;
+
+    for (i = 0; i < sizeof(pcm); i++) {
+        pcm[i] = (uint8_t)(128u + (i & 15u));
+    }
+    tcheck("lv_kind_games", pip_sound_kind(PIP_SND_GAMES) == PIP_SND_GAMES);
+    /* One second of games at trim 100, then the trim halves it while it plays. */
+    tcheck("lv_sample", pip_sample(pcm, sizeof(pcm)) == 0);
+    pip_sleep_ms(100); /* the driver starts a request at its next tick */
+    tcheck("lv_trim_100", pip_volume(100) == 100);
+    tcheck("lv_trim_50", pip_volume(50) == 100);
+    tcheck("lv_trim_bad", pip_volume(101) == -PIP_EINVAL);
+    tcheck("lv_stop", pip_audio_stop() == 0);
+    tcheck("lv_tone_trim", pip_tone(700, 40) == 0);
+    quiet();
+    tcheck("lv_recordings", pip_sound_kind(PIP_SND_RECORDINGS) == PIP_SND_GAMES);
+    tcheck("lv_tone_rec", pip_tone(701, 40) == 0);
+    quiet();
+    tcheck("lv_radio_perm", pip_sound_kind(PIP_SND_RADIO) == -PIP_EPERM);
+    tcheck("lv_sfx_perm", pip_sound_kind(PIP_SND_SFX) == -PIP_EPERM);
+    tcheck("lv_kind_bad", pip_sound_kind(4) == -PIP_EINVAL);
+    tcheck("lv_kind_kept", pip_sound_kind(PIP_SND_GAMES) == PIP_SND_RECORDINGS);
+    tcheck("lv_set_perm", pip_sound_level(PIP_SND_GAMES, 100) == -PIP_EPERM);
+    tcheck("lv_master_perm", pip_sound_level(PIP_LEVEL_MASTER, 100) == -PIP_EPERM);
+    tcheck("lv_which_bad", pip_sound_level(5, 50) == -PIP_EINVAL);
+    tcheck("lv_store_perm", pip_sound_store() == -PIP_EPERM);
+    tcheck("lv_read_master", pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK) == 80);
+    tcheck("lv_read_radio", pip_sound_level(PIP_SND_RADIO, PIP_LEVEL_ASK) == 40);
+    tcheck("lv_read_sfx", pip_sound_level(PIP_SND_SFX, PIP_LEVEL_ASK) == 100);
+    tcheck("lv_read_recordings", pip_sound_level(PIP_SND_RECORDINGS, PIP_LEVEL_ASK) == 50);
+    tcheck("lv_read_games", pip_sound_level(PIP_SND_GAMES, PIP_LEVEL_ASK) == 30);
+    return failures;
+}
+
 extern const char fault_insn[];
 
 int pip_main(const pipos_startup_t *startup)
@@ -237,6 +293,12 @@ int pip_main(const pipos_startup_t *startup)
             pip_sleep_ms(5);
         }
         return prev / 100;
+    }
+    if (starts(a, "levels")) {
+        return levels();
+    }
+    if (starts(a, "trim")) {
+        return pip_volume(100);
     }
     if (starts(a, "eject")) {
         return pip_holo_eject_event();
