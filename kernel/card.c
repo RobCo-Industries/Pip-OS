@@ -2,6 +2,7 @@
  * The SD card: mount, configuration file, holotape directory, ROM file.
  * Each step prints one marker. No step fails the boot.
  */
+#include <pipos/abi.h>
 #include <robco/fs.h>
 #include <robco/ini.h>
 #include <robco/klibc.h>
@@ -13,6 +14,9 @@
 #include "storage.h"
 
 #define VOL(path)       PIPOS_VOLUME ":" path
+/* The work files of RobCo-Core's atomic write: new content, old content. */
+#define SET_NEW         "/PIPBOY/~PIPOS.SET"
+#define SET_OLD         "/PIPBOY/#PIPOS.SET"
 #define CFG_TEXT_MAX    4096u
 
 static fs_boot_t boot_vol;
@@ -106,6 +110,33 @@ static const char *config_read(int card, pipos_settings_t *s, unsigned *err_line
 }
 
 /*
+ * Reads PIPOS.SET and writes nothing. A power cut inside sound_store's
+ * atomic write can leave the file absent, with its old content in the old
+ * work file and maybe its new content in the new one. Then this reads the
+ * file the next atomic write's recovery would put in place: the new one
+ * when both work files exist, else the old one. So a boot sees the whole
+ * old file or the whole new one.
+ */
+static int levels_file_read(size_t *len)
+{
+    int rc = fs_read_file(VOL(PIPOS_SET_PATH), set_text, sizeof(set_text), len);
+    fs_stat_t st;
+
+    if (rc != FS_ERR_NOENT) {
+        return rc;
+    }
+    rc = fs_stat(VOL(SET_OLD), &st);
+    if (rc != FS_OK) {
+        return rc;
+    }
+    rc = fs_read_file(VOL(SET_NEW), set_text, sizeof(set_text), len);
+    if (rc != FS_ERR_NOENT) {
+        return rc;
+    }
+    return fs_read_file(VOL(SET_OLD), set_text, sizeof(set_text), len);
+}
+
+/*
  * The stored levels of PIPOS.SET over those of PIPOS.CFG. Returns NULL
  * when the file is missing or applies, else the reason it does not.
  */
@@ -120,7 +151,7 @@ static const char *levels_read(int card, pipos_settings_t *s)
     if (!card) {
         return NULL;
     }
-    rc = fs_read_file(VOL(PIPOS_SET_PATH), set_text, sizeof(set_text), &len);
+    rc = levels_file_read(&len);
     if (rc == FS_ERR_NOENT) {
         return NULL;
     }
@@ -168,6 +199,26 @@ void pipos_config_load(int card, pipos_settings_t *s)
     if (bad != NULL) {
         k_printf("@RC stage=" PIPOS_STAGE " ev=levels result=bad reason=%s\n", bad);
     }
+}
+
+/*
+ * sound_store. The folder exists, since the ROM came from it. The atomic
+ * write runs its own recovery first, then replaces the file whole.
+ */
+int32_t pipos_levels_store(const pipos_levels_t *lv)
+{
+    char text[PIPOS_LEVELS_TEXT_MAX + 1];
+    size_t len = pipos_levels_write_text(lv, text, sizeof(text));
+    int rc;
+
+    if (len == 0) {
+        return -PIP_EIO;
+    }
+    rc = fs_write_file_atomic(VOL(PIPOS_SET_PATH), text, len);
+    if (rc == FS_OK) {
+        return 0;
+    }
+    return rc == FS_ERR_NOSPC ? -PIP_ENOSPC : -PIP_EIO;
 }
 
 unsigned pipos_holo_count(int card)

@@ -329,6 +329,26 @@ void check_sample_rate(void)
     ck_eq("rate_back_after_tape", pip_sample_rate(PIP_SAMPLE_RATE), PIP_SAMPLE_RATE_HI);
 }
 
+/* ---- sound kinds and levels, ABI 1.6 ------------------------------------ */
+
+void check_sound_kind(void)
+{
+    /* No call set a kind yet, so the ROM's kind is still sfx. */
+    ck_eq("kind_start_sfx", pip_sound_kind(PIP_SND_SFX), PIP_SND_SFX);
+}
+
+void check_sound_level(void)
+{
+    int32_t v = pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK);
+
+    ck_res("level_master_reads", v >= 0 && v <= PIP_VOLUME_MAX ? R_PASS : R_FAIL, 1, v, 0);
+}
+
+void check_sound_store(void)
+{
+    ck_eq("store_ok", pip_sound_store(), 0);
+}
+
 /* ---- sensors, time, system --------------------------------------------- */
 
 static const char *const sensor_names[PIP_SENSOR_COUNT] = {

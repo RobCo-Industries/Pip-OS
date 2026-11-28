@@ -7,6 +7,14 @@
 
 #include "levels.h"
 
+_Static_assert(PIPOS_SND_RADIO == PIP_SND_RADIO && PIPOS_SND_SFX == PIP_SND_SFX &&
+                   PIPOS_SND_RECORDINGS == PIP_SND_RECORDINGS &&
+                   PIPOS_SND_GAMES == PIP_SND_GAMES,
+               "the kinds are the ABI's PIP_SND_* values");
+_Static_assert(PIPOS_LEVEL_MASTER == PIP_LEVEL_MASTER && PIPOS_LEVEL_ASK == PIP_LEVEL_ASK &&
+                   PIPOS_LEVEL_MAX == PIP_VOLUME_MAX,
+               "sound_level's numbers are the ABI's");
+
 static const char *const level_keys[PIPOS_SND_KINDS] = {
     "radio", "sfx", "recordings", "games",
 };
@@ -53,6 +61,71 @@ const char *pipos_levels_key(int kind)
         return "unknown";
     }
     return level_keys[kind];
+}
+
+void pipos_image_snd_start(pipos_image_snd_t *s, int image_kind)
+{
+    if (image_kind == PIP_KIND_HOLOTAPE) {
+        s->rom_snd = s->snd;
+        s->trim = PIPOS_LEVEL_MAX;
+    }
+    s->snd = pipos_levels_image_snd(image_kind);
+}
+
+void pipos_image_snd_end(pipos_image_snd_t *s, int image_kind)
+{
+    if (image_kind == PIP_KIND_HOLOTAPE) {
+        s->snd = s->rom_snd;
+        s->trim = PIPOS_LEVEL_MAX;
+    }
+}
+
+int32_t pipos_image_snd_swap(pipos_image_snd_t *s, int image_kind, uint32_t kind)
+{
+    int prev = s->snd;
+
+    if (kind >= PIPOS_SND_KINDS) {
+        return -PIP_EINVAL;
+    }
+    if (image_kind == PIP_KIND_HOLOTAPE && kind != PIPOS_SND_GAMES &&
+        kind != PIPOS_SND_RECORDINGS) {
+        return -PIP_EPERM;
+    }
+    s->snd = (int)kind;
+    return prev;
+}
+
+int32_t pipos_levels_swap(pipos_levels_t *lv, int image_kind, uint32_t which, uint32_t level)
+{
+    unsigned *slot;
+    unsigned prev;
+
+    if (which > PIPOS_LEVEL_MASTER || (level > PIPOS_LEVEL_MAX && level != PIPOS_LEVEL_ASK)) {
+        return -PIP_EINVAL;
+    }
+    slot = which == PIPOS_LEVEL_MASTER ? &lv->master : &lv->level[which];
+    prev = *slot;
+    if (level == PIPOS_LEVEL_ASK) {
+        return (int32_t)prev;
+    }
+    if (image_kind == PIP_KIND_HOLOTAPE) {
+        return -PIP_EPERM;
+    }
+    *slot = level;
+    return (int32_t)prev;
+}
+
+int32_t pipos_levels_volume(pipos_levels_t *lv, pipos_image_snd_t *s, int image_kind,
+                            uint32_t level)
+{
+    unsigned *slot = image_kind == PIP_KIND_HOLOTAPE ? &s->trim : &lv->master;
+    unsigned prev = *slot;
+
+    if (level > PIPOS_LEVEL_MAX) {
+        return -PIP_EINVAL;
+    }
+    *slot = level;
+    return (int32_t)prev;
 }
 
 /* The keys of PIPOS.SET in the order of the file. Slot 0 is the master. */

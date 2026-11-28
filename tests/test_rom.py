@@ -84,7 +84,7 @@ def test_entry_state(board, kernel_image, test_rom, tmp_path, need_mtools):
         s = rom_one(vm, "startup")
         fields = {k: int(v, 16) for k, v in s.items()
                   if k not in ("stage", "ev", "args_zero")}
-        assert fields == {"abi_version": 0x00010005, "size": 128, "heap_base": HEAP_BASE,
+        assert fields == {"abi_version": 0x00010006, "size": 128, "heap_base": HEAP_BASE,
                           "heap_size": HEAP_SIZE, "stack_top": STACK_TOP, "kind": 0,
                           "flags": 0}, vm.serial
         assert s["args_zero"] == "1"
@@ -97,10 +97,10 @@ def test_older_abi_image_runs(board, kernel_image, test_rom, tmp_path, need_mtoo
     """The loader checks only the major: an image sealed for ABI 1.0 to 1.3
     runs and reads the version it runs on, 1.5, in its startup block."""
     rom = bytearray(test_rom("entry"))
-    assert struct.unpack_from("<I", rom, 0x40)[0] == 0x00010005
+    assert struct.unpack_from("<I", rom, 0x40)[0] == 0x00010006
     struct.pack_into("<I", rom, 0x40, sealed)
     with booted(kernel_image, board, sd=card(tmp_path, reseal(rom))) as vm:
-        assert int(rom_one(vm, "startup")["abi_version"], 16) == 0x00010005, vm.serial
+        assert int(rom_one(vm, "startup")["abi_version"], 16) == 0x00010006, vm.serial
         assert one(vm, "rom_exit")["status"] == "0"
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_sys_info(calls):
     s = {k: int(v, 16) for k, v in rom_one(calls, "sys_info").items()
          if k not in ("stage", "ev", "rc")}
     assert rom_one(calls, "sys_info")["rc"] == "0"
-    assert s == {"size": 32, "abi_version": 0x00010005, "pipos_version": PIPOS_VERSION,
+    assert s == {"size": 32, "abi_version": 0x00010006, "pipos_version": PIPOS_VERSION,
                  "board_rev": int(boot_m["board_rev"], 16),
                  "soc": int(boot_m["soc"].removeprefix("bcm"), 16),
                  "mem_size": int(boot_m["mem"], 16), "hw_flags": HW_AUDIO, "reserved": 0}, s

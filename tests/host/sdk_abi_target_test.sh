@@ -30,12 +30,12 @@ hello() {
     make -s -C "$tmp/proj" PIPOS_SDK="$root/sdk" "$@" >/dev/null
 }
 
-# 1. No ABI: the headers' ABI. ABI=1.5 gives the same bytes.
+# 1. No ABI: the headers' ABI. ABI=1.6 gives the same bytes.
 hello BUILD=none
-abi "$tmp/proj/none/ROM1.ROM" 0x10005
-hello BUILD=same ABI=1.5
+abi "$tmp/proj/none/ROM1.ROM" 0x10006
+hello BUILD=same ABI=1.6
 [ "$(sum "$tmp/proj/none/ROM1.ROM")" = "$(sum "$tmp/proj/same/ROM1.ROM")" ] ||
-    fail "ABI=1.5 and no ABI give different images"
+    fail "ABI=1.6 and no ABI give different images"
 
 # 2. An older target goes into abi_version, for a ROM and a holotape.
 hello BUILD=old ABI=1.3
@@ -49,7 +49,7 @@ abi "$tmp/proj/zero/ROM1.ROM" 0x10000
 hello BUILD=old ABI=1.2
 abi "$tmp/proj/old/ROM1.ROM" 0x10002
 hello BUILD=old
-abi "$tmp/proj/old/ROM1.ROM" 0x10005
+abi "$tmp/proj/old/ROM1.ROM" 0x10006
 
 # 4. A call newer than the target does not compile. Its number neither.
 #    Constants of the newer ABI stay visible.
@@ -89,10 +89,23 @@ use 'pip_syscall(PIP_SYS_SAMPLE_RATE, 0, 0, 0, 0)'
 newer "sample_rate was added in Pip-OS ABI 1.5" "target ABI 0x00010004" ABI=1.4
 use 'pip_log(PIP_SAMPLE_RATE_HI + PIP_HW_TAPE + PIP_EV_TAPE + PIP_HOLO_EV_BAD + PIP_BTN_BACK ? "x" : "y")'
 make -s -C "$tmp/new" ABI=1.0 BUILD=consts >/dev/null || fail "1.4 and 1.5 constants are hidden at ABI 1.0"
+for call in 'pip_sound_kind(PIP_SND_RADIO)' 'pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK)' 'pip_sound_store()'; do
+    name=${call#pip_}
+    name=${name%%(*}
+    use "$call"
+    newer "pip_$name' is unavailable: $name was added in Pip-OS ABI 1.6" "target ABI 0x00010005" ABI=1.5
+    make -s -C "$tmp/new" ABI=1.6 BUILD=b16 >/dev/null || fail "$name does not build at ABI 1.6"
+done
+for nr in SOUND_KIND:sound_kind SOUND_LEVEL:sound_level SOUND_STORE:sound_store; do
+    use "pip_syscall(PIP_SYS_${nr%%:*}, 0, 0, 0, 0)"
+    newer "${nr#*:} was added in Pip-OS ABI 1.6" "target ABI 0x00010005" ABI=1.5
+done
+use 'pip_log(PIP_SND_RADIO + PIP_SND_SFX + PIP_SND_RECORDINGS + PIP_SND_GAMES + PIP_LEVEL_MASTER + (PIP_LEVEL_ASK != 0u) ? "x" : "y")'
+make -s -C "$tmp/new" ABI=1.5 BUILD=consts16 >/dev/null || fail "1.6 constants are hidden at ABI 1.5"
 
 # 5. A target above the headers' ABI names both versions.
 use '(void)0'
-newer "target ABI 0x00010006" "ABI of these headers, 0x00010005" ABI=1.6
+newer "target ABI 0x00010007" "ABI of these headers, 0x00010006" ABI=1.7
 
 # 6. Bad values stop make before it compiles anything.
 for v in 2.0 0.9 1 1. .3 1.2.3 1.03 01.3 1.65536 x1.3 1.3x "1.3 1"; do

@@ -56,7 +56,7 @@ A sound keeps the level of its kind from its start to its end. A `volume` change
 
 ## Stored levels
 
-The device keeps its levels in `/PIPBOY/PIPOS.SET` on the boot card. Nobody needs to write this file by hand. A later version of Pip-OS writes it when a ROM asks. This version only reads it.
+The device keeps its levels in `/PIPBOY/PIPOS.SET` on the boot card. Nobody needs to write this file by hand. Pip-OS writes it when a ROM calls `sound_store`, and at no other time.
 
 ```ini
 [audio]
@@ -72,6 +72,7 @@ games = 55
 - The `ev=config` summary shows the values of `PIPOS.CFG` alone. The gain on the next `ev=audio` start line shows the stored levels.
 - Delete the file to get the values of `PIPOS.CFG` back at the next boot.
 - A missing file is not an error and prints nothing.
+- `sound_store` writes the six lines of the example above with RobCo-Core's atomic write. A power cut in the middle leaves the work files `~PIPOS.SET` and `#PIPOS.SET` beside it. The boot then reads, and writes nothing, the file the next store would keep: the new content when both work files exist, else the old one.
 
 The file counts only as a whole. When it is not valid, the kernel keeps every value of `PIPOS.CFG`, even the keys that were good, and prints one line. The boot goes on.
 

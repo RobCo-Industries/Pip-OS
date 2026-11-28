@@ -120,6 +120,7 @@ static const struct {
     { 0x12, "poll_event" }, { 0x13, "wait_event" }, { 0x20, "tone" }, { 0x21, "sample" },
     { 0x22, "audio_stop" }, { 0x23, "volume" }, { 0x24, "audio_status" },
     { 0x25, "play_seq" }, { 0x26, "sample_queue" }, { 0x27, "sample_rate" },
+    { 0x28, "sound_kind" }, { 0x29, "sound_level" }, { 0x2A, "sound_store" },
     { 0x30, "read_sensor" }, { 0x31, "sensor_available" },
     { 0x40, "get_time" }, { 0x41, "get_battery" }, { 0x42, "ticks_ms" },
     { 0x43, "sleep_ms" }, { 0x44, "exit" }, { 0x45, "sys_info" }, { 0x46, "mem_info" },
@@ -196,12 +197,26 @@ TEST(constants)
     CHECK_EQ(PIP_LOG_MAX, 256);
 }
 
+/* ABI 1.6: sound kinds and levels. */
+TEST(abi_1_6)
+{
+    CHECK_EQ(PIP_ABI_VERSION, 0x00010006);
+    /* Not set by the build, the target is the headers' ABI. */
+    CHECK_EQ(PIPOS_ABI_TARGET, PIP_ABI_VERSION);
+    CHECK_EQ(PIP_SYS_SOUND_KIND, 0x28);
+    CHECK_EQ(PIP_SYS_SOUND_LEVEL, 0x29);
+    CHECK_EQ(PIP_SYS_SOUND_STORE, 0x2A);
+    CHECK_EQ(PIP_SND_RADIO, 0);
+    CHECK_EQ(PIP_SND_SFX, 1);
+    CHECK_EQ(PIP_SND_RECORDINGS, 2);
+    CHECK_EQ(PIP_SND_GAMES, 3);
+    CHECK_EQ(PIP_LEVEL_MASTER, 4);
+    CHECK_EQ(PIP_LEVEL_ASK, 0xFFFFFFFFu);
+}
+
 /* ABI 1.5: sample_rate. */
 TEST(abi_1_5)
 {
-    CHECK_EQ(PIP_ABI_VERSION, 0x00010005);
-    /* Not set by the build, the target is the headers' ABI. */
-    CHECK_EQ(PIPOS_ABI_TARGET, PIP_ABI_VERSION);
     CHECK_EQ(PIP_SYS_SAMPLE_RATE, 0x27);
     CHECK_EQ(PIP_SAMPLE_RATE, 8000);
     CHECK_EQ(PIP_SAMPLE_RATE_HI, 37500);

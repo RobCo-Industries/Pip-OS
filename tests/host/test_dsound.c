@@ -553,6 +553,9 @@ static const struct call_row {
     { "audio_stop, nothing of the image plays", 0, PIPOS_ACALL_IDLE, 0 },
     { "volume", 0, PIPOS_ACALL_ASKED, 0 },
     { "sample_rate", 0, PIPOS_ACALL_ASKED, 0 },
+    { "sound_kind", 0, PIPOS_ACALL_ASKED, 0 },
+    { "sound_level", 0, PIPOS_ACALL_ASKED, 0 },
+    { "sound_store", 0, PIPOS_ACALL_ASKED, 0 },
     { "audio_status", 0, PIPOS_ACALL_ASKED, 0 },
 };
 

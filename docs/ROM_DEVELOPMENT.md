@@ -46,7 +46,7 @@ include $(PIPOS_SDK)/pipos-app.mk
 | `ICON` | META icon: a 32x32 PBM, P1 or P4, or 128 raw bytes |
 | `VERSION` | Image version, such as `1.2.0` |
 | `SUBTYPE` | Holotape subtype: `game` or `0`, the default, or `utility` or `1`. A data tape, `2`, has no slot, so the build refuses it. A ROM takes only `0`. A change reseals the image. |
-| `ABI` | The lowest Pip-OS ABI the image needs, `MAJOR.MINOR`, such as `1.3`. See [The target ABI](#the-target-abi). Not set, the image targets the ABI of the headers, 1.5. |
+| `ABI` | The lowest Pip-OS ABI the image needs, `MAJOR.MINOR`, such as `1.3`. See [The target ABI](#the-target-abi). Not set, the image targets the ABI of the headers, 1.6. |
 | `BUILD` | Output folder, `build` by default |
 | `CFLAGS_EXTRA` | More compiler flags |
 | `ROBCO_CORE` | RobCo-Core, `$(PIPOS_SDK)/../external/robco-core` by default |
@@ -76,11 +76,12 @@ The calls hidden by target, from the spec's change list:
 
 | Target | Hidden |
 |---|---|
-| 1.0 | `sample_queue`, `sample_rate` |
-| 1.1 to 1.4 | `sample_rate` |
-| 1.5 | Nothing |
+| 1.0 | `sample_queue`, `sample_rate`, `sound_kind`, `sound_level`, `sound_store` |
+| 1.1 to 1.4 | `sample_rate`, `sound_kind`, `sound_level`, `sound_store` |
+| 1.5 | `sound_kind`, `sound_level`, `sound_store` |
+| 1.6 | Nothing |
 
-ABI 1.2, 1.3 and 1.4 added no call. ABI 1.5 added `sample_rate`. A change of `ABI` rebuilds the startup code and every source.
+ABI 1.2, 1.3 and 1.4 added no call. ABI 1.5 added `sample_rate`. ABI 1.6 added `sound_kind`, `sound_level` and `sound_store`. Their constants, `PIP_SND_*`, `PIP_LEVEL_MASTER` and `PIP_LEVEL_ASK`, stay visible at every target. A change of `ABI` rebuilds the startup code and every source.
 
 ### flags.json
 
@@ -101,7 +102,8 @@ What differs from a ROM:
 - `KIND=holotape` in the Makefile. The image gets the `ROBCO78` magic and links at `0x00800000` in the 4 MiB holotape slot. Its subtype is game, 0, unless `SUBTYPE=utility` makes it a utility, 1. `holo_enumerate` reports it.
 - It starts with sp at `0x02000000` and its own heap from `0x01800000`. `pip_mem_info()` reports them.
 - It can read the ROM slot but not write it. The ROM's heap, stack and file handles are out of reach.
-- `holo_launch`, `power` and `set_time` return `-PIP_EPERM`.
+- `holo_launch`, `power`, `set_time` and `sound_store` return `-PIP_EPERM`. So do `sound_level` when it sets a level and `sound_kind` with radio or sfx.
+- `pip_volume()` sets a trim for the tape's own sounds. It starts at 100 at each launch and ends with the tape.
 - Its arguments are the string the ROM passed to `holo_launch`, at most 99 bytes, in `startup->args`.
 - The return value of `pip_main`, or the value given to `pip_exit()`, is the exit status, 0 to 255. The ROM gets it back from `pip_holo_launch()`. A fault ends the tape and the ROM gets `-PIP_EFAULT`.
 - Pip-OS stops the sound, empties the event queue and resets the drawing state before and after the tape. The ROM redraws its screen when the tape ends.
@@ -167,6 +169,10 @@ Include `<pipos/pip.h>` for everything, or the single headers in `sdk/include/pi
 | `0x24` | `audio_status` | `pip_audio_status()` |
 | `0x25` | `play_seq` | `pip_play_seq()` |
 | `0x26` | `sample_queue` | `pip_sample_queue()` |
+| `0x27` | `sample_rate` | `pip_sample_rate()` |
+| `0x28` | `sound_kind` | `pip_sound_kind()` |
+| `0x29` | `sound_level` | `pip_sound_level()` |
+| `0x2A` | `sound_store` | `pip_sound_store()` |
 | `0x30` | `read_sensor` | `pip_read_sensor()` |
 | `0x31` | `sensor_available` | `pip_sensor_available()` |
 | `0x40` | `get_time` | `pip_get_time()` |
@@ -246,6 +252,33 @@ void play_fast(const uint8_t *data, uint32_t length)   /* data made for 37500 Hz
 ```
 
 Data made for 37500 Hz played at 8000 Hz lasts 4.6875 times longer and sounds that much lower, so play a copy made for 8000 Hz or stay silent there. With `ABI := 1.4` or lower the headers hide `pip_sample_rate` and `PIP_SYS_SAMPLE_RATE`: see [The target ABI](#the-target-abi).
+
+### Sound kinds and levels
+
+The user sets five levels: the master and one for each kind of sound. Tell the kernel which kind a sound is before you start it, and it plays the sound at the level the user chose for that kind. A ROM starts as `PIP_SND_SFX`. A play keeps the kind it started with, so the ROM can set the old kind back right after the start:
+
+```c
+static int has_levels;   /* set once in pip_main: startup->abi_version >= 0x00010006 */
+
+void play_tune(const pip_note_t *notes, uint32_t count)
+{
+    int32_t prev;
+
+    if (!has_levels) {
+        pip_play_seq(notes, count);   /* before 1.6 one level covers every sound */
+        return;
+    }
+    prev = pip_sound_kind(PIP_SND_RADIO);
+    pip_play_seq(notes, count);
+    if (prev >= 0) {
+        pip_sound_kind((uint32_t)prev);
+    }
+}
+```
+
+`pip_sound_level(which, PIP_LEVEL_ASK)` reads a level and changes nothing. `which` is a kind or `PIP_LEVEL_MASTER`. `pip_sound_level(which, v)` sets it and returns the level before. A sound that plays follows the new level within 20 ms. Levels last until power-off. `pip_sound_store()` writes them to the card, so the device starts at them next time. Call it when you save your own state, not on every step.
+
+The three calls are new in ABI 1.6. On an older Pip-OS numbers `0x28` to `0x2A` return `-PIP_ENOSYS` and `volume` is the only level. With `ABI := 1.5` or lower the headers hide the three wrappers and their numbers. A holotape may set only `PIP_SND_GAMES` and `PIP_SND_RECORDINGS`, may only read levels, and its `pip_volume()` sets a trim of its own that ends with it.
 
 Play short sample effects only when `PIP_HW_AUDIO_MID` is set in `sys_info`'s `hw_flags`. With the bit clear the output rests at its low level, so every sample play starts and ends with a step that a speaker turns into a thump. A short effect would then sound like two clicks. Check `abi_version` first: before ABI 1.5 the bit reads 0. See [API.md](API.md#system).
 

@@ -1,5 +1,5 @@
 /*
- * Pip-OS ABI 1.5: syscall numbers, error codes, the startup block and
+ * Pip-OS ABI 1.6: syscall numbers, error codes, the startup block and
  * the structs system calls fill. Shared by the kernel and by ROM and
  * holotape code. The contract is RobCo-Core's docs/spec/PIPOS_ABI.md.
  *
@@ -9,7 +9,7 @@
 #ifndef PIPOS_ABI_H
 #define PIPOS_ABI_H
 
-#define PIP_ABI_VERSION     0x00010005  /* (major << 16) | minor */
+#define PIP_ABI_VERSION     0x00010006  /* (major << 16) | minor */
 
 /*
  * PIPOS_ABI_TARGET: the lowest ABI the project needs, in the same form,
@@ -22,6 +22,7 @@
  * Hidden by target, from the Changes table of the spec:
  *   below 1.1: sample_queue
  *   below 1.5: sample_rate
+ *   below 1.6: sound_kind, sound_level, sound_store
  * 1.2, 1.3 and 1.4 added no call.
  */
 #ifndef PIPOS_ABI_TARGET
@@ -103,6 +104,9 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
 #define PIP_SYS_PLAY_SEQ                0x25
 #define PIP_SYS_SAMPLE_QUEUE            0x26  /* ABI 1.1 */
 #define PIP_SYS_SAMPLE_RATE             0x27  /* ABI 1.5 */
+#define PIP_SYS_SOUND_KIND              0x28  /* ABI 1.6 */
+#define PIP_SYS_SOUND_LEVEL             0x29  /* ABI 1.6 */
+#define PIP_SYS_SOUND_STORE             0x2A  /* ABI 1.6 */
 #define PIP_SYS_READ_SENSOR             0x30
 #define PIP_SYS_SENSOR_AVAILABLE        0x31
 #define PIP_SYS_GET_TIME                0x40
@@ -157,6 +161,9 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
     X(PLAY_SEQ, play_seq) \
     X(SAMPLE_QUEUE, sample_queue) \
     X(SAMPLE_RATE, sample_rate) \
+    X(SOUND_KIND, sound_kind) \
+    X(SOUND_LEVEL, sound_level) \
+    X(SOUND_STORE, sound_store) \
     X(READ_SENSOR, read_sensor) \
     X(SENSOR_AVAILABLE, sensor_available) \
     X(GET_TIME, get_time) \
@@ -184,7 +191,7 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
     X(HOLO_EJECT_EVENT, holo_eject_event)
 
 /* Number of calls in the table. */
-#define PIP_SYSCALL_COUNT           52
+#define PIP_SYSCALL_COUNT           55
 /* Every number is below this. */
 #define PIP_SYS_NR_LIMIT            0x80
 
@@ -260,6 +267,13 @@ _Static_assert(0, PIP_ABI_STR(target ABI PIPOS_ABI_TARGET is above the ABI of th
 #define PIP_SEQ_MIN         1           /* play_seq count */
 #define PIP_SEQ_MAX         256
 #define PIP_VOLUME_MAX      100
+/* Sound kinds and levels, since ABI 1.6. Visible at every target. */
+#define PIP_SND_RADIO       0
+#define PIP_SND_SFX         1
+#define PIP_SND_RECORDINGS  2
+#define PIP_SND_GAMES       3
+#define PIP_LEVEL_MASTER    4             /* sound_level only: the master, not a kind */
+#define PIP_LEVEL_ASK       0xFFFFFFFFu   /* sound_level: read the level, change nothing */
 
 /* Sensors for read_sensor and sensor_available */
 #define PIP_SENSOR_RTC      0
@@ -512,6 +526,17 @@ extern const uint32_t pip_hidden_sys_sample_rate PIP_ABI_HIDDEN(sample_rate, "1.
 #undef PIP_SYS_SAMPLE_RATE
 #define PIP_SYS_SAMPLE_RATE pip_hidden_sys_sample_rate
 #endif
+#if PIPOS_ABI_TARGET < 0x00010006
+extern const uint32_t pip_hidden_sys_sound_kind PIP_ABI_HIDDEN(sound_kind, "1.6");
+extern const uint32_t pip_hidden_sys_sound_level PIP_ABI_HIDDEN(sound_level, "1.6");
+extern const uint32_t pip_hidden_sys_sound_store PIP_ABI_HIDDEN(sound_store, "1.6");
+#undef PIP_SYS_SOUND_KIND
+#undef PIP_SYS_SOUND_LEVEL
+#undef PIP_SYS_SOUND_STORE
+#define PIP_SYS_SOUND_KIND pip_hidden_sys_sound_kind
+#define PIP_SYS_SOUND_LEVEL pip_hidden_sys_sound_level
+#define PIP_SYS_SOUND_STORE pip_hidden_sys_sound_store
+#endif
 
 #endif /* __ASSEMBLER__ */
 
@@ -521,5 +546,10 @@ extern const uint32_t pip_hidden_sys_sample_rate PIP_ABI_HIDDEN(sample_rate, "1.
 #endif
 #if defined(__ASSEMBLER__) && PIPOS_ABI_TARGET < 0x00010005
 #undef PIP_SYS_SAMPLE_RATE
+#endif
+#if defined(__ASSEMBLER__) && PIPOS_ABI_TARGET < 0x00010006
+#undef PIP_SYS_SOUND_KIND
+#undef PIP_SYS_SOUND_LEVEL
+#undef PIP_SYS_SOUND_STORE
 #endif
 #endif

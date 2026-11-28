@@ -11,6 +11,8 @@ import pytest
 from pipos_helpers import (booted, config, config_summary, make_card, no_exception,
                            pipos_markers, wait_markers)
 
+from test_storage import card_read
+
 CFG = "PIPBOY/PIPOS.CFG"
 SET = "PIPBOY/PIPOS.SET"
 STARTS = ("tone", "pcm", "voice")
@@ -96,3 +98,31 @@ def test_no_card_prints_nothing_new(board, kernel_image):
         no_exception(vm)
     assert config_summary(vm)["rc"] == "nocard", vm.serial
     assert "ev=levels" not in vm.serial, vm.serial
+
+
+NEW = b"[audio]\nvolume = 80\nsfx = 40\n"   # 80 * 16 = 1280
+OLD = b"[audio]\nvolume = 90\nsfx = 30\n"   # 90 * 9 = 810
+
+
+@pytest.mark.parametrize("files,want", [
+    ({"PIPBOY/#PIPOS.SET": OLD, "PIPBOY/~PIPOS.SET": NEW}, ("12", "1280")),
+    ({"PIPBOY/#PIPOS.SET": OLD}, ("8", "810")),
+    ({"PIPBOY/~PIPOS.SET": NEW}, ("17", "1750")),
+], ids=["old_and_new", "old_only", "new_only"])
+def test_a_store_cut_by_a_power_loss(board, kernel_image, tmp_path, need_mtools, files, want):
+    """A power cut inside the atomic write of sound_store leaves the file
+    absent and its content in the work files. The boot reads what the next
+    write's recovery keeps: the new content when both work files exist, the
+    old one when only it exists, and nothing from a new file alone, which
+    a first write left before it finished. The boot writes nothing."""
+    sd = make_card(tmp_path / "sd.img", {CFG: CFG_TEXT, **files})
+    with booted(kernel_image, board, sd=sd) as vm:
+        wait_markers(vm, "audio", count=2)
+        beep = pipos_markers(vm, "audio")[0]
+        levels = pipos_markers(vm, "levels")
+        no_exception(vm)
+    assert levels == [], vm.serial
+    assert (beep["vol"], beep.get("gain")) == want, beep
+    for name, text in files.items():
+        assert card_read(sd, name) == text, name
+    assert card_read(sd, SET) is None
