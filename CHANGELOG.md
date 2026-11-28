@@ -149,6 +149,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
+- A ROM that ends with the screen blanked no longer leaves it dark with typing off. The kernel wakes the screen after every ROM and shows the console, then a fault's line.
 - `sdk/pipos-app.mk` refuses a `SUBTYPE` of more than one word. `SUBTYPE=0 game` built a game tape before.
 - After a holotape, the ROM keeps its open files and its input events.
 - `mem_info` reports the caller's own heap.

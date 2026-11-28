@@ -17,8 +17,8 @@ import subprocess
 import sys
 import zlib
 
-from pipos_helpers import (TIMEOUT, booted, dump, make_card, no_exception, one,
-                           pipos_markers)
+from pipos_helpers import (SCHEME_BG, TIMEOUT, booted, dump, make_card, no_exception, one,
+                           pipos_markers, press, screenshot)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CFG = "PIPBOY/PIPOS.CFG"
@@ -181,3 +181,35 @@ def test_typing_off_keeps_the_boot(board, kernel_image, test_rom, tmp_path, need
     assert not pipos_markers(vm, "scroll"), vm.serial
     assert " len=600 " not in vm.serial, vm.serial
     boot_text_shown(rows)
+
+
+def blanked_rom_ends(board, kernel_image, test_rom, tmp_path, key):
+    """Typing off: the ROM blanks the screen, then `key` ends it. Returns the VM and the rows."""
+    sd = make_card(tmp_path / "sd.img", {CFG: cfg(sound="no", delay=0),
+                                         ROM: test_rom("blank_end")})
+    with booted(kernel_image, board, sd=sd, wait="jump") as vm:
+        vm.wait_for("ev=dark", timeout=TIMEOUT, line=True)
+        assert screenshot(vm, tmp_path).getcolors() == [(640 * 480, (0, 0, 0))]
+        press(vm, key)
+        vm.wait_for("ev=ready", timeout=TIMEOUT)
+        img = screenshot(vm, tmp_path)
+        rows = dump(vm)
+        no_exception(vm)
+    assert not pipos_markers(vm, "scroll"), vm.serial
+    # The console is back: its background fills the screen again.
+    assert img.getpixel((639, 479)) == SCHEME_BG["green"], img.getpixel((639, 479))
+    boot_text_shown(rows)
+    return vm, rows
+
+
+def test_typing_off_wakes_a_blanked_screen(board, kernel_image, test_rom, tmp_path,
+                                           need_mtools):
+    vm, _ = blanked_rom_ends(board, kernel_image, test_rom, tmp_path, "up")
+    assert one(vm, "rom_exit")["status"] == "7", vm.serial
+
+
+def test_typing_off_shows_a_fault_on_a_blanked_screen(board, kernel_image, test_rom, tmp_path,
+                                                      need_mtools):
+    vm, rows = blanked_rom_ends(board, kernel_image, test_rom, tmp_path, "select")
+    assert one(vm, "rom_kill")["reason"] == "undef", vm.serial
+    assert rows[LINES].startswith("ROM(1) "), rows
