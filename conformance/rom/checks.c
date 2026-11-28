@@ -331,22 +331,115 @@ void check_sample_rate(void)
 
 /* ---- sound kinds and levels, ABI 1.6 ------------------------------------ */
 
+/*
+ * sound_kind. The first check runs before any call sets a kind, so it sees
+ * the sfx of the ROM's start. The tape's "kind" mode returns the kind it
+ * started with. The ROM ends with sfx in force.
+ */
 void check_sound_kind(void)
 {
-    /* No call set a kind yet, so the ROM's kind is still sfx. */
     ck_eq("kind_start_sfx", pip_sound_kind(PIP_SND_SFX), PIP_SND_SFX);
+    ck_eq("kind_prev_sfx", pip_sound_kind(PIP_SND_RADIO), PIP_SND_SFX);
+    ck_eq("kind_prev_radio", pip_sound_kind(PIP_SND_RECORDINGS), PIP_SND_RADIO);
+    ck_eq("kind_prev_recordings", pip_sound_kind(PIP_SND_GAMES), PIP_SND_RECORDINGS);
+    ck_eq("kind_prev_games", pip_sound_kind(PIP_SND_SFX), PIP_SND_GAMES);
+    ck_eq("kind_bad_master", pip_sound_kind(PIP_LEVEL_MASTER), -PIP_EINVAL);
+    ck_eq("kind_bad_large", pip_sound_kind(0xFFFFFFFFu), -PIP_EINVAL);
+    ck_eq("kind_bad_keeps", pip_sound_kind(PIP_SND_SFX), PIP_SND_SFX);
+    /* The call never fails for a valid kind while a sound plays. */
+    pip_tone(440, 2000);
+    ck_eq("kind_while_playing", pip_sound_kind(PIP_SND_RADIO), PIP_SND_SFX);
+    ck_eq("kind_plays_on", pip_audio_status(), 1);
+    pip_audio_stop();
+    ck_eq("kind_tape_starts_games", pip_holo_launch(TAPE_FILE, "kind"), PIP_SND_GAMES);
+    ck_eq("kind_back_after_tape", pip_sound_kind(PIP_SND_SFX), PIP_SND_RADIO);
 }
 
+static const uint32_t level_which[5] = {
+    PIP_SND_RADIO, PIP_SND_SFX, PIP_SND_RECORDINGS, PIP_SND_GAMES, PIP_LEVEL_MASTER,
+};
+
+static const char *const level_read_names[4] = {
+    "level_radio_reads", "level_sfx_reads", "level_recordings_reads", "level_games_reads",
+};
+
+/* Reads the five levels into v. Returns 1 when each is 0 to 100. */
+static int read_levels(int32_t v[5])
+{
+    int i, ok = 1;
+
+    for (i = 0; i < 5; i++) {
+        v[i] = pip_sound_level(level_which[i], PIP_LEVEL_ASK);
+        ok &= v[i] >= 0 && v[i] <= PIP_VOLUME_MAX;
+    }
+    return ok;
+}
+
+static int same_levels(const int32_t a[5], const int32_t b[5])
+{
+    int i;
+
+    for (i = 0; i < 5; i++) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
+ * sound_level. Every level goes back to the value it had at the start.
+ * The tape's "trim" mode returns the trim it started with, so two
+ * launches show the trim at 100 each time.
+ */
 void check_sound_level(void)
 {
-    int32_t v = pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK);
+    int32_t orig[5], now[5], after[5], v;
+    int i;
 
+    read_levels(orig);
+    v = orig[4];
     ck_res("level_master_reads", v >= 0 && v <= PIP_VOLUME_MAX ? R_PASS : R_FAIL, 1, v, 0);
+    for (i = 0; i < 4; i++) {
+        v = orig[i];
+        ck_res(level_read_names[i], v >= 0 && v <= PIP_VOLUME_MAX ? R_PASS : R_FAIL, 1, v, 0);
+    }
+    ck_eq("level_set_prev", pip_sound_level(PIP_SND_RADIO, 37), orig[0]);
+    ck_eq("level_set_reads", pip_sound_level(PIP_SND_RADIO, PIP_LEVEL_ASK), 37);
+    ck_eq("level_master_set_prev", pip_sound_level(PIP_LEVEL_MASTER, 41), orig[4]);
+    ck_eq("level_master_set_reads", pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK), 41);
+    /* volume and the master are one number. */
+    ck_eq("level_volume_sees_master", pip_volume(42), 41);
+    ck_eq("level_master_sees_volume", pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK), 42);
+    ck_eq("level_which5", pip_sound_level(5, PIP_LEVEL_ASK), -PIP_EINVAL);
+    ck_eq("level_101", pip_sound_level(PIP_SND_SFX, 101), -PIP_EINVAL);
+    ck_eq("level_101_keeps", pip_sound_level(PIP_SND_SFX, PIP_LEVEL_ASK), orig[1]);
+    /* A set while a sound plays succeeds, and the sound plays on. */
+    pip_tone(440, 2000);
+    ck_eq("level_while_playing", pip_sound_level(PIP_SND_SFX, 50), orig[1]);
+    ck_eq("level_plays_on", pip_audio_status(), 1);
+    pip_audio_stop();
+    read_levels(now);
+    ck_eq("level_tape_trim_100", pip_holo_launch(TAPE_FILE, "trim"), 100);
+    ck_eq("level_tape_trim_again", pip_holo_launch(TAPE_FILE, "trim"), 100);
+    read_levels(after);
+    ck("level_same_after_tape", same_levels(now, after));
+    for (i = 0; i < 5; i++) {
+        pip_sound_level(level_which[i], (uint32_t)orig[i]);
+    }
+    read_levels(after);
+    ck("level_restored", same_levels(orig, after));
 }
 
+/*
+ * sound_store, with the device's own levels in force, so the file holds
+ * the values it held before or the ones the user set.
+ */
 void check_sound_store(void)
 {
     ck_eq("store_ok", pip_sound_store(), 0);
+    ck_eq("store_again", pip_sound_store(), 0);
+    ck_eq("store_silent", pip_audio_status(), 0);
 }
 
 /* ---- sensors, time, system --------------------------------------------- */
