@@ -7,7 +7,9 @@ leaves and is not blank, and the kernel prints "ev=scroll lines= blips=".
 When the ROM ends, the boot text comes back on the screen.
 
 ev=quiet's t_ms is tick_ms(). The audio clock starts from tick_ms() too,
-so the two agree within one 10 ms tick.
+so the two agree within one 10 ms tick. A click the last tick handed to
+the driver before the close starts one tick later, and that tick can run
+late, so only that last click may start more than one tick after ev=quiet.
 """
 
 import os
@@ -15,7 +17,6 @@ import subprocess
 import sys
 import zlib
 
-from hosttiming import Timed, judged, split_checks
 from pipos_helpers import (TIMEOUT, booted, dump, make_card, no_exception, one,
                            pipos_markers)
 
@@ -26,10 +27,8 @@ CLICK_LEN = "789"
 BLIP_LEN = "600"
 RATE = "37500"
 QUIET_MS = 1000
-# Blips start 40 ms apart, or 80 ms across a blank line. Trace times read
-# the audio tick, so allow one tick less than a step.
+# One line leaves every 40 ms, blank or not.
 STEP_MS = 40
-MIN_BLIP_GAP_MS = 30
 TICK_MS = 10
 HEAD = ["*************** PIP-OS(R) V7.1.0.8 ***************",
         "COPYRIGHT 2075 ROBCO IND.",
@@ -44,6 +43,8 @@ TAIL = ["", "**************************************************",
         "**************************************************"]
 LINES = 15   # head, holotape line, ROM line, tail
 BLIPS = 13   # the two blank lines get none
+# The scrolled lines that are not blank, by index: each plays one blip.
+BLIP_LINES = [i for i, text in enumerate(HEAD + ["HOLOTAPE", "ROM"] + TAIL) if text]
 
 
 def cfg(sound="yes", delay=10, line=0):
@@ -72,19 +73,6 @@ def is_click(m):
         and m.get("len") == CLICK_LEN
 
 
-def blip_gaps(times):
-    assert all(b - a >= MIN_BLIP_GAP_MS for a, b in zip(times, times[1:])), times
-
-
-def stretched(times):
-    """A late step shows the host stalled QEMU: a gap over its plan by more than a tick."""
-    for a, b in zip(times, times[1:]):
-        plan = STEP_MS if b - a < 2 * STEP_MS - TICK_MS else 2 * STEP_MS
-        if b - a > plan + TICK_MS:
-            return f"a blip came {b - a} ms after the one before, planned {plan}"
-    return None
-
-
 def scroll_run(board, kernel_image, test_rom, tmp_path, blip):
     sd = make_card(tmp_path / "sd.img", {CFG: cfg(), ROM: test_rom("sleep")})
     with booted(kernel_image, board, sd=sd, wait="jump") as vm:
@@ -107,9 +95,13 @@ def scroll_run(board, kernel_image, test_rom, tmp_path, blip):
     names = [m.get("ev") for m in marks]
     q, j = names.index("quiet"), names.index("jump")
     assert q < j, names
-    # No click starts after the gate closed, in the log or by the clock.
+    # No click starts after the gate closed, in the log. By the clock, only
+    # the last click may: the last tick before the close may have handed it
+    # to the driver, and it starts at the next tick, however late the host
+    # runs that tick.
     assert not [m for m in marks[q:j] if is_click(m)], marks[q:j]
-    late = [m for m in marks if is_click(m) and int(m["t_ms"]) > quiet_ms + TICK_MS]
+    clicks = [m for m in marks if is_click(m)]
+    late = [m for m in clicks[:-1] if int(m["t_ms"]) > quiet_ms + TICK_MS]
     assert not late, (quiet_ms, late)
     # The sleep ROM makes no card call, so it owes no click: the kernel's
     # clicks under a ROM come from the ROM's own reads.
@@ -121,9 +113,15 @@ def scroll_run(board, kernel_image, test_rom, tmp_path, blip):
     for m in blips:
         assert (m["rate"], m["crc"]) == (RATE, blip), m
     times = [int(m["t_ms"]) for m in blips]
-    # ev=quiet reads tick_ms(), the blip the audio trace clock. The trace
-    # clock starts from tick_ms() and can lag it by up to one tick.
-    assert times[0] - quiet_ms >= QUIET_MS - TICK_MS, (quiet_ms, times[0])
+    # The scroll starts QUIET_MS or more after the gate closed, and line i
+    # leaves i steps later, so its blip starts no sooner than that. A late
+    # tick only makes a blip later. ev=quiet reads tick_ms(), the blip the
+    # audio trace clock, which starts from tick_ms() and can lag it by up
+    # to one tick.
+    assert len(BLIP_LINES) == BLIPS
+    for t, line in zip(times, BLIP_LINES):
+        assert t - quiet_ms >= QUIET_MS + STEP_MS * line - TICK_MS, (quiet_ms, line, times)
+    assert times == sorted(times), times
 
     scroll = one(vm, "scroll")
     assert (scroll["lines"], scroll["blips"]) == (str(LINES), str(BLIPS)), scroll
@@ -132,14 +130,10 @@ def scroll_run(board, kernel_image, test_rom, tmp_path, blip):
     # The screen is empty under the ROM and holds the boot text after it.
     assert all(not r.strip() for r in under), under
     boot_text_shown(after)
-    return times
 
 
 def test_quiet_second_then_scroll(board, kernel_image, test_rom, tmp_path, need_mtools):
-    blip = blip_crc(tmp_path)
-    judged(lambda: split_checks(
-        lambda: scroll_run(board, kernel_image, test_rom, tmp_path, blip),
-        Timed("blip gaps", blip_gaps, stretched)))
+    scroll_run(board, kernel_image, test_rom, tmp_path, blip_crc(tmp_path))
 
 
 def test_sound_off_scrolls_in_silence(board, kernel_image, test_rom, tmp_path, need_mtools):
