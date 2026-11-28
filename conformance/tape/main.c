@@ -10,6 +10,10 @@
  *   fault     writes to the ROM slot, which a holotape may only read.
  *   rate      sets its sample rate to 37500 Hz and returns the rate it
  *             started with, divided by 100: 80 for 8000 Hz.
+ *   kind      sets its kind to recordings and returns the kind it started
+ *             with: 3 for games.
+ *   trim      sets its trim to 40 and returns the trim it started with:
+ *             100.
  *
  * Each check prints "@RC stage=conform ev=tape_check name=<name> ok=<0|1>".
  */
@@ -49,6 +53,49 @@ static int32_t dec(const char *s)
     return neg ? -v : v;
 }
 
+static const uint32_t level_which[5] = {
+    PIP_SND_RADIO, PIP_SND_SFX, PIP_SND_RECORDINGS, PIP_SND_GAMES, PIP_LEVEL_MASTER,
+};
+
+static const char *const level_names[5] = {
+    "level_radio_reads", "level_sfx_reads", "level_recordings_reads", "level_games_reads",
+    "level_master_reads",
+};
+
+/* Kinds, levels and the trim of ABI 1.6, as a holotape sees them. */
+static void check_sound(void)
+{
+    int32_t lv[5], master;
+    int i;
+
+    tcheck("kind_start_games", pip_sound_kind(PIP_SND_GAMES) == PIP_SND_GAMES);
+    tcheck("kind_recordings", pip_sound_kind(PIP_SND_RECORDINGS) == PIP_SND_GAMES);
+    tcheck("kind_games_back", pip_sound_kind(PIP_SND_GAMES) == PIP_SND_RECORDINGS);
+    tcheck("kind_radio_eperm", pip_sound_kind(PIP_SND_RADIO) == -PIP_EPERM);
+    tcheck("kind_sfx_eperm", pip_sound_kind(PIP_SND_SFX) == -PIP_EPERM);
+    tcheck("kind_master_einval", pip_sound_kind(PIP_LEVEL_MASTER) == -PIP_EINVAL);
+    tcheck("kind_refused_keeps", pip_sound_kind(PIP_SND_GAMES) == PIP_SND_GAMES);
+    for (i = 0; i < 5; i++) {
+        lv[i] = pip_sound_level(level_which[i], PIP_LEVEL_ASK);
+        tcheck(level_names[i], lv[i] >= 0 && lv[i] <= PIP_VOLUME_MAX);
+    }
+    master = lv[4];
+    tcheck("level_set_eperm", pip_sound_level(PIP_SND_GAMES, 50) == -PIP_EPERM);
+    tcheck("level_master_eperm", pip_sound_level(PIP_LEVEL_MASTER, 50) == -PIP_EPERM);
+    tcheck("level_eperm_keeps",
+           pip_sound_level(PIP_SND_GAMES, PIP_LEVEL_ASK) == lv[3] &&
+           pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK) == master);
+    /* A bad which is an argument error before it is a caller error. */
+    tcheck("level_which5_einval", pip_sound_level(5, 50) == -PIP_EINVAL);
+    tcheck("store_eperm", pip_sound_store() == -PIP_EPERM);
+    tcheck("trim_starts_100", pip_volume(100) == 100);
+    tcheck("trim_set", pip_volume(40) == 100);
+    tcheck("trim_master_keeps", pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK) == master);
+    tcheck("trim_101", pip_volume(101) == -PIP_EINVAL);
+    /* volume is the only way to read the trim: set 40 again, expect 40. */
+    tcheck("trim_kept", pip_volume(40) == 40);
+}
+
 static int check(const pipos_startup_t *su, uint32_t rom_text)
 {
     const uint32_t heap = 0x01800000u, top = 0x02000000u;
@@ -80,6 +127,7 @@ static int check(const pipos_startup_t *su, uint32_t rom_text)
     tcheck("power_eperm", pip_power(PIP_POWER_SCREEN_ON) == -PIP_EPERM);
     tcheck("set_time_eperm", pip_set_time(1700000000u) == -PIP_EPERM);
     tcheck("sys_info", pip_sys_info(&si) == 0 && si.abi_version == PIP_ABI_VERSION);
+    check_sound();
     return failures ? 100 + failures : TAPE_OK;
 }
 
@@ -97,6 +145,16 @@ int pip_main(const pipos_startup_t *su)
         int32_t prev = pip_sample_rate(PIP_SAMPLE_RATE_HI);
 
         return prev < 0 ? 1 : prev / 100;
+    }
+    if (strcmp(a, "kind") == 0) {
+        int32_t prev = pip_sound_kind(PIP_SND_RECORDINGS);
+
+        return prev < 0 ? 99 : prev;
+    }
+    if (strcmp(a, "trim") == 0) {
+        int32_t prev = pip_volume(40);
+
+        return prev < 0 ? 99 : prev;
     }
     if (strcmp(a, "fault") == 0) {
         *(volatile uint32_t *)(uintptr_t)PIP_ROM_BASE = 0;
