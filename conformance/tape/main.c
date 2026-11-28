@@ -92,6 +92,8 @@ static void check_sound(void)
     tcheck("trim_set", pip_volume(40) == 100);
     tcheck("trim_master_keeps", pip_sound_level(PIP_LEVEL_MASTER, PIP_LEVEL_ASK) == master);
     tcheck("trim_101", pip_volume(101) == -PIP_EINVAL);
+    /* volume is the only way to read the trim: set 40 again, expect 40. */
+    tcheck("trim_kept", pip_volume(40) == 40);
 }
 
 static int check(const pipos_startup_t *su, uint32_t rom_text)

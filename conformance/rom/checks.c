@@ -417,6 +417,7 @@ void check_sound_level(void)
     /* A set while a sound plays succeeds, and the sound plays on. */
     pip_tone(440, 2000);
     ck_eq("level_while_playing", pip_sound_level(PIP_SND_SFX, 50), orig[1]);
+    ck_eq("level_while_playing_reads", pip_sound_level(PIP_SND_SFX, PIP_LEVEL_ASK), 50);
     ck_eq("level_plays_on", pip_audio_status(), 1);
     pip_audio_stop();
     read_levels(now);
