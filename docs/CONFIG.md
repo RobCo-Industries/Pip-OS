@@ -54,6 +54,41 @@ A level is squared, the master is not. So `sfx = 50` plays the effects at a quar
 
 A sound keeps the level of its kind from its start to its end. A `volume` change moves the sound that plays to its new height within 20 ms. The rest ramp of the system sound has no level.
 
+## Stored levels
+
+The device keeps its levels in `/PIPBOY/PIPOS.SET` on the boot card. Nobody needs to write this file by hand. A later version of Pip-OS writes it when a ROM asks. This version only reads it.
+
+```ini
+[audio]
+volume = 70
+radio = 45
+sfx = 100
+recordings = 60
+games = 55
+```
+
+- It holds one section, `[audio]`, and up to five keys: `volume`, `radio`, `sfx`, `recordings` and `games`. Each is a whole number from 0 to 100 in decimal digits. Leading zeros are fine. Comments and blank lines are fine.
+- The kernel reads it right after `PIPOS.CFG` and before its first sound. The values come in this order: the built-in 100 for each, then `PIPOS.CFG`, then `PIPOS.SET`. A key in `PIPOS.SET` wins. A key it lacks keeps the value of `PIPOS.CFG`.
+- The `ev=config` summary shows the values of `PIPOS.CFG` alone. The gain on the next `ev=audio` start line shows the stored levels.
+- Delete the file to get the values of `PIPOS.CFG` back at the next boot.
+- A missing file is not an error and prints nothing.
+
+The file counts only as a whole. When it is not valid, the kernel keeps every value of `PIPOS.CFG`, even the keys that were good, and prints one line. The boot goes on.
+
+```
+@RC stage=pipos ev=levels result=bad reason=<reason>
+```
+
+| `reason` | Cause |
+|---|---|
+| `read` | A card error while reading the file |
+| `size` | The file is larger than 512 bytes |
+| `syntax` | A line that is not INI |
+| `key` | Another section, another key, a key twice, or a key before `[audio]`. Names match with case, as in `PIPOS.CFG`. |
+| `value` | A value that is not a whole number from 0 to 100 |
+
+When several apply, the line names the first one in the table.
+
 
 
 These `[display]` keys set up the ILI9341 panel. The kernel reads them only when `backend` is `tft` or `both`. The defaults are RobCo-Core's `TFT_CONFIG_DEFAULT`. [HARDWARE.md](HARDWARE.md#spi-panel) has the wiring.

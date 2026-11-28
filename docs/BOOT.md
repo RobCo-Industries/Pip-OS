@@ -18,6 +18,7 @@ The firmware loads `PIPOS.IMG` at `0x8000` and enters it. RobCo-Core's start-up 
 | 8 | I2C and the RTC. A chip that answers sets the software clock. | `ev=clock` |
 | 9 | SD card and its boot volume, see [The card](#the-card) | `ev=card`, `ev=mount` |
 | 10 | `/PIPBOY/PIPOS.CFG`, see [CONFIG.md](CONFIG.md) | `ev=config` |
+| 10a | `/PIPBOY/PIPOS.SET`, the stored levels, see [CONFIG.md](CONFIG.md#stored-levels). Its levels replace those of `PIPOS.CFG`. A missing or valid file prints nothing. | `ev=levels` when the file is not valid |
 | 11 | Colour scheme, volume, line delay, power-on beep | `ev=audio` |
 | 11a | The SPI panel when `[display] backend` asks for it, see [The display backend](#the-display-backend) | `ev=display` |
 | 11b | The holotape slot when `[holotape] slot = on`. With `off`, the default, no slot pin is touched and no marker prints. A panel setting that clashes with the slot keeps it off, see [CONFIG.md](CONFIG.md#slot-and-panel). A card in at boot is reported later, from the first slot work. | `ev=holo_slot` |
@@ -124,13 +125,13 @@ Reads before `PIPOS.CFG` is parsed are counted and wait for the setting. After e
 
 ```
 @RC stage=pipos ev=disk at=mount calls=4 blocks=4 owed=8
-@RC stage=pipos ev=disk at=config calls=3 blocks=3 owed=6
+@RC stage=pipos ev=disk at=config calls=7 blocks=7 owed=14
 @RC stage=pipos ev=disk at=text calls=0 blocks=0 owed=9
 @RC stage=pipos ev=disk at=holo calls=2 blocks=2 owed=4
 @RC stage=pipos ev=disk at=rom calls=4 blocks=4 owed=8
 ```
 
-`at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks before the jump never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`. Card calls a ROM makes print no `ev=disk` line.
+`at` is `mount`, `config`, `holo`, `rom` or `text`, one `text` line after each boot line written with typing on. The `config` stage counts the reads of `PIPOS.CFG` and of `PIPOS.SET`, so looking for a missing `PIPOS.SET` adds to it too. The `mount` and `config` lines print after the `ev=config` summary, once the setting is known. `owed` is what the stage added before the cap, so the clicks before the jump never outnumber the sum of `owed`. A boot without a ROM keeps paying its debt after `ev=ready`. Card calls a ROM makes print no `ev=disk` line.
 
 With typing on, the gate closes when the last boot line starts, see [The quiet second and the scroll](#the-quiet-second-and-the-scroll). At the jump to a ROM the debt drops to 8, and no new click starts. A click that still plays at the jump ends first. The 700 ms of the ROM start after that wait, right before `ev=jump` prints.
 
@@ -373,6 +374,7 @@ Every marker is one line on the PL011 that starts with `@RC stage=pipos`. The fo
 | `card` | `rc`, then `sd`, `part` or `fs why` | `ok`, `nocard`, `nopart` or `nomount`. See [The card](#the-card). |
 | `mount` | `part type lba blocks marker` | The mounted volume. `part` is the MBR slot `0` to `3`, or `whole` for a card without a table. `marker` is `1` when it holds a Pip-OS file. |
 | `config` | `rc key line` or `rc path line scheme line_delay_ms volume beep char_delay_ms key_click` | A configuration problem, or the summary. `key_click` holds the resolved `system_sound`. See [CONFIG.md](CONFIG.md). |
+| `levels` | `result reason` | `PIPOS.SET` is not valid, so its levels do not apply. `result` is `bad`, `reason` is `read`, `size`, `syntax`, `key` or `value`. See [CONFIG.md](CONFIG.md#stored-levels). |
 | `disk` | `at calls blocks owed`, or `rc=tickfull` | With the system sound on, what a boot stage added to the click debt. `tickfull`: no tick slot was free, so no click plays. See [The disk click](#the-disk-click). |
 | `sound` | `rc` | The rest ramp of the system sound failed with this library error. The boot goes on as with the system sound off. See [The system sound](#the-system-sound). |
 | `syscalls` | `served` | The calls the kernel serves: a 128-bit hex number, bit n set for call n |

@@ -151,3 +151,184 @@ TEST(settings_bad_levels)
     CHECK_STR(is.text[0], "unknown display.radio 2");
     CHECK_EQ(s.levels[PIPOS_SND_RADIO], 100);
 }
+
+/* PIPOS.SET: the reader gives "ok" here for a file that applies. */
+static const char *rd(const char *text, pipos_levels_t *lv)
+{
+    const char *why = pipos_levels_read_text(text, strlen(text), lv);
+
+    return why == NULL ? "ok" : why;
+}
+
+static void set5(pipos_levels_t *lv, unsigned m, unsigned r, unsigned s, unsigned c, unsigned g)
+{
+    lv->master = m;
+    lv->level[PIPOS_SND_RADIO] = r;
+    lv->level[PIPOS_SND_SFX] = s;
+    lv->level[PIPOS_SND_RECORDINGS] = c;
+    lv->level[PIPOS_SND_GAMES] = g;
+}
+
+static int same5(const pipos_levels_t *lv, unsigned m, unsigned r, unsigned s, unsigned c,
+                 unsigned g)
+{
+    return lv->master == m && lv->level[PIPOS_SND_RADIO] == r &&
+           lv->level[PIPOS_SND_SFX] == s && lv->level[PIPOS_SND_RECORDINGS] == c &&
+           lv->level[PIPOS_SND_GAMES] == g;
+}
+
+TEST(set_write_text)
+{
+    pipos_levels_t lv;
+    char out[PIPOS_LEVELS_TEXT_MAX + 1];
+
+    set5(&lv, 70, 45, 100, 60, 55);
+    CHECK_EQ(pipos_levels_write_text(&lv, out, sizeof(out)), 68);
+    CHECK_STR(out, "[audio]\nvolume = 70\nradio = 45\nsfx = 100\nrecordings = 60\ngames = 55\n");
+    set5(&lv, 100, 100, 100, 100, 100);
+    CHECK_EQ(pipos_levels_write_text(&lv, out, sizeof(out)), PIPOS_LEVELS_TEXT_MAX);
+    set5(&lv, 0, 0, 0, 0, 0);
+    CHECK_EQ(pipos_levels_write_text(&lv, out, sizeof(out)), 62);
+    CHECK_STR(out, "[audio]\nvolume = 0\nradio = 0\nsfx = 0\nrecordings = 0\ngames = 0\n");
+    /* Past the top it writes the top. */
+    set5(&lv, 101, 200, 5, 7, 9);
+    CHECK(pipos_levels_write_text(&lv, out, sizeof(out)) > 0);
+    CHECK_STR(out, "[audio]\nvolume = 100\nradio = 100\nsfx = 5\nrecordings = 7\ngames = 9\n");
+    /* A buffer too small for the longest text gets nothing. */
+    CHECK_EQ(pipos_levels_write_text(&lv, out, PIPOS_LEVELS_TEXT_MAX), 0);
+}
+
+static void round_trip(unsigned m, unsigned r, unsigned s, unsigned c, unsigned g)
+{
+    pipos_levels_t in, back;
+    char out[PIPOS_LEVELS_TEXT_MAX + 1];
+    size_t n;
+
+    set5(&in, m, r, s, c, g);
+    set5(&back, 1, 2, 3, 4, 5);
+    n = pipos_levels_write_text(&in, out, sizeof(out));
+    CHECK(n > 0 && n <= PIPOS_LEVELS_TEXT_MAX);
+    CHECK(pipos_levels_read_text(out, n, &back) == NULL);
+    CHECK(same5(&back, m, r, s, c, g));
+}
+
+TEST(set_round_trip)
+{
+    unsigned a, b;
+
+    round_trip(0, 0, 0, 0, 0);
+    round_trip(100, 100, 100, 100, 100);
+    round_trip(0, 100, 0, 100, 0);
+    round_trip(100, 0, 100, 0, 100);
+    round_trip(1, 9, 10, 99, 100);
+    for (a = 0; a <= 100; a += 7) {
+        for (b = 0; b <= 100; b += 3) {
+            round_trip(a, b, 100 - b, (a + b) % 101, (a * b) % 101);
+        }
+    }
+}
+
+TEST(set_keys_absent_keep_their_value)
+{
+    pipos_levels_t lv;
+
+    set5(&lv, 80, 70, 60, 50, 40);
+    CHECK_STR(rd("[audio]\nsfx = 30\ngames = 020\n", &lv), "ok");
+    CHECK(same5(&lv, 80, 70, 30, 50, 20));
+    CHECK_STR(rd("", &lv), "ok");
+    CHECK(same5(&lv, 80, 70, 30, 50, 20));
+    CHECK_STR(rd("# kept by the device\n\n[audio]\n; master\nvolume = 10 # quiet\n\n", &lv),
+              "ok");
+    CHECK(same5(&lv, 10, 70, 30, 50, 20));
+}
+
+TEST(set_values)
+{
+    static const struct {
+        const char *value;
+        const char *why;
+        unsigned got;
+    } cases[] = {
+        { "050", "ok", 50 },   { " 50 ", "ok", 50 },  { "0", "ok", 0 },
+        { "100", "ok", 100 },  { "0000100", "ok", 100 },
+        { "50x", "value", 0 }, { "101", "value", 0 }, { "-1", "value", 0 },
+        { "", "value", 0 },    { "+5", "value", 0 },  { "5.0", "value", 0 },
+        { "0x10", "value", 0 }, { "99999999999", "value", 0 },
+    };
+    pipos_levels_t lv;
+    char text[64];
+    unsigned i;
+
+    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        set5(&lv, 1, 2, 3, 4, 5);
+        snprintf(text, sizeof(text), "[audio]\nradio = %s\nsfx = 9\n", cases[i].value);
+        CHECK_STR(rd(text, &lv), cases[i].why);
+        if (strcmp(cases[i].why, "ok") == 0) {
+            CHECK(same5(&lv, 1, cases[i].got, 9, 4, 5));
+        } else {
+            /* The good key next to it does not apply either. */
+            CHECK(same5(&lv, 1, 2, 3, 4, 5));
+        }
+    }
+}
+
+TEST(set_keys_and_sections)
+{
+    pipos_levels_t lv;
+
+    set5(&lv, 1, 2, 3, 4, 5);
+    CHECK_STR(rd("[audio]\nsfx = 10\nsfx = 20\n", &lv), "key");
+    CHECK_STR(rd("[audio]\nsfx = 10\nbeep = yes\n", &lv), "key");
+    CHECK_STR(rd("[audio]\nsfx = 10\n[display]\n", &lv), "key");
+    CHECK_STR(rd("sfx = 10\n", &lv), "key");
+    /* The PIPOS.CFG parser matches keys and sections with case. */
+    CHECK_STR(rd("[audio]\nSFX = 10\n", &lv), "key");
+    CHECK_STR(rd("[Audio]\nsfx = 10\n", &lv), "key");
+    CHECK(same5(&lv, 1, 2, 3, 4, 5));
+    /* A second [audio] header is the same section. */
+    CHECK_STR(rd("[audio]\nsfx = 10\n[audio]\ngames = 20\n", &lv), "ok");
+    CHECK(same5(&lv, 1, 2, 10, 4, 20));
+}
+
+TEST(set_syntax_and_size)
+{
+    pipos_levels_t lv;
+    char text[PIPOS_LEVELS_FILE_MAX + 2];
+    size_t head;
+
+    set5(&lv, 1, 2, 3, 4, 5);
+    CHECK_STR(rd("[audio]\nsfx = 10\nloud\n", &lv), "syntax");
+    CHECK_STR(rd("[audio\nsfx = 10\n", &lv), "syntax");
+    CHECK(same5(&lv, 1, 2, 3, 4, 5));
+
+    /* Exactly 512 bytes: a valid file padded with blank lines. */
+    head = (size_t)snprintf(text, sizeof(text), "[audio]\nsfx = 10\n");
+    memset(text + head, '\n', PIPOS_LEVELS_FILE_MAX - head);
+    text[PIPOS_LEVELS_FILE_MAX] = '\0';
+    CHECK_EQ(strlen(text), PIPOS_LEVELS_FILE_MAX);
+    CHECK_STR(rd(text, &lv), "ok");
+    CHECK(same5(&lv, 1, 2, 10, 4, 5));
+    text[PIPOS_LEVELS_FILE_MAX] = '\n';
+    text[PIPOS_LEVELS_FILE_MAX + 1] = '\0';
+    CHECK_STR(rd(text, &lv), "size");
+}
+
+TEST(set_reason_order)
+{
+    pipos_levels_t lv;
+    char text[PIPOS_LEVELS_FILE_MAX + 2];
+
+    set5(&lv, 1, 2, 3, 4, 5);
+    /* syntax before key and value, wherever the bad line is */
+    CHECK_STR(rd("[audio]\nsfx = 999\nfoo = 1\nloud\n", &lv), "syntax");
+    CHECK_STR(rd("[other]\nloud\n", &lv), "syntax");
+    /* key before value */
+    CHECK_STR(rd("[audio]\nsfx = 999\nfoo = 1\n", &lv), "key");
+    CHECK_STR(rd("[audio]\nsfx = 999\nsfx = 1\n", &lv), "key");
+    CHECK_STR(rd("[audio]\nsfx = x\n[display]\n", &lv), "key");
+    /* size before all */
+    memset(text, 'x', sizeof(text) - 1);
+    text[sizeof(text) - 1] = '\0';
+    CHECK_STR(rd(text, &lv), "size");
+    CHECK(same5(&lv, 1, 2, 3, 4, 5));
+}
