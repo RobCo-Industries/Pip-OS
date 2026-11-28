@@ -21,12 +21,14 @@ CFG = "PIPBOY/PIPOS.CFG"
 ROM = "PIPBOY/ROM1.ROM"
 VOLUME = 80
 CLICK_LEN = "789"
-# A click lasts 21 ms; a gap is 3 ticks or more.
-MIN_START_GAP_MS = 30
-# An overlay's t_ms is the time of its first sample, read from the sample
-# clock in the tick, not the tick's own time. Two starts three ticks apart
-# can then read one ms short.
-MIN_MIX_GAP_MS = MIN_START_GAP_MS - 1
+# A click is 789 samples at 37500 Hz, 21.04 ms, and no click starts before
+# the one before it has played out. The driver counts those samples on the
+# timer that stamps t_ms, so two starts are 21 ms apart or more on any host.
+# The limiter's own gap, three ticks or more, is counted in tick callbacks.
+# A callback the host runs late starts its click late, and the next gap
+# then reads short by as much, so the trace cannot check it in ms.
+# tests/host/test_dsound.c pins it in ticks.
+CLICK_MS = 21
 
 
 def cfg(sound="yes", delay=2):
@@ -77,7 +79,6 @@ def check_clicks(trace, crcs, beep_crc):
             beep_end = int(trace[i + 1]["t_ms"])
     assert beep_end is not None, trace
     starts = []
-    mixed = False
     k = 0
     for i, m in enumerate(trace):
         if not (m["op"] in ("pcm", "pcm_mix") and m.get("len") == CLICK_LEN):
@@ -89,10 +90,8 @@ def check_clicks(trace, crcs, beep_crc):
         t = int(m["t_ms"])
         assert t >= beep_end, (m, beep_end)
         if starts:
-            gap = MIN_MIX_GAP_MS if mixed or m["op"] == "pcm_mix" else MIN_START_GAP_MS
-            assert t - starts[-1] >= gap, (starts[-1], m)
+            assert t - starts[-1] >= CLICK_MS, (starts[-1], m)
         starts.append(t)
-        mixed = m["op"] == "pcm_mix"
         k += 1
     return starts
 

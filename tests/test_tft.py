@@ -344,6 +344,33 @@ def test_boot_text_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, n
     judged_sends(strict)
 
 
+def test_typing_off_wakes_a_blanked_panel(board, tft_build, test_rom, tmp_path, need_mtools):
+    """Typing off, a ROM killed with the screen blanked: one wake, then one frame."""
+    def strict():
+        image, _ = tft_build
+        cfg = config(beep="no", extra="[display]\nbackend = both\nchar_delay_ms = 0\n"
+                                      "[audio]\nsystem_sound = no\n")
+        sd = card(tmp_path, cfg, {ROM: test_rom("tft_window")})
+        with boot(image, board, sd=sd, serial2=True, timeout=TIMEOUT) as vm:
+            wait_rom(vm, "shown", 1)
+            for n in range(1, 3):
+                press(vm, "select")
+                wait_rom(vm, "shown", n + 1)
+            press(vm, "select")
+            wait_rom(vm, "dark", 1)
+            assert screenshot(vm, tmp_path).getcolors() == [(640 * 480, (0, 0, 0))]
+            vm.script("kill", timeout=TIMEOUT)
+            vm.wait_for("ev=ready", timeout=TIMEOUT)
+            assert not pipos_markers(vm, "scroll"), vm.serial
+            img = screenshot(vm, tmp_path)
+            assert len(img.getcolors(640 * 480)) > 1, img.getcolors(640 * 480)
+            rows = [r.rstrip() for r in dump(vm)]
+            assert "PIP-OS READY" in rows and "PIP-OS KERNEL INITIALIZED" in rows, rows
+        # SLPOUT, then DISPON: one command byte each, DC low.
+        return restore_sends(vm.markers(), zlib.crc32(bytes([0, 0x11, 0, 0x29])))
+
+    judged_sends(strict)
+
 def test_boot_text_after_a_rom_is_one_frame(board, tft_build, test_rom, tmp_path, need_mtools):
     """After a scroll, a ROM killed on a lit screen: one whole frame with the boot text."""
     def strict():

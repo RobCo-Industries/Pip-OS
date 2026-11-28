@@ -118,11 +118,8 @@ uint32_t pipos_slot_take(pipos_slot_t *s, int caller_is_rom)
     return bits;
 }
 
-int pipos_holo_list_rule(int named, int header_ok, int shadowed, uint32_t count, uint32_t max)
+int pipos_holo_list_rule(int named, int header_ok, int shadowed)
 {
-    if (count >= max) {
-        return PIPOS_LIST_STOP;
-    }
     if (!named || shadowed || !header_ok) {
         return PIPOS_LIST_SKIP;
     }

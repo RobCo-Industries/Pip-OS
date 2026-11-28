@@ -149,7 +149,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 ### gfx
 
-`sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. After a scroll, `rom.c` has the kernel write the boot text back before the image end hooks run, so this redraw is the one frame with the text. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
+`sys_gfx.c`: 15 drawing calls on a 320 by 240 back buffer at `0x00C00000`. `present` scales it by the largest whole factor, 2 at 640 by 480, into the framebuffer from RobCo-Core's `fb.h`. Text uses the RobCo-Core font. State: colour, clip, font and who owns the screen. A holotape starts with fresh state and the ROM gets its state back afterwards. When a ROM ends on a lit display, the boot console comes back. After a scroll, `rom.c` has the kernel write the boot text back before the image end hooks run, so this redraw is the one frame with the text. After the image end hooks, `rom.c` ends a blank the ROM left, scroll or not. `pipos_gfx_blank()` serves `power`. Pure code in `gfx_draw.c`, tested by `tests/host/test_gfx.c` and by golden PNGs in `tests/golden/`.
 
 ### Display path
 
@@ -157,7 +157,7 @@ The kernel has one thread. While an image runs, the main loop does not. A blocki
 
 - HDMI: `present` scales the back buffer by 2 into the framebuffer, as before.
 - Panel: `present` compares the back buffer with the shadow, a copy of the last frame sent at `0x00C80000`. `gfx_dirty_rect()` in `gfx_draw.c` finds the smallest rectangle that holds every changed pixel the panel shows. At 0 and 180 degrees the panel shows the left 240 columns and the top 240 rows, so it looks only there, with the 320-pixel row stride. A change outside that window is never sent and never reaches the shadow. It skips equal rows from the top and the bottom, then looks for the leftmost and rightmost change in the rows between. RobCo-Core's `tft_present_px32_rect()` sends that rectangle in RGB565, and `gfx_copy_rect()` copies it into the shadow. An unchanged frame sends nothing.
-- The whole frame goes out after `tft_init()`, after `power` wakes the screen, after the boot text comes back on a screen a ROM left blanked, after a holotape returns and after a failed send.
+- The whole frame goes out after `tft_init()`, after `power` wakes the screen, after a ROM ends with the screen blanked, after a holotape returns and after a failed send.
 - A panic after `power` blanked the screen wakes the panel first: sleep out, display on, backlight on. Then the whole console frame goes out. `tft_sleep()` returns at once when the timer has stopped, and every SPI wait fails after 20 ms plus four byte times with no byte moved, so the panic path stays bounded. A failed panel call skips the rest of the wake; the frame is still sent. On HDMI the panic text lands on the black screen, since the console draws straight into the framebuffer.
 
 Cost on the wire: a rectangle of w by h pixels takes 11 bytes of window commands and `2 * w * h` bytes of pixels. At 9.62 MHz, the rate set for the default 10 MHz:

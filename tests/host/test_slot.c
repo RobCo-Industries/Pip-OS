@@ -363,15 +363,12 @@ TEST(holotape_take)
 
 TEST(list_rule)
 {
-    CHECK_EQ(pipos_holo_list_rule(1, 1, 0, 0, 32), PIPOS_LIST_ADD);
-    CHECK_EQ(pipos_holo_list_rule(1, 1, 0, 31, 32), PIPOS_LIST_ADD);
-    CHECK_EQ(pipos_holo_list_rule(1, 1, 0, 32, 32), PIPOS_LIST_STOP);
-    CHECK_EQ(pipos_holo_list_rule(1, 1, 0, 1, 1), PIPOS_LIST_STOP);
+    CHECK_EQ(pipos_holo_list_rule(1, 1, 0), PIPOS_LIST_ADD);
     /* Shadowed by a slot file with the same name, even a damaged one. */
-    CHECK_EQ(pipos_holo_list_rule(1, 1, 1, 0, 32), PIPOS_LIST_SKIP);
+    CHECK_EQ(pipos_holo_list_rule(1, 1, 1), PIPOS_LIST_SKIP);
     /* A failed header or a name outside the rule is skipped. */
-    CHECK_EQ(pipos_holo_list_rule(1, 0, 0, 0, 32), PIPOS_LIST_SKIP);
-    CHECK_EQ(pipos_holo_list_rule(0, 1, 0, 0, 32), PIPOS_LIST_SKIP);
+    CHECK_EQ(pipos_holo_list_rule(1, 0, 0), PIPOS_LIST_SKIP);
+    CHECK_EQ(pipos_holo_list_rule(0, 1, 0), PIPOS_LIST_SKIP);
     /* A full listing makes no more file system call. */
     CHECK_EQ(pipos_holo_list_full(0, 1), 0);
     CHECK_EQ(pipos_holo_list_full(31, 32), 0);

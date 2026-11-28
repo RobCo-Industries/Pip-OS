@@ -470,9 +470,21 @@ static int32_t sys_audio_status(const pipos_sys_ctx_t *ctx, uint32_t a0, uint32_
 }
 
 /*
+ * play_seq rewrites seq_buf before audio_play() and has no way back. That
+ * is safe only while audio_play() takes every note pipos_audio_convert()
+ * passed: the ABI's note range must lie inside the driver's.
+ */
+_Static_assert(PIP_NOTE_REST == 0 && PIP_TONE_FREQ_MIN >= AUDIO_HZ_MIN &&
+               PIP_TONE_FREQ_MAX <= AUDIO_HZ_MAX,
+               "a note play_seq accepts is a note audio_play() accepts");
+
+/*
  * The tick reads seq_buf while a sequence plays. The rewrite and the
  * request happen with IRQs masked, and the tick applies a request before
- * it reads the notes, so it never sees a half-written buffer.
+ * it reads the notes, so it never sees a half-written buffer. After a good
+ * convert, audio_play() can fail only when the driver did not start, and
+ * then no tick reads the notes. So a refused start never leaves an old
+ * sequence on new notes.
  */
 static int32_t play_seq(const pipos_sys_ctx_t *ctx, uint32_t notes, uint32_t count)
 {

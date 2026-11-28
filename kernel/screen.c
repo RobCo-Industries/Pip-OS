@@ -3,8 +3,9 @@
  * UART only, through k_printf(), so the screen shows only the boot text.
  *
  * With typing on and a ROM to run, the text scrolls away after the last
- * line. The screen keeps the lines and writes them again when the ROM ends,
- * waking a screen the ROM left blanked.
+ * line. The screen keeps the lines and writes them again when the ROM ends.
+ * After every ROM, scroll or not, the kernel wakes a screen the ROM left
+ * blanked.
  */
 #include <robco/audio.h>
 #include <robco/console.h>
@@ -179,12 +180,12 @@ void pipos_screen_ready(void)
     pipos_display_set_text(kept_at, nkept);
 }
 
-/* The redraw skipped a blanked screen: wake it, which sends the one frame. */
+/*
+ * Ends a blank the ROM left: nobody else can. The wake shows the console,
+ * which is the one frame the panel gets. A lit screen is left alone.
+ */
 void pipos_screen_restore(void)
 {
-    if (!scrolled) {
-        return;
-    }
     scrolled = 0;
     pipos_gfx_wake();
 }
