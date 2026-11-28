@@ -174,11 +174,7 @@ static int list_dir(const char *folder, int from_slot, int shadow, uint32_t *cou
             }
             ok = hrc == 1 && pipos_holo_listed(head, sizeof(head), st.size);
         }
-        rule = pipos_holo_list_rule(named, ok, hidden, *count, max);
-        if (rule == PIPOS_LIST_STOP) {
-            frc = 0;
-            break;
-        }
+        rule = pipos_holo_list_rule(named, ok, hidden);
         if (rule == PIPOS_LIST_ADD) {
             pipos_holo_info_fill(&infos[*count], listed, st.size, head);
             infos[*count].flags = pipos_holo_flags(from_slot);

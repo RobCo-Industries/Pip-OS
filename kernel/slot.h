@@ -89,7 +89,6 @@ uint32_t pipos_slot_take(pipos_slot_t *s, int caller_is_rom);
 enum {
     PIPOS_LIST_ADD,         /* list it */
     PIPOS_LIST_SKIP,        /* skip it, go on */
-    PIPOS_LIST_STOP,        /* max entries listed: stop */
 };
 
 /*
@@ -97,9 +96,11 @@ enum {
  * card's. `named` is 1 for a file with a valid NAME.HTP listed name that
  * the skip rule keeps. `header_ok` is 1 when its header passed the listing
  * checks. `shadowed` is 1 for a boot card entry whose name a slot file
- * also has, compared without case, whatever that slot file holds.
+ * also has, compared without case, whatever that slot file holds. The
+ * count is not its business: pipos_holo_list_full() ends a full listing
+ * before the next entry is read.
  */
-int pipos_holo_list_rule(int named, int header_ok, int shadowed, uint32_t count, uint32_t max);
+int pipos_holo_list_rule(int named, int header_ok, int shadowed);
 
 /*
  * 1 when the listing holds `max` entries: holo_enumerate then makes no
